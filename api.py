@@ -15,3 +15,4 @@ app = Flask(__name__)
 
 # Liberar para que o React consuma a nossa API 
 CORS(app)
+
