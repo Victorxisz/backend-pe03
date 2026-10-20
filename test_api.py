@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import patch, ANY
+from bson import ObjectId
 
 
 # O db.py exige uma URI mesmo com o MongoClient simulado.
@@ -18,7 +19,7 @@ def client():
         yield client
 
 
-@pytest.mark.skip(reason="Cadastro de construtora: rota /usuarios ainda não implementada")
+@patch("usuarios.colecao_usuarios")
 def test_cria_usuario_construtora(client):
     novo_usuario = {
         "nome": "Construtora Teste",
@@ -43,10 +44,7 @@ def test_cria_usuario_trabalhador(mock_colecao, client):
         "cargo": "pedreiro"
     }
 
-    response = client.post(
-        "/trabalhadores/obra/123/",
-        json=novo_usuario
-    )
+    response = client.post("/trabalhadores/obra/123/", json=novo_usuario)
 
     assert response.status_code == 201
     assert response.get_json() == {
@@ -63,3 +61,22 @@ def test_cria_usuario_trabalhador(mock_colecao, client):
         "ativo": True,
         "data_cadastro": ANY
     })
+
+
+@pytest.mark.parametrize("campos_faltantes", ["nome", "email", "telefone", "cargo"])
+@patch("trabalhadores.colecao_trabalhadores")
+def test_criar_trabalhador_campos_faltantes(mock_colecao, client, campos_faltantes):
+
+    novo_usuario = {
+        "nome": "João",
+        "email": "joao@email.com",
+        "telefone": "16991736767",
+        "cargo": "pedreiro"
+    }
+
+    del novo_usuario[campos_faltantes]
+
+    response = client.post("/trabalhadores/obra/123/",json=novo_usuario)
+    assert response.status_code == 422
+
+    mock_colecao.insert_one.assert_not_called()
