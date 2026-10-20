@@ -10,9 +10,6 @@ PADRAO_TELEFONE = r"[0-9()\s-]+"
 
 def validar_dados_trabalhador(dados, atualizacao=False):
     """
-    Retorna uma tupla (mensagem, status HTTP) em caso de erro.
-    Retorna None quando os dados atendem às regras.
-
     Cadastro: exige todos os campos de texto.
     Atualização: valida somente os campos enviados.
     """
@@ -36,7 +33,7 @@ def validar_dados_trabalhador(dados, atualizacao=False):
             }, 422
 
     # No cadastro, todos os campos de texto são obrigatórios.
-    # Na atualização, os campos ausentes são ignorados.
+    # Na atualização, os campos ausentes são ignorados. Utilizando o patch ao invés do put
     for campo in CAMPOS_TEXTO:
         if atualizacao and campo not in dados:
             continue
