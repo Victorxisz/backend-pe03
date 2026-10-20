@@ -460,16 +460,16 @@ def test_cria_obra_falha_banco(mock_colecao, client):
 # ============================================================
 
 @pytest.fixture
-def client_uc03(client):
+def client_com_data_fixa(client):
     # Reutiliza o cliente compartilhado e controla o relógio apenas no UC-03.
     with freeze_time("2026-10-20 12:00:00"):
         yield client
 
 
 @pytest.fixture
-def headers_uc03(client_uc03):
+def headers_autenticacao(client_com_data_fixa):
     # Não inicializa JWT na API: essa configuração pertence à implementação.
-    emissor = Flask("emissor_uc03")
+    emissor = Flask("emissor_de_tokens_de_teste")
     emissor.config["JWT_SECRET_KEY"] = app.config["JWT_SECRET_KEY"]
     JWTManager(emissor)
     with emissor.app_context():
@@ -478,7 +478,7 @@ def headers_uc03(client_uc03):
 
 
 @pytest.fixture
-def obras_uc03():
+def obras_exemplo():
     return [
         {
             "_id": ObjectId("507f1f77bcf86cd799439011"),
@@ -511,7 +511,7 @@ def obras_uc03():
 
 
 @pytest.fixture
-def colecao_uc03():
+def colecao_obras():
     # Alvo existente: a futura rota deve obter a coleção de db.banco_dados.
     # O mock fica restrito à coleção de obras.
     with patch("db.banco_dados") as mock_banco:
@@ -529,31 +529,31 @@ def colecao_uc03():
 
 
 # CT-11: lista duas obras e preserva os dados de cada uma.
-def test_uc03_listar_obras(client_uc03, headers_uc03, obras_uc03, colecao_uc03):
-    colecao_uc03.find.return_value = deepcopy(obras_uc03)
+def test_listar_obras(client_com_data_fixa, headers_autenticacao, obras_exemplo, colecao_obras):
+    colecao_obras.find.return_value = deepcopy(obras_exemplo)
 
-    response = client_uc03.get("/api/v1/obras", headers=headers_uc03)
+    response = client_com_data_fixa.get("/api/v1/obras", headers=headers_autenticacao)
 
     assert response.status_code == 200
     obras = response.get_json()["obras"]
     assert len(obras) == 2
     por_id = {obra["id"]: obra for obra in obras}
-    for esperada in obras_uc03:
+    for esperada in obras_exemplo:
         dados = por_id[str(esperada["_id"])]
         for campo in ("nome", "cliente", "estado", "tipo", "entrega"):
             assert dados[campo] == esperada[campo]
-    colecao_uc03.find.assert_called_once_with({})
+    colecao_obras.find.assert_called_once_with({})
 
 
 @pytest.mark.parametrize("indice", [0, 1])
-def test_uc03_consultar_obra_correta(
-    client_uc03, headers_uc03, obras_uc03, colecao_uc03, indice
+def test_consultar_obra_correta(
+    client_com_data_fixa, headers_autenticacao, obras_exemplo, colecao_obras, indice
 ):
-    esperada = obras_uc03[indice]
-    colecao_uc03.find_one.return_value = deepcopy(esperada)
+    esperada = obras_exemplo[indice]
+    colecao_obras.find_one.return_value = deepcopy(esperada)
 
-    response = client_uc03.get(
-        f"/api/v1/obras/{esperada['_id']}", headers=headers_uc03
+    response = client_com_data_fixa.get(
+        f"/api/v1/obras/{esperada['_id']}", headers=headers_autenticacao
     )
 
     assert response.status_code == 200
@@ -561,7 +561,7 @@ def test_uc03_consultar_obra_correta(
     assert dados["id"] == str(esperada["_id"])
     for campo in ("nome", "cliente", "estado", "tipo", "entrega"):
         assert dados[campo] == esperada[campo]
-    colecao_uc03.find_one.assert_called_once_with({"_id": esperada["_id"]})
+    colecao_obras.find_one.assert_called_once_with({"_id": esperada["_id"]})
 
 
 # CT-12: verifica também o filtro entregue ao banco, não apenas a resposta.
@@ -591,39 +591,39 @@ def test_uc03_consultar_obra_correta(
         ]
     })
 ])
-def test_uc03_filtros_individuais(
-    client_uc03, headers_uc03, colecao_uc03, parametros, filtro
+def test_filtros_individuais(
+    client_com_data_fixa, headers_autenticacao, colecao_obras, parametros, filtro
 ):
-    response = client_uc03.get(
-        "/api/v1/obras", query_string=parametros, headers=headers_uc03
+    response = client_com_data_fixa.get(
+        "/api/v1/obras", query_string=parametros, headers=headers_autenticacao
     )
 
     assert response.status_code == 200
     assert response.get_json()["obras"] == []
-    colecao_uc03.find.assert_called_once_with(filtro)
+    colecao_obras.find.assert_called_once_with(filtro)
 
 
 # CT-13: combina os critérios com interseção; ausência de resultado não é erro.
 @pytest.mark.parametrize("tem_resultado", [True, False])
-def test_uc03_combinar_filtros(
-    client_uc03, headers_uc03, obras_uc03, colecao_uc03, tem_resultado
+def test_combinar_filtros(
+    client_com_data_fixa, headers_autenticacao, obras_exemplo, colecao_obras, tem_resultado
 ):
-    colecao_uc03.find.return_value = [deepcopy(obras_uc03[0])] if tem_resultado else []
+    colecao_obras.find.return_value = [deepcopy(obras_exemplo[0])] if tem_resultado else []
 
-    response = client_uc03.get(
+    response = client_com_data_fixa.get(
         "/api/v1/obras",
         query_string={"nome": "Aurora", "cliente": "Cliente Aurora"},
-        headers=headers_uc03
+        headers=headers_autenticacao
     )
 
     assert response.status_code == 200
     dados = response.get_json()["obras"]
     if tem_resultado:
         assert len(dados) == 1
-        assert dados[0]["id"] == str(obras_uc03[0]["_id"])
+        assert dados[0]["id"] == str(obras_exemplo[0]["_id"])
     else:
         assert dados == []
-    colecao_uc03.find.assert_called_once_with({
+    colecao_obras.find.assert_called_once_with({
         "nome": {"$regex": "Aurora", "$options": "i"},
         "cliente": {"$regex": "Cliente Aurora", "$options": "i"}
     })
@@ -638,11 +638,11 @@ def test_uc03_combinar_filtros(
     ("intervalo_estimado", "2026-10-20", False),
     ("intervalo_estimado", "2026-10-19", True)
 ])
-def test_uc03_calcular_atraso(
-    client_uc03, headers_uc03, obras_uc03, colecao_uc03,
+def test_calcular_atraso(
+    client_com_data_fixa, headers_autenticacao, obras_exemplo, colecao_obras,
     modalidade, fim, atrasada
 ):
-    obra = deepcopy(obras_uc03[0])
+    obra = deepcopy(obras_exemplo[0])
     if modalidade == "data_exata":
         obra["entrega"] = {"modalidade": modalidade, "data": fim}
     else:
@@ -652,10 +652,10 @@ def test_uc03_calcular_atraso(
             "fim": fim
         }
     # Não coloca 'atrasada' no mock: a aplicação precisa calculá-la.
-    colecao_uc03.find_one.return_value = obra
+    colecao_obras.find_one.return_value = obra
 
-    response = client_uc03.get(
-        f"/api/v1/obras/{obra['_id']}", headers=headers_uc03
+    response = client_com_data_fixa.get(
+        f"/api/v1/obras/{obra['_id']}", headers=headers_autenticacao
     )
 
     assert response.status_code == 200
@@ -664,28 +664,28 @@ def test_uc03_calcular_atraso(
     assert dados["estado"] == "em andamento"
 
 
-def test_uc03_impedir_edicao_manual_do_atraso(
-    client_uc03, headers_uc03, obras_uc03, colecao_uc03
+def test_impedir_edicao_manual_do_atraso(
+    client_com_data_fixa, headers_autenticacao, obras_exemplo, colecao_obras
 ):
-    obra = obras_uc03[0]
-    colecao_uc03.find_one.return_value = deepcopy(obra)
+    obra = obras_exemplo[0]
+    colecao_obras.find_one.return_value = deepcopy(obra)
 
-    response = client_uc03.patch(
+    response = client_com_data_fixa.patch(
         f"/api/v1/obras/{obra['_id']}",
-        json={"alertas": ["atrasada"]}, headers=headers_uc03
+        json={"alertas": ["atrasada"]}, headers=headers_autenticacao
     )
 
     assert response.status_code == 422
 
 
 # CT-15: não inventa dados para ID desconhecido e valida antes de consultar.
-def test_uc03_obra_inexistente(client_uc03, headers_uc03, colecao_uc03):
+def test_obra_inexistente(client_com_data_fixa, headers_autenticacao, colecao_obras):
     obra_id = ObjectId("507f1f77bcf86cd799439099")
 
-    response = client_uc03.get(f"/api/v1/obras/{obra_id}", headers=headers_uc03)
+    response = client_com_data_fixa.get(f"/api/v1/obras/{obra_id}", headers=headers_autenticacao)
 
     assert response.status_code == 404
-    colecao_uc03.find_one.assert_called_once_with({"_id": obra_id})
+    colecao_obras.find_one.assert_called_once_with({"_id": obra_id})
 
 
 @pytest.mark.parametrize("parametros", [
@@ -696,12 +696,12 @@ def test_uc03_obra_inexistente(client_uc03, headers_uc03, colecao_uc03):
     {"registroDe": "2026-10-31", "registroAte": "2026-10-01"},
     {"entregaDe": "2026-12-31", "entregaAte": "2026-12-01"}
 ])
-def test_uc03_rejeitar_filtros_invalidos(
-    client_uc03, headers_uc03, colecao_uc03, parametros
+def test_rejeitar_filtros_invalidos(
+    client_com_data_fixa, headers_autenticacao, colecao_obras, parametros
 ):
-    response = client_uc03.get(
-        "/api/v1/obras", query_string=parametros, headers=headers_uc03
+    response = client_com_data_fixa.get(
+        "/api/v1/obras", query_string=parametros, headers=headers_autenticacao
     )
 
     assert response.status_code == 422
-    colecao_uc03.find.assert_not_called()
+    colecao_obras.find.assert_not_called()
