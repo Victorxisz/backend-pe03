@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+import re
 from bson import ObjectId
 from bson.errors import InvalidId
 from flask import Blueprint, current_app, jsonify, request
@@ -27,7 +28,7 @@ def trabalhador_para_dict(documento):
 
     return {
         "id": str(documento["_id"]),
-        "nome": documento.get("nome"),
+        "nome": documento.get("nome", ""),
         "email": documento.get("email"),
         "telefone": documento.get("telefone"),
         "cargo": documento.get("cargo"),
@@ -169,3 +170,34 @@ def deletar_trabalhador(trabalhador_id):
         return jsonify({"erro":"Trabalhador não encontrado"}), 404
 
     return jsonify({"mensagem":"Trabalhador excluído com sucesso"}), 200
+
+@trabalhadores_bp.route(
+    "/nome/<string:nome_usuario>/",
+    methods = ["GET"]
+)
+def filtrar_usuario_por_nome (nome_usuario):
+    nome_busca = nome_usuario.strip()
+
+    if not nome_busca:
+        return jsonify({"erro":"Digite algum usuário para pesquisa"}), 422
+
+    filtro = {
+            "nome": {
+                "$regex":re.escape(nome_busca), # Escapa de caracteres especiais jogados no meio da string. Como: ?, *, ...
+                "$options": "i"
+           }
+        }
+
+    try:
+        cursor = colecao_trabalhadores.find(filtro)
+
+        trabalhadores = [
+            trabalhador_para_dict(documento)
+            for documento in cursor
+        ]
+    except (PyMongoError):
+        current_app.logger.exception("Erro ao encontrar o trabalhador")
+        return jsonify({"erro": "Não foi possível encontrar o trabalhador"}), 500
+
+    return jsonify(trabalhadores), 200
+

@@ -1,4 +1,6 @@
-Flask==3.0.3
-flask-cors
-pymongo==4.8.0
-python-dotenv==1.0.1
+Flask
+Flask-Cors
+Flask-JWT-Extended
+Flask-Bcrypt
+python-dotenv
+pymongo
