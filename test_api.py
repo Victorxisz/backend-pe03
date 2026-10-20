@@ -220,10 +220,16 @@ def test_cria_obra_casa_data_exata(mock_colecao, client):
     nova_obra = {
         "nome": "Casa Teste",
         "tipo": "casa",
-        "data_entrega": "2030-12-20"
+        "localizacao": "Campinas, SP",
+        "descricao": "Construção residencial",
+        "inicio": "2030-01-15",
+        "entrega": {
+            "modalidade": "data_exata",
+            "data": "2030-12-20"
+        }
     }
 
-    response = client.post("/obras", json=nova_obra)
+    response = client.post("/api/v1/obras", json=nova_obra)
 
     assert response.status_code == 201
     mock_colecao.insert_one.assert_called_once()
@@ -237,11 +243,17 @@ def test_cria_obra_apartamentos_intervalo(mock_colecao, client):
     nova_obra = {
         "nome": "Apartamentos Teste",
         "tipo": "apartamentos",
-        "data_entrega_inicio": "2030-10-01",
-        "data_entrega_fim": "2030-12-20"
+        "localizacao": "Campinas, SP",
+        "descricao": "Construção residencial",
+        "inicio": "2030-01-15",
+        "entrega": {
+            "modalidade": "intervalo_estimado",
+            "inicio": "2030-10-01",
+            "fim": "2030-12-20"
+        }
     }
 
-    response = client.post("/obras", json=nova_obra)
+    response = client.post("/api/v1/obras", json=nova_obra)
 
     assert response.status_code == 201
     mock_colecao.insert_one.assert_called_once()
@@ -250,9 +262,12 @@ def test_cria_obra_apartamentos_intervalo(mock_colecao, client):
 # CT-07: rejeitar duas modalidades juntas ou modalidade ausente.
 @pytest.mark.parametrize("dados_entrega", [
     {
-        "data_entrega": "2030-12-20",
-        "data_entrega_inicio": "2030-10-01",
-        "data_entrega_fim": "2030-12-20"
+        "entrega": {
+            "modalidade": "data_exata",
+            "data": "2030-12-20",
+            "inicio": "2030-10-01",
+            "fim": "2030-12-20"
+        }
     },
     {}
 ])
@@ -260,12 +275,15 @@ def test_cria_obra_apartamentos_intervalo(mock_colecao, client):
 def test_cria_obra_modalidade_invalida(mock_colecao, client, dados_entrega):
     nova_obra = {
         "nome": "Obra Teste",
-        "tipo": "casa"
+        "tipo": "casa",
+        "localizacao": "Campinas, SP",
+        "descricao": "Construção residencial",
+        "inicio": "2030-01-15"
     }
 
     nova_obra.update(dados_entrega)
 
-    response = client.post("/obras", json=nova_obra)
+    response = client.post("/api/v1/obras", json=nova_obra)
 
     assert response.status_code == 422
     mock_colecao.insert_one.assert_not_called()
@@ -273,31 +291,53 @@ def test_cria_obra_modalidade_invalida(mock_colecao, client, dados_entrega):
 
 # CT-08: rejeitar datas inválidas e intervalo invertido.
 @pytest.mark.parametrize("dados_entrega", [
-    {"data_entrega": "2030-02-30"},
-    {"data_entrega": "data inválida"},
     {
-        "data_entrega_inicio": "2030-02-30",
-        "data_entrega_fim": "2030-12-20"
+        "entrega": {
+            "modalidade": "data_exata",
+            "data": "2030-02-30"
+        }
     },
     {
-        "data_entrega_inicio": "2030-10-01",
-        "data_entrega_fim": "2030-13-20"
+        "entrega": {
+            "modalidade": "data_exata",
+            "data": "data inválida"
+        }
     },
     {
-        "data_entrega_inicio": "2030-12-20",
-        "data_entrega_fim": "2030-10-01"
+        "entrega": {
+            "modalidade": "intervalo_estimado",
+            "inicio": "2030-02-30",
+            "fim": "2030-12-20"
+        }
+    },
+    {
+        "entrega": {
+            "modalidade": "intervalo_estimado",
+            "inicio": "2030-10-01",
+            "fim": "2030-13-20"
+        }
+    },
+    {
+        "entrega": {
+            "modalidade": "intervalo_estimado",
+            "inicio": "2030-12-20",
+            "fim": "2030-10-01"
+        }
     }
 ])
 @patch("obras.colecao_obras")
 def test_cria_obra_datas_invalidas(mock_colecao, client, dados_entrega):
     nova_obra = {
         "nome": "Obra Teste",
-        "tipo": "casa"
+        "tipo": "casa",
+        "localizacao": "Campinas, SP",
+        "descricao": "Construção residencial",
+        "inicio": "2030-01-15"
     }
 
     nova_obra.update(dados_entrega)
 
-    response = client.post("/obras", json=nova_obra)
+    response = client.post("/api/v1/obras", json=nova_obra)
 
     assert response.status_code == 422
     mock_colecao.insert_one.assert_not_called()
@@ -310,10 +350,16 @@ def test_cria_obra_nome_vazio(mock_colecao, client, nome):
     nova_obra = {
         "nome": nome,
         "tipo": "casa",
-        "data_entrega": "2030-12-20"
+        "localizacao": "Campinas, SP",
+        "descricao": "Construção residencial",
+        "inicio": "2030-01-15",
+        "entrega": {
+            "modalidade": "data_exata",
+            "data": "2030-12-20"
+        }
     }
 
-    response = client.post("/obras", json=nova_obra)
+    response = client.post("/api/v1/obras", json=nova_obra)
 
     assert response.status_code == 422
     mock_colecao.insert_one.assert_not_called()
@@ -341,10 +387,16 @@ def test_obra_persiste_apos_recarregar_reiniciar(mock_colecao, client):
     nova_obra = {
         "nome": "Casa Teste",
         "tipo": "casa",
-        "data_entrega": "2030-12-20"
+        "localizacao": "Campinas, SP",
+        "descricao": "Construção residencial",
+        "inicio": "2030-01-15",
+        "entrega": {
+            "modalidade": "data_exata",
+            "data": "2030-12-20"
+        }
     }
 
-    response = client.post("/obras", json=nova_obra)
+    response = client.post("/api/v1/obras", json=nova_obra)
 
     assert response.status_code == 201
     assert response.get_json()["id"] == str(obra_id)
@@ -352,7 +404,7 @@ def test_obra_persiste_apos_recarregar_reiniciar(mock_colecao, client):
 
     # Um novo cliente consulta a obra sem reutilizar a sessão anterior.
     with app.test_client() as novo_client:
-        response_recarregar = novo_client.get(f"/obras/{obra_id}")
+        response_recarregar = novo_client.get(f"/api/v1/obras/{obra_id}")
 
     assert response_recarregar.status_code == 200
     dados_recarregados = response_recarregar.get_json()
@@ -369,7 +421,7 @@ def test_obra_persiste_apos_recarregar_reiniciar(mock_colecao, client):
     assert app_reiniciada is not app
 
     with app_reiniciada.test_client() as novo_client:
-        response_reiniciar = novo_client.get(f"/obras/{obra_id}")
+        response_reiniciar = novo_client.get(f"/api/v1/obras/{obra_id}")
 
     assert response_reiniciar.status_code == 200
     assert response_reiniciar.get_json() == dados_recarregados
@@ -387,10 +439,16 @@ def test_cria_obra_falha_banco(mock_colecao, client):
     nova_obra = {
         "nome": "Casa Teste",
         "tipo": "casa",
-        "data_entrega": "2030-12-20"
+        "localizacao": "Campinas, SP",
+        "descricao": "Construção residencial",
+        "inicio": "2030-01-15",
+        "entrega": {
+            "modalidade": "data_exata",
+            "data": "2030-12-20"
+        }
     }
 
-    response = client.post("/obras", json=nova_obra)
+    response = client.post("/api/v1/obras", json=nova_obra)
 
     assert response.status_code == 500
     mock_colecao.insert_one.assert_called_once()
