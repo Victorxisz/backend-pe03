@@ -1,4 +1,6 @@
 import pytest
+from copy import deepcopy
+from runpy import run_module
 from unittest.mock import patch, ANY
 from bson import ObjectId
 from flask_bcrypt import Bcrypt
@@ -6,6 +8,7 @@ from datetime import timedelta
 from flask import Flask
 from flask_jwt_extended import JWTManager, create_access_token
 
+from pymongo.errors import PyMongoError
 
 # O db.py exige uma URI mesmo com o MongoClient simulado.
 # Não carrega o .env nem conecta ao MongoDB real.
@@ -209,3 +212,185 @@ def test_criar_trabalhador_campos_faltantes(mock_colecao, client, campos_faltant
     assert response.status_code == 422
 
     mock_colecao.insert_one.assert_not_called()
+
+@patch("obras.colecao_obras")
+def test_cria_obra_casa_data_exata(mock_colecao, client):
+    mock_colecao.insert_one.return_value.inserted_id = "1"
+
+    nova_obra = {
+        "nome": "Casa Teste",
+        "tipo": "casa",
+        "data_entrega": "2030-12-20"
+    }
+
+    response = client.post("/obras", json=nova_obra)
+
+    assert response.status_code == 201
+    mock_colecao.insert_one.assert_called_once()
+
+
+# CT-06: criar apartamentos com intervalo válido.
+@patch("obras.colecao_obras")
+def test_cria_obra_apartamentos_intervalo(mock_colecao, client):
+    mock_colecao.insert_one.return_value.inserted_id = "2"
+
+    nova_obra = {
+        "nome": "Apartamentos Teste",
+        "tipo": "apartamentos",
+        "data_entrega_inicio": "2030-10-01",
+        "data_entrega_fim": "2030-12-20"
+    }
+
+    response = client.post("/obras", json=nova_obra)
+
+    assert response.status_code == 201
+    mock_colecao.insert_one.assert_called_once()
+
+
+# CT-07: rejeitar duas modalidades juntas ou modalidade ausente.
+@pytest.mark.parametrize("dados_entrega", [
+    {
+        "data_entrega": "2030-12-20",
+        "data_entrega_inicio": "2030-10-01",
+        "data_entrega_fim": "2030-12-20"
+    },
+    {}
+])
+@patch("obras.colecao_obras")
+def test_cria_obra_modalidade_invalida(mock_colecao, client, dados_entrega):
+    nova_obra = {
+        "nome": "Obra Teste",
+        "tipo": "casa"
+    }
+
+    nova_obra.update(dados_entrega)
+
+    response = client.post("/obras", json=nova_obra)
+
+    assert response.status_code == 422
+    mock_colecao.insert_one.assert_not_called()
+
+
+# CT-08: rejeitar datas inválidas e intervalo invertido.
+@pytest.mark.parametrize("dados_entrega", [
+    {"data_entrega": "2030-02-30"},
+    {"data_entrega": "data inválida"},
+    {
+        "data_entrega_inicio": "2030-02-30",
+        "data_entrega_fim": "2030-12-20"
+    },
+    {
+        "data_entrega_inicio": "2030-10-01",
+        "data_entrega_fim": "2030-13-20"
+    },
+    {
+        "data_entrega_inicio": "2030-12-20",
+        "data_entrega_fim": "2030-10-01"
+    }
+])
+@patch("obras.colecao_obras")
+def test_cria_obra_datas_invalidas(mock_colecao, client, dados_entrega):
+    nova_obra = {
+        "nome": "Obra Teste",
+        "tipo": "casa"
+    }
+
+    nova_obra.update(dados_entrega)
+
+    response = client.post("/obras", json=nova_obra)
+
+    assert response.status_code == 422
+    mock_colecao.insert_one.assert_not_called()
+
+
+# CT-08: rejeitar nome vazio.
+@pytest.mark.parametrize("nome", ["", "   "])
+@patch("obras.colecao_obras")
+def test_cria_obra_nome_vazio(mock_colecao, client, nome):
+    nova_obra = {
+        "nome": nome,
+        "tipo": "casa",
+        "data_entrega": "2030-12-20"
+    }
+
+    response = client.post("/obras", json=nova_obra)
+
+    assert response.status_code == 422
+    mock_colecao.insert_one.assert_not_called()
+
+
+# CT-09: recuperar os dados após recarregar e simular o reinício do Flask.
+# O banco é simulado; a persistência real no Atlas exige teste de integração.
+@patch("obras.colecao_obras")
+def test_obra_persiste_apos_recarregar_reiniciar(mock_colecao, client):
+    obra_id = ObjectId("507f1f77bcf86cd799439011")
+    documentos = {}
+    mock_colecao.insert_one.return_value.inserted_id = obra_id
+
+    def salvar_obra(documento):
+        documentos[obra_id] = deepcopy(documento)
+        documentos[obra_id]["_id"] = obra_id
+        return mock_colecao.insert_one.return_value
+
+    def consultar_obra(filtro):
+        return deepcopy(documentos.get(filtro.get("_id")))
+
+    mock_colecao.insert_one.side_effect = salvar_obra
+    mock_colecao.find_one.side_effect = consultar_obra
+
+    nova_obra = {
+        "nome": "Casa Teste",
+        "tipo": "casa",
+        "data_entrega": "2030-12-20"
+    }
+
+    response = client.post("/obras", json=nova_obra)
+
+    assert response.status_code == 201
+    assert response.get_json()["id"] == str(obra_id)
+    mock_colecao.insert_one.assert_called_once()
+
+    # Um novo cliente consulta a obra sem reutilizar a sessão anterior.
+    with app.test_client() as novo_client:
+        response_recarregar = novo_client.get(f"/obras/{obra_id}")
+
+    assert response_recarregar.status_code == 200
+    dados_recarregados = response_recarregar.get_json()
+    assert dados_recarregados["id"] == str(obra_id)
+    for campo, valor in nova_obra.items():
+        assert dados_recarregados[campo] == valor
+    mock_colecao.find_one.assert_called_once_with({"_id": obra_id})
+    mock_colecao.find_one.reset_mock()
+
+    # Executa a inicialização em outro namespace, criando uma nova aplicação.
+    # A coleção simulada mantém somente os documentos salvos pelo POST.
+    app_reiniciada = run_module("api", run_name="api_ct09")["app"]
+    app_reiniciada.config["TESTING"] = True
+    assert app_reiniciada is not app
+
+    with app_reiniciada.test_client() as novo_client:
+        response_reiniciar = novo_client.get(f"/obras/{obra_id}")
+
+    assert response_reiniciar.status_code == 200
+    assert response_reiniciar.get_json() == dados_recarregados
+    mock_colecao.find_one.assert_called_once_with({"_id": obra_id})
+    mock_colecao.insert_one.assert_called_once()
+
+
+# CT-10: tratar falha do banco sem retornar sucesso.
+@patch("obras.colecao_obras")
+def test_cria_obra_falha_banco(mock_colecao, client):
+    mock_colecao.insert_one.side_effect = PyMongoError(
+        "Falha ao salvar obra"
+    )
+
+    nova_obra = {
+        "nome": "Casa Teste",
+        "tipo": "casa",
+        "data_entrega": "2030-12-20"
+    }
+
+    response = client.post("/obras", json=nova_obra)
+
+    assert response.status_code == 500
+    mock_colecao.insert_one.assert_called_once()
