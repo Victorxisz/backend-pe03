@@ -3,3 +3,5 @@ flask-cors
 pymongo==4.8.0
 python-dotenv==1.0.1
 pytest>=8,<9
+flask-bcrypt
+flask-jwt-extended
