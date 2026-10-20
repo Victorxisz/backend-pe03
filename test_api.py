@@ -1,6 +1,10 @@
 import pytest
 from unittest.mock import patch, ANY
 from bson import ObjectId
+from flask_bcrypt import Bcrypt
+from datetime import timedelta
+from flask import Flask
+from flask_jwt_extended import JWTManager, create_access_token
 
 
 # O db.py exige uma URI mesmo com o MongoClient simulado.
@@ -12,14 +16,139 @@ with patch.dict("os.environ", {
 
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
     """Cria um cliente de teste para a API."""
-    app.config["TESTING"] = True
+    monkeypatch.setitem(app.config, "TESTING", True)
+    monkeypatch.setitem(
+        app.config, "JWT_SECRET_KEY",
+        "chave-ficticia-de-testes-jwt-com-mais-de-32-bytes"
+    )
     with app.test_client() as client:
         yield client
 
+@patch("db.banco_dados")
+def test_login_valido(mock_banco, client):
+    bcrypt = Bcrypt()
+    mock_usuarios = mock_banco.__getitem__.return_value
 
-@patch("usuarios.colecao_usuarios")
+    mock_usuarios.find_one.return_value = {
+        "_id": ObjectId("507f1f77bcf86cd799439011"),
+        "username": "construtora_teste",
+        "password": bcrypt.generate_password_hash("Senha_teste123!").decode("utf-8")
+    }
+
+    dados_login = {
+        "username": "construtora_teste",
+        "password": "Senha_teste123!"
+    }
+
+    response = client.post("/login", json = dados_login)
+    assert response.status_code == 200
+
+    dados_resposta = response.get_json()
+
+    assert "access_token" in dados_resposta
+    assert isinstance(dados_resposta["access_token"], str)
+    assert dados_resposta["access_token"]
+
+    mock_usuarios.find_one.assert_called_once_with({
+        "username": "construtora_teste"
+    })
+
+@pytest.mark.parametrize("usuario_existe", [True, False])
+@patch("db.banco_dados")
+def test_login_invalido(mock_banco, client, usuario_existe):
+    mock_usuarios = mock_banco.__getitem__.return_value
+
+    if usuario_existe:
+        bcrypt = Bcrypt()
+
+        mock_usuarios.find_one.return_value = {
+            "username": "construtora_teste",
+            "password": bcrypt.generate_password_hash("SenhaCorreta123!").decode("utf-8")
+        }
+
+    else:
+        mock_usuarios.find_one.return_value = None
+
+    response = client.post("/login", json={"username": "construtora_teste",
+                                            "password": "SenhaErrada123!"})
+    assert response.status_code == 401
+    assert response.get_json() == {
+        "msg": "Usuário ou senha inválidos"
+    }
+    assert "access_token" not in response.get_json()
+
+@pytest.mark.parametrize("metodo,rota", [
+    ("GET", "/api/v1/obras"),
+    ("POST", "/api/v1/obras"),
+    ("PATCH", "/api/v1/obras/507f1f77bcf86cd799439011"),
+    ("DELETE", "/api/v1/obras/507f1f77bcf86cd799439011")
+])
+def test_acesso_sem_token(client, metodo, rota):
+    response = client.open(
+        rota,
+        method = metodo,
+        json={}
+    )
+
+    assert response.status_code == 401
+
+def test_acesso_token_expirado(client):
+
+    emissor = Flask("emissor_de_tokens_de_teste")
+    emissor.config["JWT_SECRET_KEY"] = app.config["JWT_SECRET_KEY"]
+    JWTManager(emissor)
+
+    with emissor.app_context():
+        token = create_access_token(
+            identity="construtora_teste",
+            expires_delta=timedelta(seconds=-60)
+        )
+    response = client.get(
+        "/api/v1/obras",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 401
+
+@patch("db.banco_dados")
+def test_logout_invalida_token(mock_banco, client):
+    bcrypt = Bcrypt()
+    mock_usuarios =  mock_banco.__getitem__.return_value
+    mock_usuarios.find_one.return_value = {
+        "username": "construtora_teste",
+        "password": bcrypt.generate_password_hash(
+            "SenhaCorreta123!"
+        ).decode("utf-8")
+    }
+
+    response_login = client.post("/login", json={"username": "construtora_teste",
+                                                "password": "SenhaCorreta123!"})
+
+    assert response_login.status_code == 200
+
+    token = response_login.get_json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    mock_banco.__getitem__.return_value.find.return_value = []
+    response_antes = client.get("/api/v1/obras", headers=headers)
+    assert response_antes.status_code == 200
+
+    response_logout = client.post(
+        "/logout",
+        headers=headers
+    )
+    assert response_logout.status_code == 200
+
+    response_depois = client.get(
+        "/api/v1/obras",
+        headers=headers
+    )
+    assert response_depois.status_code == 401
+
+# A rota /usuarios ainda precisa ser implementada.
+# Sem patch de um módulo inexistente: o teste deve falhar com 404.
 def test_cria_usuario_construtora(client):
     novo_usuario = {
         "nome": "Construtora Teste",
