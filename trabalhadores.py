@@ -6,7 +6,7 @@ from bson.errors import InvalidId
 from flask import Blueprint, current_app, jsonify, request
 from pymongo.errors import PyMongoError
 
-from db import colecao_trabalhadores
+from db import cliente_mongo, colecao_trabalhadores, colecao_obras
 from validacoes import (
     normalizar_dados_trabalhador,
     validar_dados_trabalhador,
@@ -43,15 +43,15 @@ def trabalhador_para_dict(documento):
 
 
 @trabalhadores_bp.route(
-    "/obra/<int:codigo_obra>/",
+    "/obra/<string:obra_id>/",
     methods=["POST"]
 )
-def cadastrar_trabalhador(codigo_obra):
+def cadastrar_trabalhador_em_obra (obra_id):
     """Cria um trabalhador vinculado à obra informada na URL."""
-    if codigo_obra <= 0:
-        return jsonify({
-            "erro": "O código da obra deve ser um inteiro positivo"
-        }), 422
+    try:
+        id_obra = ObjectId(obra_id)
+    except (InvalidId, TypeError):
+        return jsonify({"erro":"ID da obra inválido"}), 400
 
     dados_recebidos = request.get_json(silent=True)
 
@@ -67,26 +67,51 @@ def cadastrar_trabalhador(codigo_obra):
 
     # Estes campos são definidos pela API.
     novo_trabalhador.update({
-        "obras": [codigo_obra],
+        "obras": [str(id_obra)],
         "ativo": True,
         "data_cadastro": datetime.now(timezone.utc)
     })
 
     try:
-        resultado = colecao_trabalhadores.insert_one(
-            novo_trabalhador
-        )
+        with cliente_mongo.start_session() as sessao:
+            with sessao.start_transaction():
+                obra = colecao_obras.find_one(
+                    {"_id":id_obra},
+                    session = sessao
+                )
+
+                if obra is None:
+                    return jsonify(
+                        {"erro":"Obra não encontrada"}, 404
+                    )
+
+                resultado = colecao_trabalhadores.insert_one(
+                    novo_trabalhador,
+                    session=sessao
+                )
+
+                colecao_obras.update_one(
+                    {"_id": id_obra},
+                    {
+                        "$addToSet": {
+                            "trabalhadores": novo_trabalhador["email"]
+                        }
+                    },
+
+                    session=sessao
+                )
     except PyMongoError:
         current_app.logger.exception(
-            "Erro ao cadastrar trabalhador"
+            "Erro ao cadastrar trabalhador na obra"
         )
         return jsonify({
-            "erro": "Não foi possível salvar o trabalhador"
+            "erro": "Não foi possível salvar o trabalhador na obra"
         }), 500
 
     return jsonify({
-        "mensagem": "Trabalhador criado com sucesso",
-        "id": str(resultado.inserted_id)
+        "mensagem": "Trabalhador criado com sucesso e vinculado à obra",
+        "id": str(resultado.inserted_id),
+        "obra_id": str(id_obra)
     }), 201
 
 
@@ -201,3 +226,66 @@ def filtrar_usuario_por_nome (nome_usuario):
 
     return jsonify(trabalhadores), 200
 
+@trabalhadores_bp.route("/cargo/<string:cargo>/", methods = ["GET"])
+def filtrar_usuario_por_cargo (cargo):
+    cargo = cargo.strip()
+
+    if not cargo:
+        return jsonify({"erro":"Digite algum cargo para pesquisar"}), 422
+
+    filtro = {
+        "cargo":
+        {
+            "$regex":re.escape(cargo),
+            "$options":"i"
+        }
+    }
+
+    try:
+        cursor = colecao_trabalhadores.find(filtro)
+
+        trabalhadores = [
+            trabalhador_para_dict(documento)
+            for documento in cursor
+        ]
+
+    except (PyMongoError):
+        current_app.logger.exception("Erro ao encontrar o trabalhador")
+        return jsonify({"erro":"Não foi possível encontrar o trabalhador"}), 422
+
+    return jsonify(trabalhadores), 200
+
+@trabalhadores_bp.route("/obra/<obra_id>/", methods = ["GET"])
+def filtrar_usuario_por_obra (obra_id):
+    try:
+        id_obra = ObjectId(obra_id)
+    except (InvalidId,TypeError):
+        return jsonify({"erro":"ID da obra inválido"}), 400
+
+    try:
+        obra = colecao_obras.find_one({"_id":id_obra})
+
+        if obra is None:
+            return jsonify({"erro":"Nenhuma obra encontrada"}), 404
+
+        emails_trabalhadores = obra.get("trabalhadores", [])
+
+        if not emails_trabalhadores:
+            return jsonify({"mensagem": "Nenhum usuário encontrado"}),200
+
+        cursor = colecao_trabalhadores.find({
+            "email":{"$in":emails_trabalhadores}
+        })
+
+        trabalhadores = [
+            trabalhador_para_dict(documento)
+            for documento in cursor
+        ]
+
+    except (PyMongoError):
+        current_app.logger.exception(
+            "Erro ao buscar trabalhadores na obra"
+        )
+        return jsonify({"erro":"Não foi possível encontrar os trabalhadores da obra"}), 500
+
+    return jsonify(trabalhadores), 200

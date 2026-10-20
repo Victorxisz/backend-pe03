@@ -22,3 +22,5 @@ banco_dados = cliente_mongo["banco_de_dados"]
 
 colecao_trabalhadores = banco_dados["tbl_trabalhadores"]
 colecao_construtora = banco_dados["tbl_construtora"]
+colecao_marcos = banco_dados["tbl_marcos"]
+colecao_obras = banco_dados["tbl_obras"]
