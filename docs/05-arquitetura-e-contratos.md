@@ -39,13 +39,14 @@ Cada recurso tem URI própria. `GET` consulta, `POST` cria, `PATCH` modifica e `
 | `/avancos/{avancoId}/midias` e `/midias/{midiaId}` | `GET`, `POST`, `DELETE` | F-08, F-19 |
 | `/avancos/{avancoId}/publicacoes` | `GET`, `POST` | F-10; publicação é um fato registrado |
 | `/avancos/{avancoId}/versoes` | `GET` | F-11; correções são enviadas em `PATCH /avancos/{id}` com motivo |
-| `/obras/{obraId}/mudancas` e `/mudancas/{mudancaId}` | `GET`, `POST`, `DELETE`* | F-12, F-13, F-19 |
+| `/obras/{obraId}/mudancas` e `/mudancas/{mudancaId}` | `GET`, `POST` | F-12, F-13; sem exclusão isolada no MVP |
 | `/obras/{obraId}/ocorrencias` e `/ocorrencias/{ocorrenciaId}` | `GET`, `POST`, `PATCH`, `DELETE` | F-14 a F-16, F-19 |
 | `/ocorrencias/{ocorrenciaId}/aceitacoes` | `GET`, `POST` | F-15 |
 | `/obras/{obraId}/previa` | `GET` | F-10; apenas avanços publicados |
 | `/obras/{obraId}/feedback-simulado` | `GET` | F-17; leitura apenas |
+| `/obras/{obraId}/trabalhadores` e `/trabalhadores/{trabalhadorId}` | `GET`, `POST`, `PATCH`, `DELETE` | F-20; a rota existente no código ainda usa outro formato e precisa convergir para o contrato escolhido |
 
-`*` Excluir uma mudança já aplicada exige definir o que acontece com o valor atual e com o histórico; **não implementar o `DELETE` desta rota antes de resolver essa decisão**. Também não permitir exclusão automática em cascata de uma obra sem revisar os vínculos. Ver [decisões pendentes](07-plano-e-decisoes.md).
+Excluir isoladamente uma mudança já aplicada não integra o MVP; sua exclusão por cascata ocorre somente com o objeto principal e seus dependentes, após confirmação explícita na interface. O servidor deve garantir que uma falha não produza referências órfãs. Ver [decisões](07-plano-e-decisoes.md).
 
 ### Convenções compartilhadas
 
@@ -79,7 +80,7 @@ Quando a modalidade for `data_exata`, `entrega` contém `data` em vez de `inicio
 
 - Manter URI do Atlas, segredos da sessão, credenciais da API externa e credenciais de AWS em variáveis de ambiente do servidor; nunca no código React, no Git ou em exemplos reais.
 - Versionar apenas `.env.example` com nomes de variáveis e valores fictícios. Os arquivos reais de credenciais serão entregues pelo Blackboard conforme a exigência da disciplina.
-- Proteger as duas contas de demonstração com senhas não expostas no repositório. Dados simulados devem usar pessoas e obras fictícias.
+- Proteger a conta de demonstração com senha não exposta no repositório. Dados simulados devem usar pessoas e obras fictícias.
 - Não expor o Atlas diretamente ao navegador. Configurar o acesso de rede para que o servidor no EC2 consiga conectar ao cluster.
 - Se o cliente e a API usarem origens diferentes, configurar CORS apenas para a origem do cliente implantado; preferir uma origem única se isso simplificar a implantação.
 - A documentação da AWS descreve *security groups* como controle de tráfego da instância. Abrir apenas as portas exigidas pelo serviço publicado e pela administração autorizada. [AWS EC2](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/creating-security-group.html).

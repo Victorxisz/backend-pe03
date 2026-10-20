@@ -4,7 +4,7 @@ Os critérios abaixo descrevem resultados observáveis no navegador e no servido
 
 ## Jornada principal de demonstração
 
-**Cenário fictício:** a construtora Horizonte cria a obra residencial *Residencial Aurora*; planeja os marcos *Fundação*, *Estrutura* e *Alvenaria*; registra avanço com foto, vídeo e documento; publica uma atualização; altera o prazo de *Estrutura* com motivo; registra uma ocorrência sem solução e aceita sua condição com justificativa. Em seguida, outra pessoa da equipe entra na segunda conta da construtora e consegue consultar o mesmo histórico.
+**Cenário fictício:** a construtora Horizonte entra com sua conta, cria a obra residencial *Residencial Aurora*; planeja os marcos *Fundação*, *Estrutura* e *Alvenaria*; cadastra um trabalhador; registra avanço com foto, vídeo e documento; publica uma atualização; altera o prazo de *Estrutura* com motivo; registra uma ocorrência sem solução e aceita sua condição com justificativa. Após reiniciar a aplicação, a mesma conta consulta o histórico.
 
 O cenário deve usar registros fictícios explicitamente identificados. Um dado de avaliação ou dúvida do comprador pré-carregado pode ser exibido como contexto, mas não deve parecer enviado ao vivo.
 
@@ -12,9 +12,9 @@ O cenário deve usar registros fictícios explicitamente identificados. Um dado 
 
 ### CA-01 — Acesso (`F-01`)
 
-- As duas contas pré-configuradas da construtora conseguem entrar e sair.
+- A conta pré-configurada da construtora consegue entrar e sair.
 - Uma pessoa sem sessão não consulta nem altera dados das obras pela interface **ou diretamente pela API**.
-- Um registro novo identifica qual das duas contas realizou a ação; senhas e chaves não ficam no Git.
+- Um registro novo identifica a conta que realizou a ação; senhas e chaves não ficam no Git.
 
 ### CA-02 — Obra e busca (`F-02` a `F-05`)
 
@@ -29,6 +29,7 @@ O cenário deve usar registros fictícios explicitamente identificados. Um dado 
 - Um marco com nome, descrição e período previsto pode ser criado e consultado dentro da obra correta.
 - A construtora muda manualmente seu estado entre `a iniciar`, `em andamento` e `concluído`.
 - A relação “Alvenaria depende de Estrutura” aparece nos detalhes. O servidor rejeita dependência do próprio marco, de outra obra ou que forme ciclo.
+- Ao concluir Alvenaria antes de Estrutura, a interface avisa sobre a dependência e permite prosseguir.
 
 ### CA-04 — Evidências e publicação (`F-08` a `F-10`)
 
@@ -64,9 +65,15 @@ O cenário deve usar registros fictícios explicitamente identificados. Um dado 
 
 ### CA-09 — Exclusão definitiva (`F-19`, RN-09)
 
-- Obra, marco, avanço, mudança e ocorrência podem ser excluídos definitivamente conforme a política P-03. A interface informa a consequência e pede confirmação sobre o objeto identificado.
-- A API não deixa referências órfãs. Enquanto a política de dependências não for aprovada, o comportamento proposto é responder conflito (`409`) quando houver registros dependentes.
-- A equipe verifica explicitamente o que ocorre com histórico, mídia externa e dados simulados associados ao objeto excluído antes de liberar exclusão de obra ou marco.
+- Obra e marco podem ser excluídos definitivamente junto com seus registros dependentes. A interface identifica o alvo, informa a perda do histórico e pede confirmação.
+- Cancelar a confirmação não altera dados. Confirmar remove o conjunto e não deixa referências órfãs, inclusive mídias externas e dados simulados associados.
+- A exclusão isolada de mudança já aplicada não está definida como ação do MVP; o histórico deve permanecer íntegro enquanto o objeto principal existir.
+
+### CA-10 — Trabalhadores (`F-20`)
+
+- A construtora cadastra trabalhador com nome, email, telefone e cargo e vincula-o a uma obra existente; lista e consulta os cadastrados por obra.
+- Pode corrigir os dados, alterar vínculos e excluir o trabalhador, com confirmação. Trabalhador não recebe login no MVP.
+- A API rejeita dados inválidos e vínculo com obra inexistente; os dados permanecem após reinício.
 
 ## Telas mínimas sugeridas
 
