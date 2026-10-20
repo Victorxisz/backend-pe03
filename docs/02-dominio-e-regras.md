@@ -7,7 +7,9 @@ Este documento descreve **o significado das informações para o negócio**. Ele
 | Termo | Significado no produto |
 | --- | --- |
 | Construtora | Empresa que administra obras e decide o que será publicado. Único perfil funcional do MVP. |
-| Obra | Projeto residencial inteiro, como uma casa ou um edifício. No produto futuro, um comprador poderá estar vinculado à obra inteira. |
+| Cliente de referência | Nome do comprador ligado à obra inteira; há um por obra no MVP e não corresponde a uma conta de acesso. |
+| Obra | Projeto residencial inteiro, como uma casa ou um edifício, com um cliente de referência no MVP. |
+| Trabalhador | Pessoa cadastrada pela construtora e vinculável a obras; não possui login no MVP. |
 | Marco | Entrega verificável da obra, com período planejado e estado próprio. Ex.: estrutura do segundo pavimento. |
 | Dependência | Relação “o marco A depende do marco B”, registrada entre marcos da mesma obra. |
 | Avanço | Registro datado do trabalho em um marco, com descrição e ao menos uma mídia. Pode ser rascunho ou publicado. |
@@ -26,7 +28,7 @@ Evitar alternar “etapa”, “tarefa” e “marco” para a mesma coisa. **Et
 | Planejamento da obra | Identificar a obra, planejar marcos e suas dependências | Obra, Prazo de Entrega, Marco, Dependência | Núcleo do MVP |
 | Acompanhamento e publicação | Registrar evidências, revisar e publicar o andamento | Avanço, Mídia, Versão, Atualização | Núcleo do MVP |
 | Decisões e impedimentos | Preservar mudanças e dar destino às ocorrências | Mudança, Ocorrência, Aceitação | Núcleo do MVP |
-| Acesso e demonstração | Autenticar usuários e mostrar exemplos de outros perfis | Usuário, Perfil, Registro Simulado | Apoio ao MVP |
+| Acesso e demonstração | Autenticar a construtora, cadastrar trabalhadores e mostrar exemplos de outros perfis | Usuário, Trabalhador, Registro Simulado | Apoio ao MVP |
 | Armazenamento externo | Guardar arquivos e devolver referências de acesso | Arquivo Externo | Apoio; provedor pendente |
 
 **Proposta de desenho:** implementar essas áreas como módulos de uma aplicação Flask, sem transformá-las em serviços separados. `Obra`, `Marco`, `Avanço` e `Ocorrência` têm identidade e ciclo de vida próprios; mudanças e versões são registros históricos ligados ao objeto alterado. A escolha entre coleções e documentos incorporados pertence à implementação e deve preservar as regras abaixo.
@@ -52,29 +54,30 @@ Avanço      1 ── * Mídia
 Obra        1 ── * Ocorrência ── 0..1 Marco
 Obra/Marco  1 ── * Mudança
 Obra/Marco/Avanço 1 ── * Registro Simulado do Comprador
+Obra        * ── * Trabalhador (vínculo cadastrado pela construtora)
 ```
 
 ## Regras confirmadas
 
 **RN-01 — Entrega da obra.** Ao criar a obra, a construtora escolhe **uma** modalidade: data exata ou intervalo estimado. A interface deve mostrar qual modalidade foi escolhida. A data de registro da obra é gerada pelo sistema para permitir o filtro solicitado.
 
-**RN-02 — Estados exibidos da obra.** O produto deve permitir os rótulos planejada, em andamento, concluída, suspensa, crítica e atrasada, inclusive em filtros. **Proposta de modelagem:** separar ciclo de vida (`planejada`, `em andamento`, `concluída`, `suspensa`) de sinalização (`normal`, `crítica`, `atrasada`) para que uma obra possa estar em andamento e atrasada ao mesmo tempo. Validar com a equipe antes de fixar o contrato da API.
+**RN-02 — Estados exibidos da obra.** O ciclo de vida (`planejada`, `em andamento`, `concluída`, `suspensa`) é distinto dos alertas `crítica` e `atrasada`; assim uma obra pode estar em andamento e crítica/atrasada. `Atrasada` é calculado apenas após a data exata ou o fim do intervalo estimado de entrega; não pode ser marcado manualmente. A regra para uma obra já concluída com entrega vencida deve usar a data efetiva de conclusão, não o relógio atual.
 
 **RN-03 — Marco.** Pertence a exatamente uma obra. Tem nome, descrição, início previsto, fim previsto e estado `a iniciar`, `em andamento` ou `concluído`. A mudança de estado é manual no MVP; não se calcula percentual automático.
 
-**RN-04 — Dependência.** Um marco pode declarar “depende de marco X”. Não pode depender de si mesmo, de marco de outra obra ou formar ciclo. Exibir o nome do marco relacionado. Bloquear a conclusão de um marco cujo pré-requisito não esteja concluído é **proposta**, ainda não regra confirmada.
+**RN-04 — Dependência.** Um marco pode declarar “depende de marco X”. Não pode depender de si mesmo, de marco de outra obra ou formar ciclo. Exibir o nome do marco relacionado. Se a construtora concluir o marco com pré-requisito não concluído, o sistema avisa, mas não impede a conclusão.
 
 **RN-05 — Avanço e publicação.** Um avanço pertence a um marco, tem data, descrição e ao menos uma mídia. Não há obrigação diária. Enquanto rascunho, a construtora pode editá-lo ou retirá-lo. Publicar muda seu estado e o inclui na prévia da linha do tempo.
 
 **RN-06 — Correção publicada.** Uma correção não apaga o conteúdo anterior: registra versão anterior, nova versão, campos modificados, autor, data e motivo. Se o registro original vier de um engenheiro simulado, indicar claramente “editado pela construtora” e mostrar texto anterior e trecho modificado.
 
-**RN-07 — Mudança efetiva.** Ao registrar mudança de prazo de obra, prazo de marco, estado de marco ou estado de finalização, a construtora informa motivo; a aplicação guarda antes/depois, autor e data, e aplica o valor novo. A alteração e seu histórico devem persistir juntos.
+**RN-07 — Mudança efetiva.** Ao registrar mudança de prazo de obra, prazo de marco, estado de marco ou estado de finalização, a construtora informa motivo; a aplicação guarda antes/depois, autor e data, e aplica o valor novo. A alteração e seu histórico devem persistir juntos. Obra e marco concluídos podem ser reabertos com motivo registrado.
 
 **RN-08 — Ocorrência.** Pertence a uma obra; vínculo com marco, responsável e mídia são opcionais. Pode começar `aberta` ou `sem solução` e depois mudar para qualquer estado permitido, incluindo `resolvida`. Uma aceitação de ocorrência sem solução exige justificativa e registro de quem a aceitou e quando. Medida compensatória não é obrigatória.
 
-**RN-09 — Exclusão.** A exclusão definitiva foi escolhida para o MVP. Ela precisa ser explícita na interface. **Pendente:** política para excluir uma obra ou marco que ainda possua filhos ou histórico. A proposta segura é responder conflito e solicitar remoção explícita dos vínculos, evitando registros órfãos e exclusões em cascata acidentais.
+**RN-09 — Exclusão.** A exclusão definitiva de obra ou marco remove junto todos os registros dependentes, inclusive histórico e dados simulados associados. Antes da ação a interface mostra o nome do alvo, a extensão da perda e pede confirmação. Nenhuma referência órfã pode permanecer. Exclusão isolada de mudança já aplicada não faz parte do fluxo definido: sua retirada sem reverter o valor destruiria a explicação histórica.
 
-**RN-10 — Dados simulados.** Dois usuários reais da construtora podem entrar. Registros atribuídos a comprador ou engenheiro são pré-carregados e sinalizados como simulação. A construtora apenas lê avaliações, compreensão e dúvidas simuladas do comprador; esses exemplos podem se vincular à obra, ao marco ou a uma atualização específica.
+**RN-10 — Dados simulados.** Uma conta da construtora pode entrar. Registros atribuídos a comprador ou engenheiro são pré-carregados e sinalizados como simulação. A construtora apenas lê avaliações, compreensão e dúvidas simuladas do comprador; esses exemplos podem se vincular à obra, ao marco ou a uma atualização específica.
 
 ## Eventos de negócio úteis
 
@@ -84,8 +87,6 @@ Estes nomes descrevem fatos que devem aparecer no histórico; **não exigem even
 
 ## Questões de modelagem ainda abertas
 
-- O estado `atrasada` será acionado manualmente, calculado após a data final do prazo ou ambos? Para intervalo estimado, usar o fim do intervalo é a proposta.
-- “Alteração de estado de finalização” significa reverter a conclusão de obra, de marco ou de ambos? Registrar em `Mudança` até a equipe fechar o detalhe.
-- Qual o efeito de uma dependência não concluída sobre a conclusão do marco dependente?
-- Como tratar a exclusão definitiva de objetos com filhos e históricos? A regra proposta em RN-09 evita exclusões involuntárias.
-- Uma ocorrência resolvida pode ser reaberta? O usuário permitiu mudança posterior para qualquer estado; a proposta é registrar cada transição no histórico.
+- Quais estados adicionais de ocorrência serão exibidos além de `aberta`, `resolvida` e `sem solução`? A transição é reversível e deve preservar o histórico.
+- Qual formato e limite de mídia o provedor gratuito escolhido permite?
+- Qual tratamento técnico garante remoção consistente de arquivos externos em exclusões em cascata?

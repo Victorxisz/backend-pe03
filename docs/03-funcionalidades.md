@@ -6,7 +6,7 @@ Este catálogo descreve **o que o usuário consegue fazer e por quê**. `P0` com
 
 | ID | Prioridade | Funcionalidade | Resultado para a construtora |
 | --- | --- | --- | --- |
-| F-01 | P0 | Entrar e sair com uma das duas contas pré-configuradas | Ações ficam atribuídas a uma pessoa autenticada; visitante não vê as obras. |
+| F-01 | P0 | Entrar e sair com a conta pré-configurada da construtora | Ações ficam atribuídas à construtora autenticada; visitante não vê as obras. |
 | F-02 | P0 | Criar obra residencial | Estabelece o lugar único para marcos, avanços, decisões e ocorrências. |
 | F-03 | P0 | Listar e abrir obras | Permite administrar mais de uma obra sem misturar informações. |
 | F-04 | P0 | Filtrar obras por nome, estado, cliente, data de entrega e data de registro | Localiza rapidamente a obra e expõe atrasos e prioridades. |
@@ -40,11 +40,14 @@ Este catálogo descreve **o que o usuário consegue fazer e por quê**. `P0` com
 | F-14 | P0 | Registrar ocorrência ligada à obra e opcionalmente a um marco | Impedimentos deixam de existir apenas em conversas. |
 | F-15 | P0 | Mudar estado da ocorrência e aceitar formalmente uma sem solução | Toda ocorrência pode ter encaminhamento rastreável. |
 | F-16 | P1 | Editar dados descritivos da ocorrência | Corrige informações sem confundir edição com mudança de estado. |
-| F-19 | P0 | Excluir definitivamente obra, marco, avanço, mudança ou ocorrência | Cumpre a escolha de não arquivar, com confirmação e política de vínculos definida antes da implementação. |
+| F-19 | P0 | Excluir definitivamente obra ou marco e todos os registros dependentes; excluir avanço ou ocorrência quando solicitado | Avisa o usuário antes da perda e evita registros órfãos. Mudança aplicada não é excluída isoladamente. |
+| F-20 | P0 | Cadastrar, consultar, editar e excluir trabalhadores e seus vínculos com obras | Permite à construtora saber quem participa de cada obra, sem login de trabalhador no MVP. |
 
 **Tipos de mudança confirmados:** prazo de obra, prazo de marco, situação de marco e estado de finalização. Em todos: objeto alvo, campo, valor anterior, valor novo, motivo, autor e data. A aplicação não deve aceitar um histórico que afirme um valor novo sem que esse valor seja aplicado.
 
 **Dados mínimos da ocorrência:** identificador, obra, título, descrição, data de registro, estado e autor. Marco, foto/vídeo/documento e responsável são opcionais. Para `sem solução — aceita`, registrar justificativa, pessoa que aceitou e data da aceitação. A medida compensatória pode ser registrada, mas não exigida.
+
+**Trabalhador no MVP:** nome, email, telefone, cargo, estado ativo, data de cadastro e vínculos com obras. O cadastro já iniciado no servidor não substitui login nem a autorização da construtora; listagem, validação de obra existente e integração com a interface ainda precisam ser concluídas.
 
 ## Dados simulados e transparência
 
@@ -75,4 +78,4 @@ Estas capacidades pertencem à visão de produto, mas não às entregas `P0` ou 
 
 ## Dependências entre funcionalidades
 
-`F-01 → F-02 → F-06 → F-08 → F-10` é a primeira trilha de implementação. `F-12` e `F-14` usam obra e marco já persistidos. `F-11` depende da publicação. `F-17` e `F-18` dependem de dados de exemplo vinculados a registros existentes. `F-19` depende da política de exclusão P-03. [O plano de entrega](07-plano-e-decisoes.md) transforma essa ordem em checkpoints.
+`F-01 → F-02 → F-06 → F-08 → F-10` é a primeira trilha de implementação. `F-12` e `F-14` usam obra e marco já persistidos. `F-11` depende da publicação. `F-17` e `F-18` dependem de dados de exemplo vinculados a registros existentes. `F-19` exige exclusão em cascata confirmada; `F-20` depende da existência da obra. [O plano de entrega](07-plano-e-decisoes.md) transforma essa ordem em checkpoints.

@@ -1,6 +1,6 @@
 # 1. Visão do produto e limite do MVP
 
-**Estado:** proposta de documentação baseada nas decisões do grupo até 14/10/2026.
+**Estado:** especificação atualizada com decisões do grupo até 20/10/2026.
 
 **Prazo do MVP:** 03/11/2026.
 
@@ -13,7 +13,8 @@ O comprador é beneficiário importante do produto futuro, mas **não terá flux
 ## Para quem
 
 - **Cliente que pode contratar o produto:** construtora pequena ou média, inicialmente com obras residenciais de casas e apartamentos.
-- **Usuário funcional do MVP:** pessoa da construtora autenticada; duas contas pré-configuradas bastam para a demonstração.
+- **Usuário funcional do MVP:** uma conta pré-configurada da construtora. Trabalhadores podem ser cadastrados pela construtora, mas não entram no sistema.
+- **Cliente de referência:** um por obra, sem login no MVP.
 - **Participantes representados por dados simulados:** engenheiro e comprador. Dados de avaliação, compreensão e dúvida do comprador são exemplos pré-carregados, nunca apresentados como respostas reais.
 - **Usuários futuros:** comprador, engenheiro, arquiteto, encarregado, pedreiro e outros participantes vinculados à obra.
 
@@ -36,7 +37,7 @@ Rentabilidade é **hipótese**, não resultado comprovado: no futuro, a cobranç
 
 ## Limites do MVP
 
-**Dentro:** login de duas contas da construtora, obras, marcos, dependências, avanços com três tipos de mídia, publicação, alterações versionadas, ocorrências, visualização de registros simulados do comprador, filtros e persistência no Atlas.
+**Dentro:** login de uma conta da construtora, cadastro de trabalhadores, obras, marcos, dependências, avanços com três tipos de mídia, publicação, alterações versionadas, ocorrências, visualização de registros simulados do comprador, filtros e persistência no Atlas.
 
 **Fora:** login e ações do comprador ou engenheiro; criação de dados simulados pela interface; chat; comentários do comprador; confirmação de entendimento; integração com WhatsApp; gestão financeira; porcentagem automática de avanço; planejamento de equipe; notificações; gestão completa de contratos e plantas; previsão automática de entrega; aplicativo móvel nativo.
 
