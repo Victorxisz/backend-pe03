@@ -3,6 +3,7 @@ import re
 
 CAMPOS_TEXTO = ("nome", "email", "telefone", "cargo")
 CAMPOS_ATUALIZAVEIS = set(CAMPOS_TEXTO) | {"obras"}
+CAMPOS_CONSTRUTORA = {"nome", "email", "telefone", "senha"}
 
 PADRAO_EMAIL = r"[^@\s]+@[^@\s]+\.[^@\s]+"
 PADRAO_TELEFONE = r"[0-9()\s-]+"
@@ -126,6 +127,107 @@ def normalizar_dados_trabalhador(dados, incluir_obras=False):
         # Remove códigos repetidos, preservando a ordem.
         dados_normalizados["obras"] = list(
             dict.fromkeys(dados["obras"])
+        )
+
+    return dados_normalizados
+
+
+def validar_dados_construtora(dados, atualizacao=False):
+    if not isinstance(dados, dict) or not dados:
+        return {
+            "erro": "Preencha os dados da construtora para continuar."
+        }, 422
+
+    if set(dados) - CAMPOS_CONSTRUTORA:
+        return {
+            "erro": (
+                "Não foi possível processar alguns dados enviados. "
+                "Atualize a página e tente novamente."
+            )
+        }, 422
+
+    mensagens_campos = {
+        "nome": "Informe o nome da construtora.",
+        "email": "Informe o e-mail da construtora.",
+        "telefone": "Informe um telefone para contato.",
+        "senha": "Crie uma senha para sua conta."
+    }
+
+    if not atualizacao:
+        for campo in ("nome", "email", "senha"):
+            if campo not in dados:
+                return {"erro": mensagens_campos[campo]}, 422
+
+    for campo, valor in dados.items():
+        if not isinstance(valor, str) or not valor.strip():
+            return {"erro": mensagens_campos[campo]}, 422
+
+    if "email" in dados:
+        email = dados["email"].strip()
+
+        if not re.fullmatch(PADRAO_EMAIL, email):
+            return {
+                "erro": (
+                    "Confira o e-mail informado. "
+                    "Use um endereço como contato@empresa.com."
+                )
+            }, 422
+
+    if "telefone" in dados:
+        telefone = dados["telefone"].strip()
+
+        if not re.fullmatch(PADRAO_TELEFONE, telefone):
+            return {
+                "erro": (
+                    "Confira o telefone informado. "
+                    "Use um número como (11) 99999-9999."
+                )
+            }, 422
+
+        numeros = re.sub(r"[^0-9]", "", telefone)
+
+        if len(numeros) not in (10, 11):
+            return {
+                "erro": (
+                    "Informe o telefone com DDD, "
+                    "sem o código do país (+55)."
+                )
+            }, 422
+
+    if "senha" in dados:
+        senha = dados["senha"]
+
+        if len(senha) < 12:
+            return {
+                "erro": "Escolha uma senha com pelo menos 12 caracteres."
+            }, 422
+
+        if len(senha.encode("utf-8")) > 72:
+            return {
+                "erro": (
+                    "Sua senha está muito longa. "
+                    "Escolha uma senha um pouco menor."
+                )
+            }, 422
+
+    return None
+
+def normalizar_dados_construtora(dados):
+    """
+    Prepara os dados já validados para armazenamento.
+    Não inclui a senha: seu hash será gerado na rota.
+    """
+    dados_normalizados = {}
+
+    if "nome" in dados:
+        dados_normalizados["nome"] = dados["nome"].strip()
+
+    if "email" in dados:
+        dados_normalizados["email"] = dados["email"].strip().lower()
+
+    if "telefone" in dados:
+        dados_normalizados["telefone"] = re.sub(
+            r"[^0-9]", "", dados["telefone"]
         )
 
     return dados_normalizados
