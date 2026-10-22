@@ -1,24 +1,33 @@
+"""Contrato HTTP da edição descritiva."""
+
 from flask import Blueprint, current_app, jsonify, request
+from flask_jwt_extended import jwt_required
 from pymongo.errors import PyMongoError
 
-from app.obras.obras import criar_obra, validar_obra
+from .service import ErroObra, editar_descricao
+
+obras_bp = Blueprint("obras", __name__, url_prefix="/api/v1/obras")
 
 
-obras_bp = Blueprint("obras", __name__, url_prefix="/obras")
-
-
-@obras_bp.post("")
-def cadastrar_obra():
-    dados_da_obra = request.get_json(silent=True)
-    erro = validar_obra(dados_da_obra)
-    if erro:
-        return jsonify({"erro": erro})
+@obras_bp.patch("/<string:obra_id>")
+@jwt_required()
+def corrigir_descricao(obra_id):
     try:
-        obra = criar_obra(dados_da_obra)
+        documento = editar_descricao(obra_id, request.get_json(silent=True))
+    except ErroObra as erro:
+        return jsonify(mensagem=str(erro), campos=erro.campos), erro.status
     except PyMongoError:
-            current_app.logger.exception("Erro ao cadastrar obra")
-            return jsonify({"erro": "Não foi possível salvar a obra"}), 500
-    resposta = jsonify(obra)
-    resposta.status_code = 201
-    resposta.headers["Location"] = f"/obras/{obra['id']}"
-    return resposta
+        # Não expõe mensagens do driver, URI ou credenciais.
+        current_app.logger.error("Falha no banco durante edição descritiva da obra")
+        return jsonify(mensagem="Não foi possível salvar a correção da obra"), 500
+
+    return (
+        jsonify(
+            id=str(documento["_id"]),
+            **{
+                campo: documento.get(campo)
+                for campo in ("nome", "descricao", "localizacao", "cliente")
+            },
+        ),
+        200,
+    )
