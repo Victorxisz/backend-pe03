@@ -231,3 +231,22 @@ def normalizar_dados_construtora(dados):
         )
 
     return dados_normalizados
+
+def validar_dados_login(dados):
+    if not isinstance(dados, dict):
+        return {"erro": "Preencha seu email e sua senha"}, 422
+
+    email = dados.get("email")
+    senha = dados.get("senha")
+
+    if not isinstance(email, str) or not email.strip():
+        return {"erro": "Preencha seu email"}, 422
+
+    if not isinstance(senha, str) or not senha.strip():
+        return {"erro": "Preencha sua senha"}, 422
+
+    # Mantém o limite usado no cadastro com Bcrypt.
+    if len(senha.encode("utf-8")) > 72:
+        return {"erro": "Email ou senha incorretos"}, 401
+
+    return None

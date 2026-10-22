@@ -29,6 +29,7 @@ bcrypt.init_app(app)
 # Registra na aplicação as rotas definidas em trabalhadores.py.
 app.register_blueprint(trabalhadores_bp)
 app.register_blueprint(construtora_bp)
+app.register_blueprint(obras_bp)
 
 if __name__ == "__main__":
     # Debug deve ser usado somente durante o desenvolvimento.

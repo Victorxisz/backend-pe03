@@ -8,7 +8,7 @@ from pymongo.errors import PyMongoError, DuplicateKeyError
 from bson import ObjectId
 from bson.errors import InvalidId
 
-from validacoes import validar_dados_construtora, normalizar_dados_construtora
+from validacoes import validar_dados_construtora, normalizar_dados_construtora, validar_dados_login
 from db import colecao_construtora
 
 construtora_bp = Blueprint(
@@ -109,3 +109,119 @@ def deletar_construtora (construtora_id):
         }), 404
 
     return jsonify({"mensagem":"Construtora exclída com sucesso"}), 200
+
+@construtora_bp.route("/<string:construtora_id>", methods=["PATCH"])
+@jwt_required()
+def atualizar_construtora (construtora_id):
+    try:
+        id_construtora = ObjectId(construtora_id)
+
+    except (InvalidId, TypeError):
+        return jsonify({
+            "erro":"Não foi possível indentificar a construtora"
+        }), 400
+
+    if get_jwt().get("tipo") != "construtora":
+        return jsonify({
+            "erro":"Você não pode realizar essa ação"
+        }), 403
+
+    if get_jwt_identity() != str(id_construtora):
+        return jsonify({
+            "erro":"Você só pode atualizar sua própria conta"
+        }), 403
+
+    dados = request.get_json(silent=True)
+
+
+    erro_validacao = validar_dados_construtora(dados, atualizacao=True)
+
+    if erro_validacao:
+        mensagem_erro, status_erro = erro_validacao
+        return jsonify(mensagem_erro), status_erro
+
+    novos_dados = normalizar_dados_construtora(dados)
+
+    if "senha" in dados:
+        novos_dados["senha_hash"] = (
+            bcrypt.generate_password_hash(dados["senha"])
+            .decode("utf-8")
+        )
+
+    try:
+        resultado = colecao_construtora.update_one(
+            {"_id":id_construtora},
+            {"$set":novos_dados},
+        )
+
+    except DuplicateKeyError:
+        return jsonify({
+            "erro":"Já existe uma conta com este email"
+        }), 409
+
+    except (PyMongoError):
+        current_app.logger.exception("Erro ao atualizar a construtora")
+        return jsonify({"erro":"Não foi possível ataulizar a construtora"}), 500
+
+    if resultado.matched_count == 0:
+        return jsonify({"erro":"Construtora não encontrada"}), 404
+    
+    return jsonify({
+        "mensagem":"Construtora atualizada com sucesso",
+    }), 200
+
+@construtora_bp.route("/login/", methods = ["POST"])
+def login_construtora ():
+    dados = request.get_json(silent=True)
+
+    erro_validacao = validar_dados_login(dados)
+
+    if erro_validacao:
+        mensagem_erro, status_erro = erro_validacao
+        return jsonify(mensagem_erro), status_erro
+
+    email = dados["email"].strip().lower()
+    senha = dados["senha"]
+
+    try:
+        construtora = colecao_construtora.find_one(
+            {"email":email}
+        )
+
+    except (PyMongoError):
+        current_app.logger.exception("Erro ao consultar a construtora")
+        return jsonify({"erro":"Não foi possível entrar na conta. Tente novamente"}), 500
+
+    if construtora is None:
+        return jsonify({"erro":"Email ou senha incorretos"}), 401
+
+    senha_correta = bcrypt.check_password_hash(
+        construtora["senha_hash"],
+        senha,
+    )
+
+    if not senha_correta:
+        return jsonify({"erro":"Email ou senha incorretos"}), 401
+
+    if construtora.get("ativo") is not True:
+        return jsonify({
+            "erro":"Sua conta está desativada"
+        }), 403
+
+    id_construtora = str(construtora["_id"])    
+
+    token = create_access_token(
+        identity=id_construtora,
+        additional_claims={"tipo": "construtora"}
+    )
+
+    return jsonify({
+        "mensagem": "Login realizado com sucesso",
+        "construtora": {
+            "id": id_construtora,
+            "nome": construtora["nome"],
+            "email": construtora["email"],
+            "telefone": construtora.get("telefone")
+        },
+        "access_token": token
+    }), 200
