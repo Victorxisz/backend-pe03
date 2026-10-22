@@ -224,3 +224,21 @@ credenciais exclusivas do cluster de teste conforme as instruções anteriores:
 Não usar a base da demonstração. Os testes de Atlas não foram executados nesta
 validação local. Falhas reais de rede durante uma gravação não são provocadas
 por esta suíte; os cenários de erro no método da coleção continuam simulados.
+
+
+### Integração da main no PR do UC-04
+
+Os testes de referência permanecem em `tests/`; o `test_api.py` antigo da raiz
+foi removido na resolução do conflito. O verificador JWT é inicializado uma
+única vez e o blueprint da construtora recebido da main foi preservado.
+O cadastro recebido da main foi mantido em `app/obras/cadastro_routes.py`, separado
+do PATCH versionado. Ele ainda não é registrado, assim como na main recebida;
+a publicação depende do alinhamento de autenticação e contrato de criação.
+
+A atualização da main também alterou o cadastro de trabalhadores: agora exige
+ObjectId e vínculo com obra existente, usando transação. Os cinco cenários de
+`tests/test_trabalhadores.py` ainda representam o contrato anterior com código
+inteiro `123` e falham com HTTP 400. Foram preservados para explicitar essa
+incompatibilidade; a resolução do conflito não equivale à aprovação da suíte
+inteira. A cobertura local do UC-04 continua com 27 aprovados e quatro pendentes
+(GET/Atlas). Nenhuma base real foi usada nesta resolução.
