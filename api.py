@@ -8,6 +8,7 @@ import os
 
 from trabalhadores import trabalhadores_bp
 from construtora import bcrypt, construtora_bp
+from app.obras.routes import obras_bp
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
