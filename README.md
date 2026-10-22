@@ -85,7 +85,7 @@ erros de importação, autenticação ou implementação não são convertidos e
 **Uma execução com skips não significa que CT-01 a CT-17 foram aprovados.**
 
 `tests/test_trabalhadores.py` preserva a regressão do cadastro já implementado
-nesta branch (código de obra inteiro). `tests/test_isolamento.py` verifica o
+nesta branch (obra fictícia com ObjectId). `tests/test_isolamento.py` verifica o
 redirecionamento do banco e a ausência de dados herdados. O cadastro `/usuarios`
 foi removido da suíte: não integra CT-01 a CT-17 nem a conta única do MVP.
 
@@ -235,10 +235,19 @@ O cadastro recebido da main foi mantido em `app/obras/cadastro_routes.py`, separ
 do PATCH versionado. Ele ainda não é registrado, assim como na main recebida;
 a publicação depende do alinhamento de autenticação e contrato de criação.
 
-A atualização da main também alterou o cadastro de trabalhadores: agora exige
-ObjectId e vínculo com obra existente, usando transação. Os cinco cenários de
-`tests/test_trabalhadores.py` ainda representam o contrato anterior com código
-inteiro `123` e falham com HTTP 400. Foram preservados para explicitar essa
-incompatibilidade; a resolução do conflito não equivale à aprovação da suíte
-inteira. A cobertura local do UC-04 continua com 27 aprovados e quatro pendentes
-(GET/Atlas). Nenhuma base real foi usada nesta resolução.
+O cadastro de trabalhadores recebido da main exige ObjectId e vínculo com obra
+existente, usando transação. Os cinco cenários de `tests/test_trabalhadores.py`
+foram alinhados: criam uma obra fictícia no banco isolado, verificam o ID da obra
+na resposta e o vínculo nas duas coleções. Cada ausência de campo deve retornar
+`422` com a mensagem específica, preservando o snapshot de todas as coleções.
+
+O `mongomock` não suporta sessões: somente no modo local, a fixture desse arquivo
+simula o contexto da sessão/transação e remove o argumento `session` antes de
+executar as operações reais no armazenamento em memória. Isso verifica o fluxo
+e os dados salvos, sem comprovar atomicidade ou rollback no MongoDB. Com
+`--atlas`, a adaptação fica desativada e usa-se a sessão real no banco de teste.
+O Atlas não foi acessado nesta validação.
+
+```powershell
+.\.venv\Scripts\python -m pytest tests/test_trabalhadores.py -v
+```
