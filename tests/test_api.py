@@ -580,7 +580,7 @@ def test_ct15_filtros_invalidos(client, headers, database, two_works, query, fie
     assert snapshot(database) == before
 
 
-@routes(("PATCH", DETAIL), ("GET", DETAIL))
+@routes(("PATCH", DETAIL))
 @pytest.mark.parametrize(
     "changes",
     [
@@ -598,7 +598,6 @@ def test_ct16_edicao_parcial(client, headers, database, obra, changes):
 
     # Execução
     response = client.patch(DETAIL, json=changes, headers=headers)
-    fetched = client.get(DETAIL, headers=headers)
 
     # Verificação
     assert response.status_code == 200
@@ -606,9 +605,8 @@ def test_ct16_edicao_parcial(client, headers, database, obra, changes):
     assert saved == {**before, **changes}, "Só os campos enviados devem mudar"
     assert isinstance(saved["cliente"], str)
     assert database.tbl_obras.count_documents({}) == 1
-    assert fetched.status_code == 200
     for field, value in changes.items():
-        assert fetched.get_json()[field] == value
+        assert response.get_json()[field] == value
 
 
 @routes(("PATCH", DETAIL))
@@ -642,3 +640,20 @@ def test_ct17_bloqueia_prazo_conclusao(client, headers, database, obra, changes,
     # Verificação
     assert_error(response, 422, field)
     assert snapshot(database) == before, "Rejeição deve preservar obra e histórico"
+
+
+@routes(("PATCH", DETAIL), ("GET", DETAIL))
+def test_ct16_releitura_http(client, headers, database, obra):
+    # Preparação
+    seed(database, obra)
+    changes = {"nome": "Nome corrigido"}
+
+    # Execução
+    updated = client.patch(DETAIL, json=changes, headers=headers)
+    fetched = client.get(DETAIL, headers=headers)
+
+    # Verificação
+    assert updated.status_code == 200
+    assert fetched.status_code == 200
+    for field, value in {**obra, **changes}.items():
+        assert fetched.get_json()[field] == value

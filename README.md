@@ -29,7 +29,7 @@ de todas as coleções não vazias antes/depois das rejeições. Isso exercita a
 seu acesso ao armazenamento em memória, **não comprova persistência no Atlas**.
 
 O adaptador em `tests/support.py` substitui o cliente MongoDB antes de importar a
-aplicação e redireciona a escolha fixa `banco_de_dados` de `db.py` para o namespace
+aplicação e redireciona a seleção do banco em `db.py` para o namespace
 de teste. Não modifica a configuração de produção. Cada teste recebe um banco
 `tests_<prefixo>_<uuid>` descartável; somente esse banco é removido no teardown.
 
@@ -76,8 +76,9 @@ deploy, pois o adaptador de teste a substitui.
 | CT-16 | Edição parcial com leitura posterior e preservação dos demais campos | Edição descritiva |
 | CT-17 | Prazo/conclusão bloqueados, inclusive junto com campo permitido | Validação da edição descritiva |
 
-Na branch `MatheusHermida`, essas rotas de autenticação/obras/marcos ainda não
-estão registradas. A suíte verifica o mapa de rotas antes dos cenários e informa
+Na branch `MatheusHermida`, o PATCH de edição descritiva já está registrado.
+As rotas de login/logout, criação/consulta/listagem/exclusão de obras e consulta
+de marcos continuam pendentes. A suíte verifica o mapa de rotas antes dos cenários e informa
 `SKIP` com a dependência exata. Assim que a rota existir, o teste passa a executá-la:
 erros de importação, autenticação ou implementação não são convertidos em `SKIP`.
 `--require-routes` transforma ausência de rota em falha de preparação para CI/aceite.
@@ -123,7 +124,7 @@ scanner local não é garantia absoluta de ausência de segredos.
 
 Documentação de produto e desenvolvimento do MVP acadêmico, com entrega prevista para **03/11/2026**. O foco é permitir que uma construtora registre e publique o andamento de obras com evidências, histórico de mudanças e ocorrências.
 
-> Estado atual: especificação do MVP e implementação parcial. Este repositório já contém rotas Flask de trabalhadores; os demais fluxos descritos são requisitos, não funcionalidades presumidamente prontas. O protótipo visual anterior é apenas referência de interface.
+> Estado atual: especificação do MVP e implementação parcial. Este repositório já contém rotas Flask de trabalhadores e edição descritiva de obras; os demais fluxos descritos são requisitos, não funcionalidades presumidamente prontas. O protótipo visual anterior é apenas referência de interface.
 
 ## Comece por aqui
 
@@ -149,3 +150,77 @@ Documentação de produto e desenvolvimento do MVP acadêmico, com entrega previ
 ## Restrições da disciplina
 
 Servidor Flask com API REST no nível 2 de Richardson; banco MongoDB Atlas; cliente React consumindo HTTP; implantação em EC2; ao menos uma API externa; **código do cliente e do servidor em repositórios distintos**; credenciais fora do Git e fornecidas ao professor pelo canal exigido pela disciplina. O tema e a integração externa ainda precisam de validação final pelo professor.
+
+
+## UC-04 — edição descritiva de obra
+
+`PATCH /api/v1/obras/{id}` exige `Authorization: Bearer <token>` válido.
+Configure `JWT_SECRET_KEY` no ambiente do servidor com o mesmo segredo do emissor
+JWT. Não há chave padrão de produção. A inicialização do verificador JWT foi
+adicionada; emissão de tokens, login e logout dependem do cartão de autenticação.
+Os testes geram tokens fictícios exclusivamente no ambiente isolado.
+
+O corpo JSON deve conter um ou mais campos: `nome`, `descricao`, `localizacao`
+(endereço no contrato atual) e `cliente` (um único cliente de referência).
+Todos devem ser textos não vazios. Exemplo de corpo:
+
+```json
+{"descricao": "Descrição corrigida", "localizacao": "Rua Fictícia, 120"}
+```
+
+A resposta `200` contém `id` e os quatro campos descritivos atuais. A atualização
+usa `$set` em uma única operação, sem sobrescrever campos omitidos, sem upsert e
+sem modificar outras obras. Prazo, conclusão, auditoria, alertas e campos
+desconhecidos são rejeitados com `422` antes de qualquer gravação, inclusive
+quando enviados junto de uma correção válida ou de um motivo. Mudanças de prazo
+ou conclusão devem passar pelo fluxo próprio com motivo e histórico.
+
+Respostas adicionais: `400` para ID inválido, `404` para obra inexistente,
+`401` para token ausente/expirado e `500` para falha de persistência.
+A lógica está separada em `app/obras/routes.py`, `service.py` e `repository.py`.
+
+Para executar a cobertura UC-04:
+
+```powershell
+.\.venv\Scripts\python -m pytest tests/test_api.py tests/test_uc04.py -k "ct16 or ct17" -v
+```
+
+CT-16 verifica o documento efetivamente atualizado no banco isolado, além do JSON
+retornado. A releitura HTTP foi mantida no cenário separado
+`test_ct16_releitura_http`, pendente do GET. CT-17 verifica que a tentativa
+proibida preserva o banco inteiro. As verificações adicionais cobrem corpo/campos
+inválidos, IDs, falha de gravação e preservação de outra obra. A execução local usa
+memória; a validação da persistência no Atlas de teste continua separada.
+
+
+### UC-04 — verificações locais e pendências separadas
+
+Os cenários negativos de `tests/test_uc04.py` conferem a lista exata de campos
+inválidos, a ausência de chamada a `find_one_and_update` e o banco preservado.
+As falhas de gravação mantêm rota, serviço e repositório reais, simulando a
+exceção somente no método da coleção: rejeição de gravação e servidor indisponível.
+Também verificam o filtro por ID e o `$set` enviado. São falhas simuladas antes
+da gravação; não demonstram rollback após timeout com resultado indeterminado.
+
+```powershell
+# Cobertura local UC-04 com relatório separado das pendências:
+.\.venv\Scripts\python -m pytest tests/test_api.py tests/test_uc04.py tests/test_uc04_atlas.py -k "ct16 or ct17" -v
+```
+
+- **GET pendente:** `test_ct16_releitura_http`, em `tests/test_api.py`, precisa de
+  `GET /api/v1/obras/{id}` para validar a releitura por HTTP.
+- **Atlas pendente:** `tests/test_uc04_atlas.py` tem três cenários: correção
+  persistida, rejeição de prazo e rejeição de conclusão. Consultam o mesmo banco
+  descartável por outra conexão MongoDB, sem mocks de gravação e sem depender do
+  GET. Por padrão ficam como `SKIP` antes de abrir qualquer conexão externa.
+
+Para executar somente a integração, depois de configurar `TEST_MONGO_URI` com
+credenciais exclusivas do cluster de teste conforme as instruções anteriores:
+
+```powershell
+.\.venv\Scripts\python -m pytest tests/test_uc04_atlas.py --atlas --require-routes -v
+```
+
+Não usar a base da demonstração. Os testes de Atlas não foram executados nesta
+validação local. Falhas reais de rede durante uma gravação não são provocadas
+por esta suíte; os cenários de erro no método da coleção continuam simulados.

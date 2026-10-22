@@ -78,7 +78,7 @@ def prerequisites(request):
         "--atlas"
     ):
         pytest.skip(
-            "CT-09 exige --atlas e TEST_MONGO_URI; memória não comprova persistência"
+            f"{request.node.name}: exige --atlas e TEST_MONGO_URI; memória não comprova persistência"
         )
     marker = request.node.get_closest_marker("routes")
     if not marker:
