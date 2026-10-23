@@ -198,7 +198,7 @@ Servidor Flask com API REST no nível 2 de Richardson; banco MongoDB Atlas; clie
 
 ## UC-04 — edição descritiva de obra
 
-`PATCH /api/v1/obras/{id}` exige `Authorization: Bearer <token>` válido.
+`PATCH /obras/{id}` exige `Authorization: Bearer <token>` válido.
 Configure `JWT_SECRET_KEY` no ambiente do servidor com o mesmo segredo do emissor
 JWT. Não há chave padrão de produção. Login, renovação e logout estão
 implementados; a sessão revogada bloqueia acesso e renovação.
@@ -252,7 +252,7 @@ da gravação; não demonstram rollback após timeout com resultado indeterminad
 ```
 
 - **GET pendente:** `test_ct16_releitura_http`, em `tests/obras/test_edicao.py`, precisa de
-  `GET /api/v1/obras/{id}` para validar a releitura por HTTP.
+  `GET /obras/{id}` para validar a releitura por HTTP.
 - **Atlas pendente:** `tests/obras/test_edicao_atlas.py` tem três cenários: correção
   persistida, rejeição de prazo e rejeição de conclusão. Consultam o mesmo banco
   descartável por outra conexão MongoDB, sem mocks de gravação e sem depender do

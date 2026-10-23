@@ -65,14 +65,14 @@ def sessao_cadastro(app, database, request):
 
 
 def test_cadastro_trabalhador(
-    client, database, trabalhador, obra_existente, sessao_cadastro
+    client, headers, database, trabalhador, obra_existente, sessao_cadastro
 ):
     # Preparação
     obra_id = str(obra_existente["_id"])
     path = f"/trabalhadores/obra/{obra_id}/"
 
     # Execução
-    response = client.post(path, json=trabalhador)
+    response = client.post(path, json=trabalhador, headers=headers)
 
     # Verificação
     assert response.status_code == 201
@@ -100,7 +100,7 @@ def test_cadastro_trabalhador(
 
 @pytest.mark.parametrize("campo", ["nome", "email", "telefone", "cargo"])
 def test_cadastro_trabalhador_campo_ausente(
-    client, database, trabalhador, campo, obra_existente
+    client, headers, database, trabalhador, campo, obra_existente
 ):
     # Preparação
     del trabalhador[campo]
@@ -108,7 +108,7 @@ def test_cadastro_trabalhador_campo_ausente(
     path = f"/trabalhadores/obra/{obra_existente['_id']}/"
 
     # Execução
-    response = client.post(path, json=trabalhador)
+    response = client.post(path, json=trabalhador, headers=headers)
 
     # Verificação
     assert response.status_code == 422
