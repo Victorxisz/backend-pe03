@@ -7,9 +7,10 @@ from flask_jwt_extended import create_access_token, get_jwt, get_jwt_identity, j
 from pymongo.errors import PyMongoError, DuplicateKeyError
 from bson import ObjectId
 from bson.errors import InvalidId
+from uuid import uuid4
 
 from validacoes import validar_dados_construtora, normalizar_dados_construtora, validar_dados_login
-from db import colecao_construtora
+from db import colecao_construtora, colecao_sessoes_revogadas
 
 construtora_bp = Blueprint(
     "construtora",
@@ -18,6 +19,27 @@ construtora_bp = Blueprint(
 )
 
 bcrypt = Bcrypt()
+
+def gerar_tokens_construtora(id_construtora):
+    # Cada cadastro ou login inicia uma nova sessão.
+    sessao_id = str(uuid4())
+
+    informacoes_token = {
+        "tipo": "construtora",
+        "sessao_id": sessao_id
+    }
+
+    token_acesso = create_access_token(
+        identity=str(id_construtora),
+        additional_claims=informacoes_token
+    )
+
+    token_renovacao = create_refresh_token(
+        identity=str(id_construtora),
+        additional_claims=informacoes_token
+    )
+
+    return token_acesso, token_renovacao
 
 @construtora_bp.route("/", methods=["POST"])
 def cadastrar_construtora ():
@@ -55,10 +77,7 @@ def cadastrar_construtora ():
 
     id_construtora = str(resultado.inserted_id)
 
-    token = create_access_token(
-        identity=id_construtora,
-        additional_claims={"tipo":"construtora"}
-    )
+    token_acesso, token_renovacao = gerar_tokens_construtora(id_construtora)
 
     return jsonify({
         "mensagem":"Construtora criada com sucesso",
@@ -68,7 +87,8 @@ def cadastrar_construtora ():
             "email": nova_construtora["email"],
             "telefone": nova_construtora.get("telefone")
         },
-        "access_token":token
+        "access_token":token_acesso,
+        "refresh_token": token_renovacao
     }), 201
 
 @construtora_bp.route("/<string:construtora_id>", methods = ["DELETE"])
@@ -210,15 +230,7 @@ def login_construtora ():
 
     id_construtora = str(construtora["_id"])    
 
-    token_acesso = create_access_token(
-        identity=id_construtora,
-        additional_claims={"tipo": "construtora"}
-    )
-
-    token_renovacao = create_refresh_token(
-        identity=id_construtora,
-        additional_claims={"tipo": "construtora"}
-    )
+    token_acesso, token_renovacao = gerar_tokens_construtora(id_construtora)
 
     return jsonify({
         "mensagem": "Login realizado com sucesso",
@@ -235,14 +247,17 @@ def login_construtora ():
 @construtora_bp.route("/refresh/", methods = ["POST"])
 @jwt_required(refresh=True)
 def renovar_token_construtora ():
-    if get_jwt().get("tipo") != "construtora":
+    dados_token = get_jwt()
+
+    if dados_token.get("tipo") != "construtora":
         return jsonify({
             "erro":"Você não tem permissão para realizar está ação"
         }), 403
 
     identidade = get_jwt_identity()
+    sessao_id = dados_token.get("sessao_id")
 
-    if not isinstance(identidade, str):
+    if not isinstance(identidade, str) or not isinstance(sessao_id,str) or not sessao_id:
         return jsonify({
             "erro": "Entre novamente na sua conta"
         }), 401
@@ -265,17 +280,63 @@ def renovar_token_construtora ():
             "erro":"Não foi possível renovar seu acesso. Tente novamente"
         }), 500
 
+    if construtora is None:
+        return jsonify({
+            "erro":"Conta não encontrada"
+        }), 401
+
     if construtora.get("ativo") is not True:
         return jsonify({
             "erro":"Sua conta está desativada"
         }), 403
 
-    novo_token_acesso = create_refresh_token(
+    novo_token_acesso = create_access_token(
         identity=str(construtora["_id"]),
-        additional_claims={"tipo":"construtora"}
+        additional_claims={
+            "tipo": "construtora",
+            "sessao_id": sessao_id
+        }
     )
 
     return jsonify({
-        "acess_token":novo_token_acesso
+        "access_token":novo_token_acesso
     }), 200
-    
+
+@construtora_bp.route("/logout/", methods=["POST"])
+@jwt_required(verify_type=False)
+def logout_construtora ():
+    dados_token = get_jwt()
+
+    if dados_token.get("tipo") != "construtora":
+        return jsonify({
+            "erro":"Você não tem permissão para realizar está ação"
+        }), 403
+
+    sessao_id = dados_token.get("sessao_id")
+
+    if not isinstance(sessao_id, str) or not sessao_id:
+        return jsonify({
+            "erro":"Entre novamente na sua conta"
+        }), 401
+
+    try:
+        colecao_sessoes_revogadas.update_one(
+            {"_id":sessao_id},
+            {
+                "$setOnInsert": {
+                    "construtora_id": sessao_id,
+                    "encerrada_em": datetime.now(timezone.utc)
+                }
+            },
+            upsert=True
+        )
+
+    except PyMongoError:
+        current_app.logger.exception("Erro ao encerrar a sessão")
+        return jsonify({
+            "erro":"Nõ foi possível sair da conta. Tente novamente"
+        }), 500
+
+    return jsonify({
+        "mensagem": "Você saiu da conta com sucesso"
+    }), 200

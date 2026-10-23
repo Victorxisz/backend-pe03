@@ -17,12 +17,13 @@ if not mongo_uri:
 # Cliente compartilhado pelas rotas dentro deste processo.
 cliente_mongo = MongoClient(mongo_uri)
 
-# O nome do banco deve estar informado na URI.
+# Seleciona explicitamente o banco usado pela aplicação.
 banco_dados = cliente_mongo["banco_de_dados"]
 
 colecao_trabalhadores = banco_dados["tbl_trabalhadores"]
 colecao_construtora = banco_dados["tbl_construtora"]
 colecao_marcos = banco_dados["tbl_marcos"]
 colecao_obras = banco_dados["tbl_obras"]
+colecao_sessoes_revogadas = banco_dados["tbl_sessoes_revogadas"]
 
 colecao_construtora.create_index("email", unique=True) # Impede que uma construtora tenha mais de uma conta em um único email
