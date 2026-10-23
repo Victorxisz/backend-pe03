@@ -11,7 +11,7 @@ def validar_obra(dados):
         data_eh_valida(dados),
         entrega_eh_dicionario(entrega),
         entrega_eh_valida(entrega)]
-    
+
     for validacao in validacoes_de_dados:
         if validacao: return validacao
 
@@ -75,8 +75,3 @@ def entrega_eh_valida(entrega):
                 return "informe intervalo de data existente"
     else:
         return "modalidade deve ser string 'data_exata' ou 'intervalo_estimado'"
-
-    
-
-
-
