@@ -17,7 +17,49 @@ os dados e recursos compartilhados. Os nomes `test_ctNN_*` identificam a regra;
 os parâmetros identificam a variação. Para investigar uma falha:
 
 ```powershell
-.\.venv\Scripts\python -m pytest tests/test_api.py -k ct08 -vv --tb=short
+.\.venv\Scripts\python -m pytest tests/obras/test_cadastro.py -k ct08 -vv --tb=short
+```
+
+### Organização dos testes
+
+```text
+tests/
+├── conftest.py                  # aplicação, banco, conta, tokens e relógio
+├── support.py                   # carregamento isolado e snapshots
+├── support_obras.py             # preparação e verificações de obras
+├── restart_probe.py             # processo independente do CT-09
+├── autenticacao/
+│   └── test_autenticacao.py     # CT-01 a CT-04
+├── obras/
+│   ├── test_cadastro.py         # CT-05 a CT-08 e CT-10
+│   ├── test_cadastro_atlas.py   # CT-09
+│   ├── test_consultas.py        # CT-11 a CT-15: consultas e atraso
+│   ├── test_edicao.py           # UC-04: CT-16/17 e alerta não editável
+│   └── test_edicao_atlas.py     # UC-04 com conexão real
+├── trabalhadores/
+│   └── test_cadastro.py         # regressão do cadastro existente
+├── seguranca/
+│   ├── test_segredos.py         # CT-04: arquivos e histórico Git
+│   └── test_detector_segredos.py
+└── infraestrutura/
+    └── test_isolamento.py
+```
+
+Os códigos CT e o padrão **Preparação → Execução → Verificação** foram preservados.
+Os cenários HTTP locais integram Flask e armazenamento em memória. Os arquivos
+`*_atlas.py` exigem `--atlas`; testes do detector de segredos verificam a função
+isoladamente. Testes de ponta a ponta pelo React continuam fora desta suíte.
+Arquivos para edição, exclusão e consultas de trabalhadores devem ser adicionados
+quando esses cenários forem escritos; a reorganização preserva a cobertura existente.
+O modo de importação `importlib` permite nomes como `test_cadastro.py` em pastas distintas.
+Tokens das fixtures usam o mesmo gerador da aplicação, com ID da construtora,
+`tipo` e `sessao_id`. CT-01 verifica a emissão dos tokens; CT-04 verifica que logout
+bloqueia o PATCH e a renovação mesmo enquanto o GET de obras está pendente.
+
+Para executar apenas o UC-04 local:
+
+```powershell
+.\.venv\Scripts\python -m pytest tests/obras/test_edicao.py -v
 ```
 
 ### Isolamento e persistência
@@ -63,8 +105,8 @@ deploy, pois o adaptador de teste a substitui.
 
 | Casos | Verificações | Dependência |
 | --- | --- | --- |
-| CT-01/02 | Login válido, uso do token e credenciais inválidas | `POST /login`, listagem protegida |
-| CT-03/04 | Leitura/escrita sem token, expirado e após logout; estado preservado | Autenticação JWT, `/logout` e rotas de obras |
+| CT-01/02 | Login válido, uso do token e credenciais inválidas | `POST /construtora/login/`, listagem protegida |
+| CT-03/04 | Leitura/escrita sem token, expirado e após logout; estado preservado | Autenticação JWT, `/construtora/logout/` e rotas de obras |
 | CT-05/06 | Cliente, entrega, JSON, `Location`, documento salvo, autoria/data do servidor e nova leitura | Criação e detalhe de obras |
 | CT-07/08 | Modalidades conflitantes/ausentes, datas e nomes inválidos; campo indicado e nenhuma alteração | Validação da criação |
 | CT-09 | Recuperação real após novo cliente/processo | Criação/detalhe e Atlas exclusivo de teste |
@@ -77,15 +119,16 @@ deploy, pois o adaptador de teste a substitui.
 | CT-17 | Prazo/conclusão bloqueados, inclusive junto com campo permitido | Validação da edição descritiva |
 
 Na branch `MatheusHermida`, o PATCH de edição descritiva já está registrado.
-As rotas de login/logout, criação/consulta/listagem/exclusão de obras e consulta
-de marcos continuam pendentes. A suíte verifica o mapa de rotas antes dos cenários e informa
+Login, renovação e logout estão registrados em `/construtora/login/`,
+`/construtora/refresh/` e `/construtora/logout/`. Criação/consulta/listagem/exclusão
+de obras e consulta de marcos continuam pendentes. A suíte verifica o mapa de rotas antes dos cenários e informa
 `SKIP` com a dependência exata. Assim que a rota existir, o teste passa a executá-la:
 erros de importação, autenticação ou implementação não são convertidos em `SKIP`.
 `--require-routes` transforma ausência de rota em falha de preparação para CI/aceite.
 **Uma execução com skips não significa que CT-01 a CT-17 foram aprovados.**
 
-`tests/test_trabalhadores.py` preserva a regressão do cadastro já implementado
-nesta branch (obra fictícia com ObjectId). `tests/test_isolamento.py` verifica o
+`tests/trabalhadores/test_cadastro.py` preserva a regressão do cadastro já implementado
+nesta branch (obra fictícia com ObjectId). `tests/infraestrutura/test_isolamento.py` verifica o
 redirecionamento do banco e a ausência de dados herdados. O cadastro `/usuarios`
 foi removido da suíte: não integra CT-01 a CT-17 nem a conta única do MVP.
 
@@ -93,11 +136,12 @@ foi removido da suíte: não integra CT-01 a CT-17 nem a conta única do MVP.
 
 Como o contrato técnico ainda é proposto, os testes explicitam as escolhas para
 integração: coleções `tbl_construtora`, `tbl_obras`, `tbl_marcos`; login com
-`username`/`password` (hash Bcrypt); identidade JWT `username`; cliente de referência
-como string; auditoria `autor` e `data_registro`; vínculo de marco `obra_id` como
+`email`/`senha` (hash Bcrypt em `senha_hash`); identidade JWT com o ID textual
+da construtora e claims `tipo` e `sessao_id`; cliente de referência
+como string; auditoria `autor` (ID textual da construtora) e `data_registro`; vínculo de marco `obra_id` como
 ObjectId; listas em `obras`/`marcos`; detalhes com `id` textual. Erros de domínio
 usam `mensagem` não vazia e `campos`; credenciais inválidas usam mensagem neutra
-`{"msg": "Usuário ou senha inválidos"}`. Edição proibida retorna `422`.
+`{"erro": "Email ou senha incorretos"}`. Edição proibida retorna `422`.
 
 Os limites dos filtros são inclusivos por dia; entrega estimada usa o **fim** do
 intervalo. O relógio dos cenários é `2030-10-20T12:00:00Z`; instantes retornados
@@ -115,7 +159,7 @@ resultados mostram apenas localização/regra, sem revelar valores. Exemplos
 explicitamente fictícios são desconsiderados. A auditoria é heurística: não
 identifica todo formato de segredo e não inspeciona histórico ausente em clones
 rasos. Não faz fetch, não modifica commits nem reescreve nenhuma branch.
-`tests/test_secret_audit.py` valida o detector com textos sintéticos.
+`tests/seguranca/test_detector_segredos.py` valida o detector com textos sintéticos.
 
 Os testes HTTP não substituem os passos de interface previstos no documento de
 casos: repetir os caminhos P0 no React (inclusive ausência de anúncio de sucesso
@@ -156,8 +200,8 @@ Servidor Flask com API REST no nível 2 de Richardson; banco MongoDB Atlas; clie
 
 `PATCH /api/v1/obras/{id}` exige `Authorization: Bearer <token>` válido.
 Configure `JWT_SECRET_KEY` no ambiente do servidor com o mesmo segredo do emissor
-JWT. Não há chave padrão de produção. A inicialização do verificador JWT foi
-adicionada; emissão de tokens, login e logout dependem do cartão de autenticação.
+JWT. Não há chave padrão de produção. Login, renovação e logout estão
+implementados; a sessão revogada bloqueia acesso e renovação.
 Os testes geram tokens fictícios exclusivamente no ambiente isolado.
 
 O corpo JSON deve conter um ou mais campos: `nome`, `descricao`, `localizacao`
@@ -182,7 +226,7 @@ A lógica está separada em `app/obras/routes.py`, `service.py` e `repository.py
 Para executar a cobertura UC-04:
 
 ```powershell
-.\.venv\Scripts\python -m pytest tests/test_api.py tests/test_uc04.py -k "ct16 or ct17" -v
+.\.venv\Scripts\python -m pytest tests/obras/test_edicao.py -k "ct16 or ct17" -v
 ```
 
 CT-16 verifica o documento efetivamente atualizado no banco isolado, além do JSON
@@ -195,7 +239,7 @@ memória; a validação da persistência no Atlas de teste continua separada.
 
 ### UC-04 — verificações locais e pendências separadas
 
-Os cenários negativos de `tests/test_uc04.py` conferem a lista exata de campos
+Os cenários negativos de `tests/obras/test_edicao.py` conferem a lista exata de campos
 inválidos, a ausência de chamada a `find_one_and_update` e o banco preservado.
 As falhas de gravação mantêm rota, serviço e repositório reais, simulando a
 exceção somente no método da coleção: rejeição de gravação e servidor indisponível.
@@ -204,12 +248,12 @@ da gravação; não demonstram rollback após timeout com resultado indeterminad
 
 ```powershell
 # Cobertura local UC-04 com relatório separado das pendências:
-.\.venv\Scripts\python -m pytest tests/test_api.py tests/test_uc04.py tests/test_uc04_atlas.py -k "ct16 or ct17" -v
+.\.venv\Scripts\python -m pytest tests/obras/test_edicao.py tests/obras/test_edicao_atlas.py -k "ct16 or ct17" -v
 ```
 
-- **GET pendente:** `test_ct16_releitura_http`, em `tests/test_api.py`, precisa de
+- **GET pendente:** `test_ct16_releitura_http`, em `tests/obras/test_edicao.py`, precisa de
   `GET /api/v1/obras/{id}` para validar a releitura por HTTP.
-- **Atlas pendente:** `tests/test_uc04_atlas.py` tem três cenários: correção
+- **Atlas pendente:** `tests/obras/test_edicao_atlas.py` tem três cenários: correção
   persistida, rejeição de prazo e rejeição de conclusão. Consultam o mesmo banco
   descartável por outra conexão MongoDB, sem mocks de gravação e sem depender do
   GET. Por padrão ficam como `SKIP` antes de abrir qualquer conexão externa.
@@ -218,7 +262,7 @@ Para executar somente a integração, depois de configurar `TEST_MONGO_URI` com
 credenciais exclusivas do cluster de teste conforme as instruções anteriores:
 
 ```powershell
-.\.venv\Scripts\python -m pytest tests/test_uc04_atlas.py --atlas --require-routes -v
+.\.venv\Scripts\python -m pytest tests/obras/test_edicao_atlas.py --atlas --require-routes -v
 ```
 
 Não usar a base da demonstração. Os testes de Atlas não foram executados nesta
@@ -236,7 +280,7 @@ do PATCH versionado. Ele ainda não é registrado, assim como na main recebida;
 a publicação depende do alinhamento de autenticação e contrato de criação.
 
 O cadastro de trabalhadores recebido da main exige ObjectId e vínculo com obra
-existente, usando transação. Os cinco cenários de `tests/test_trabalhadores.py`
+existente, usando transação. Os cinco cenários de `tests/trabalhadores/test_cadastro.py`
 foram alinhados: criam uma obra fictícia no banco isolado, verificam o ID da obra
 na resposta e o vínculo nas duas coleções. Cada ausência de campo deve retornar
 `422` com a mensagem específica, preservando o snapshot de todas as coleções.
@@ -249,5 +293,5 @@ e os dados salvos, sem comprovar atomicidade ou rollback no MongoDB. Com
 O Atlas não foi acessado nesta validação.
 
 ```powershell
-.\.venv\Scripts\python -m pytest tests/test_trabalhadores.py -v
+.\.venv\Scripts\python -m pytest tests/trabalhadores/test_cadastro.py -v
 ```

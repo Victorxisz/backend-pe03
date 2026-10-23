@@ -1,2 +1,0 @@
--r requirements.txt
-mongomock>=4.3,<5
