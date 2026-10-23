@@ -21,7 +21,8 @@ if not chave_jwt:
     raise RuntimeError("Configure a JWT_SECRET_KEY no arquivo .env")
 
 app.config["JWT_SECRET_KEY"] = chave_jwt
-app.config["JWT_SECRET_KEY_EXPIRES"] = timedelta(hours=2)
+app.config["JWT_ACESS_TOKEN_EXPIRES"] = timedelta(hours=2)
+app.config["JWT_REFRESH_TOKEN_EXPIRES"] = timedelta(days=7)
 
 jwt = JWTManager(app)
 bcrypt.init_app(app)

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from flask import request, jsonify, Blueprint, current_app
 from flask_bcrypt import Bcrypt
-from flask_jwt_extended import create_access_token, get_jwt, get_jwt_identity, jwt_required
+from flask_jwt_extended import create_access_token, get_jwt, get_jwt_identity, jwt_required, create_refresh_token
 from pymongo.errors import PyMongoError, DuplicateKeyError
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -210,7 +210,12 @@ def login_construtora ():
 
     id_construtora = str(construtora["_id"])    
 
-    token = create_access_token(
+    token_acesso = create_access_token(
+        identity=id_construtora,
+        additional_claims={"tipo": "construtora"}
+    )
+
+    token_renovacao = create_refresh_token(
         identity=id_construtora,
         additional_claims={"tipo": "construtora"}
     )
@@ -223,5 +228,54 @@ def login_construtora ():
             "email": construtora["email"],
             "telefone": construtora.get("telefone")
         },
-        "access_token": token
+        "access_token": token_acesso,
+        "refresh_token": token_renovacao
     }), 200
+
+@construtora_bp.route("/refresh/", methods = ["POST"])
+@jwt_required(refresh=True)
+def renovar_token_construtora ():
+    if get_jwt().get("tipo") != "construtora":
+        return jsonify({
+            "erro":"Você não tem permissão para realizar está ação"
+        }), 403
+
+    identidade = get_jwt_identity()
+
+    if not isinstance(identidade, str):
+        return jsonify({
+            "erro": "Entre novamente na sua conta"
+        }), 401
+
+    try:
+        id_construtora = ObjectId(identidade)
+    except (InvalidId, TypeError):
+        return jsonify({
+            "erro":"Entre novamente na sua conta"
+        }), 401
+
+    try:
+        construtora = colecao_construtora.find_one(
+            {"_id":id_construtora}
+        )
+
+    except (PyMongoError):
+        current_app.logger.exception("Erro ao renovar o acesso")
+        return jsonify({
+            "erro":"Não foi possível renovar seu acesso. Tente novamente"
+        }), 500
+
+    if construtora.get("ativo") is not True:
+        return jsonify({
+            "erro":"Sua conta está desativada"
+        }), 403
+
+    novo_token_acesso = create_refresh_token(
+        identity=str(construtora["_id"]),
+        additional_claims={"tipo":"construtora"}
+    )
+
+    return jsonify({
+        "acess_token":novo_token_acesso
+    }), 200
+    
