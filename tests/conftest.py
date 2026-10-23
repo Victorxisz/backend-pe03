@@ -5,7 +5,6 @@ import mongomock
 import pytest
 from bson import ObjectId
 from flask_bcrypt import Bcrypt
-from flask_jwt_extended import create_access_token
 from freezegun import freeze_time
 from pymongo import MongoClient
 from pymongo.uri_parser import parse_uri
@@ -113,8 +112,10 @@ def client(app, clock):
 def account(database):
     account = {
         "_id": ObjectId(),
-        "username": "construtora_teste",
-        "password": Bcrypt().generate_password_hash("Senha_teste123!").decode(),
+        "nome": "Construtora Teste",
+        "email": "construtora@example.com",
+        "senha_hash": Bcrypt().generate_password_hash("Senha_teste123!").decode(),
+        "ativo": True,
     }
     database.tbl_construtora.insert_one(account)
     return account
@@ -123,7 +124,9 @@ def account(database):
 @pytest.fixture
 def headers(app, client, account):
     with app.app_context():
-        token = create_access_token(identity=account["username"])
+        from construtora import gerar_tokens_construtora
+
+        token, _ = gerar_tokens_construtora(account["_id"])
     return {"Authorization": "Bearer " + token}
 
 
