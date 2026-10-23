@@ -4,6 +4,6 @@ pymongo==4.8.0
 python-dotenv==1.0.1
 pytest>=8,<9
 flask-bcrypt
-flask-jwt-extended
+flask-jwt-extended==4.7.4
 freezegun>=1.5,<2
 mongomock>=4.3,<5
