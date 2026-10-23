@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import pytest
 from bson import ObjectId
 
-BASE = "/api/v1/obras"
+BASE = "/obras"
 ID = "507f1f77bcf86cd799439011"
 DETAIL = BASE + "/" + ID
 routes = pytest.mark.routes
