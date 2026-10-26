@@ -1,12 +1,42 @@
-"""Contrato HTTP da edição descritiva."""
+"""Contrato HTTP do cadastro, consulta e edição de obras."""
 
-from flask import Blueprint, current_app, jsonify, request
-from flask_jwt_extended import jwt_required
+from flask import Blueprint, current_app, jsonify, request, url_for
+from flask_jwt_extended import get_jwt_identity, jwt_required
 from pymongo.errors import PyMongoError
 
-from .service import ErroObra, editar_descricao
+from .service import ErroObra, buscar_obra, criar_obra, editar_descricao
 
 obras_bp = Blueprint("obras", __name__, url_prefix="/api/v1/obras")
+
+
+@obras_bp.post("")
+@jwt_required()
+def cadastrar_obra():
+    try:
+        obra = criar_obra(request.get_json(silent=True), get_jwt_identity())
+    except ErroObra as erro:
+        return jsonify(mensagem=str(erro), campos=erro.campos), erro.status
+    except PyMongoError:
+        current_app.logger.error("Falha no banco durante cadastro da obra")
+        return jsonify(mensagem="Não foi possível salvar a obra"), 500
+
+    resposta = jsonify(obra)
+    resposta.status_code = 201
+    resposta.headers["Location"] = url_for("obras.consultar_obra", obra_id=obra["id"])
+    return resposta
+
+
+@obras_bp.get("/<string:obra_id>")
+@jwt_required()
+def consultar_obra(obra_id):
+    try:
+        obra = buscar_obra(obra_id)
+    except ErroObra as erro:
+        return jsonify(mensagem=str(erro), campos=erro.campos), erro.status
+    except PyMongoError:
+        current_app.logger.error("Falha no banco durante consulta da obra")
+        return jsonify(mensagem="Não foi possível consultar a obra"), 500
+    return jsonify(obra), 200
 
 
 @obras_bp.patch("/<string:obra_id>")

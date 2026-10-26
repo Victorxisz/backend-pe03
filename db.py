@@ -18,7 +18,7 @@ if not mongo_uri:
 cliente_mongo = MongoClient(mongo_uri)
 
 # O nome do banco deve estar informado na URI.
-banco_dados = cliente_mongo["banco_de_dados"]
+banco_dados = cliente_mongo.get_default_database()
 
 colecao_trabalhadores = banco_dados["tbl_trabalhadores"]
 colecao_construtora = banco_dados["tbl_construtora"]

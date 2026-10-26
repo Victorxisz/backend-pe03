@@ -58,7 +58,8 @@ def storage(request):
 @pytest.fixture
 def database(storage):
     client, prefix = storage
-    name = prefix + "_" + uuid.uuid4().hex
+    # O Atlas Free limita o nome do banco a 38 bytes.
+    name = prefix[:13] + "_" + uuid.uuid4().hex[:24]
     assert name.startswith("tests_")
     db = client[name]
     yield db
