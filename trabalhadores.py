@@ -4,6 +4,7 @@ import re
 from bson import ObjectId
 from bson.errors import InvalidId
 from flask import Blueprint, current_app, jsonify, request
+from flask_jwt_extended import jwt_required
 from pymongo.errors import PyMongoError
 
 from db import cliente_mongo, colecao_trabalhadores, colecao_obras
@@ -19,6 +20,13 @@ trabalhadores_bp = Blueprint(
     __name__,
     url_prefix="/trabalhadores"
 )
+
+
+# Todas as rotas de trabalhadores necessitam de uma sessão válida do usuário.
+@trabalhadores_bp.before_request
+@jwt_required()
+def exigir_autenticacao():
+    pass
 
 
 def trabalhador_para_dict(documento):

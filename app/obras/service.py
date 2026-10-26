@@ -1,7 +1,7 @@
 """Cadastro, consulta e edição descritiva das obras."""
 
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -65,7 +65,13 @@ def buscar_obra(identifier):
     documento = repository.buscar_obra_por_id(obra_id)
     if documento is None:
         raise ErroObra("Obra não encontrada", 404, ["id"])
-    return obra_para_dict(documento)
+    obra = obra_para_dict(documento)
+    entrega = documento.get("entrega", {})
+    limite = entrega.get("data") if entrega.get("modalidade") == "data_exata" else entrega.get("fim")
+    obra["alertas"] = ["crítica"] if documento.get("critica") else []
+    if limite and documento.get("estado") != "concluída" and date.fromisoformat(limite) < datetime.now(timezone.utc).date():
+        obra["alertas"].append("atrasada")
+    return obra
 
 
 def editar_descricao(identifier, dados):

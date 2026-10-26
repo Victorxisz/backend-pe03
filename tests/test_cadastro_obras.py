@@ -6,7 +6,7 @@ import pytest
 from freezegun import freeze_time
 from pymongo.errors import PyMongoError
 
-BASE = "/api/v1/obras"
+BASE = "/obras"
 ID = "507f1f77bcf86cd799439011"
 pytestmark = pytest.mark.routes(("POST", BASE), ("GET", BASE + "/" + ID))
 
@@ -60,8 +60,8 @@ def test_consulta_id_invalido_ou_ausente(client, headers, identifier, status):
 
 
 def test_falha_consulta_nao_expoe_erro_do_driver(client, headers, database):
-    with patch.object(
-        type(database.tbl_obras), "find_one", side_effect=PyMongoError("detalhe privado")
+    with patch(
+        "app.obras.repository.buscar_obra_por_id", side_effect=PyMongoError("detalhe privado")
     ):
         response = client.get(BASE + "/" + ID, headers=headers)
 
@@ -77,4 +77,5 @@ def test_data_registro_igual_apos_leitura(client, headers, obra):
         consultada = client.get(criada.headers["Location"], headers=headers)
 
     assert consultada.status_code == 200
-    assert consultada.get_json() == criada.get_json()
+    for campo, valor in criada.get_json().items():
+        assert consultada.get_json()[campo] == valor

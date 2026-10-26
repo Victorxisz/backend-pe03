@@ -9,7 +9,7 @@ from pymongo import MongoClient
 from support import snapshot
 
 ID = "507f1f77bcf86cd799439011"
-PATH = "/api/v1/obras/" + ID
+PATH = "/obras/" + ID
 pytestmark = [pytest.mark.atlas, pytest.mark.routes(("PATCH", PATH))]
 
 

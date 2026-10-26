@@ -6,7 +6,7 @@ from pymongo.errors import PyMongoError
 
 from .service import ErroObra, buscar_obra, criar_obra, editar_descricao
 
-obras_bp = Blueprint("obras", __name__, url_prefix="/api/v1/obras")
+obras_bp = Blueprint("obras", __name__, url_prefix="/obras")
 
 
 @obras_bp.post("")
