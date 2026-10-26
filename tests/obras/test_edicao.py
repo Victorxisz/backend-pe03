@@ -172,7 +172,7 @@ def test_ct16_id_invalido_ou_ausente(
 
     # Execução
     response = client.patch(
-        "/api/v1/obras/" + identifier, json={"nome": "Novo nome"}, headers=headers
+        BASE + "/" + identifier, json={"nome": "Novo nome"}, headers=headers
     )
 
     # Verificação

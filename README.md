@@ -120,8 +120,9 @@ deploy, pois o adaptador de teste a substitui.
 
 Na branch `MatheusHermida`, o PATCH de edição descritiva já está registrado.
 Login, renovação e logout estão registrados em `/construtora/login/`,
-`/construtora/refresh/` e `/construtora/logout/`. Criação/consulta/listagem/exclusão
-de obras e consulta de marcos continuam pendentes. A suíte verifica o mapa de rotas antes dos cenários e informa
+`/construtora/refresh/` e `/construtora/logout/`. O cadastro está registrado em
+`POST /obras`. Consulta/listagem/exclusão de obras e consulta
+de marcos continuam pendentes. A suíte verifica o mapa de rotas antes dos cenários e informa
 `SKIP` com a dependência exata. Assim que a rota existir, o teste passa a executá-la:
 erros de importação, autenticação ou implementação não são convertidos em `SKIP`.
 `--require-routes` transforma ausência de rota em falha de preparação para CI/aceite.
@@ -198,7 +199,7 @@ Servidor Flask com API REST no nível 2 de Richardson; banco MongoDB Atlas; clie
 
 ## UC-04 — edição descritiva de obra
 
-`PATCH /api/v1/obras/{id}` exige `Authorization: Bearer <token>` válido.
+`PATCH /obras/{id}` exige `Authorization: Bearer <token>` válido.
 Configure `JWT_SECRET_KEY` no ambiente do servidor com o mesmo segredo do emissor
 JWT. Não há chave padrão de produção. Login, renovação e logout estão
 implementados; a sessão revogada bloqueia acesso e renovação.
@@ -252,7 +253,7 @@ da gravação; não demonstram rollback após timeout com resultado indeterminad
 ```
 
 - **GET pendente:** `test_ct16_releitura_http`, em `tests/obras/test_edicao.py`, precisa de
-  `GET /api/v1/obras/{id}` para validar a releitura por HTTP.
+  `GET /obras/{id}` para validar a releitura por HTTP.
 - **Atlas pendente:** `tests/obras/test_edicao_atlas.py` tem três cenários: correção
   persistida, rejeição de prazo e rejeição de conclusão. Consultam o mesmo banco
   descartável por outra conexão MongoDB, sem mocks de gravação e sem depender do
@@ -275,9 +276,28 @@ por esta suíte; os cenários de erro no método da coleção continuam simulado
 Os testes de referência permanecem em `tests/`; o `test_api.py` antigo da raiz
 foi removido na resolução do conflito. O verificador JWT é inicializado uma
 única vez e o blueprint da construtora recebido da main foi preservado.
-O cadastro recebido da main foi mantido em `app/obras/cadastro_routes.py`, separado
-do PATCH versionado. Ele ainda não é registrado, assim como na main recebida;
-a publicação depende do alinhamento de autenticação e contrato de criação.
+O cadastro recebido da main foi integrado em `app/obras/cadastro_routes.py`,
+com nome de blueprint próprio para coexistir com o PATCH. Está registrado em
+`POST /obras`, protegido por JWT. A edição usa `PATCH /obras/{id}`.
+Aplicação, testes e documentação usam esses caminhos, sem prefixo de versão
+ou aliases. Os métodos HTTP distinguem as operações sobre o recurso.
+
+O cadastro usa `cliente` (em vez de `cliente_referencia`), `tipo` igual a `casa`
+ou `apartamentos` e auditoria `autor`/`data_registro` gerada no servidor. O autor
+é a identidade do token de acesso; o instante é UTC. Campos reservados ou
+desconhecidos são rejeitados. A resposta é `201` com `Location`; validações
+retornam `422` com `mensagem` e `campos`, e falha de gravação retorna `500`.
+Entrega aceita data exata ou intervalo estimado, sem misturar os campos, com
+datas reais em `AAAA-MM-DD` e fim maior ou igual ao início.
+
+Os testes de criação verificam a resposta e o documento salvo sem depender do
+GET ainda pendente; a releitura HTTP fica em cenários separados. Para executar:
+
+```powershell
+.\venv\Scripts\python -m pytest tests/obras/test_cadastro.py -v
+```
+
+O corpo completo está documentado no [contrato da API](docs/05-arquitetura-e-contratos.md#cadastro-de-obra--contrato-implementado).
 
 O cadastro de trabalhadores recebido da main exige ObjectId e vínculo com obra
 existente, usando transação. Os cinco cenários de `tests/trabalhadores/test_cadastro.py`

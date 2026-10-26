@@ -13,6 +13,7 @@ from flask_jwt_extended import JWTManager
 from trabalhadores import trabalhadores_bp
 from construtora import bcrypt, construtora_bp
 from app.obras.routes import obras_bp
+from app.obras.cadastro_routes import obras_bp as cadastro_obras_bp
 from db import colecao_sessoes_revogadas
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
@@ -61,6 +62,7 @@ bcrypt.init_app(app)
 app.register_blueprint(trabalhadores_bp)
 app.register_blueprint(construtora_bp)
 app.register_blueprint(obras_bp)
+app.register_blueprint(cadastro_obras_bp)
 
 if __name__ == "__main__":
     app.run(debug=True)
