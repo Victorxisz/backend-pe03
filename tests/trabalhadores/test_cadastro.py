@@ -1,67 +1,12 @@
 """Regressão das rotas já existentes na branch MatheusHermida (fora CT-01..17)."""
 
-from contextlib import ExitStack
 from datetime import datetime
-from unittest.mock import MagicMock, patch
 
 import pytest
 from bson import ObjectId
+from pymongo.errors import PyMongoError
 
 from support import snapshot
-
-
-@pytest.fixture
-def trabalhador():
-    return {
-        "nome": "João Fictício",
-        "email": "joao@example.com",
-        "telefone": "16991736767",
-        "cargo": "pedreiro",
-    }
-
-
-@pytest.fixture
-def obra_existente(database, obra):
-    documento = {**obra, "_id": ObjectId("507f1f77bcf86cd799439011")}
-    database.tbl_obras.insert_one(documento)
-    return documento
-
-
-@pytest.fixture
-def sessao_cadastro(app, database, request):
-    """Mongomock não implementa sessões; Atlas usa a sessão real, sem adaptações."""
-    if request.config.getoption("--atlas"):
-        yield None
-        return
-
-    import trabalhadores
-
-    session = MagicMock(name="sessao_ficticia")
-    session.__enter__.return_value = session
-
-    def sem_sessao(method):
-        def executar(*args, **kwargs):
-            kwargs.pop("session", None)
-            return method(*args, **kwargs)
-
-        return executar
-
-    with ExitStack() as stack:
-        start = stack.enter_context(
-            patch.object(
-                trabalhadores.cliente_mongo, "start_session", return_value=session
-            )
-        )
-        for collection, name in (
-            (trabalhadores.colecao_obras, "find_one"),
-            (trabalhadores.colecao_obras, "update_one"),
-            (trabalhadores.colecao_trabalhadores, "insert_one"),
-        ):
-            method = getattr(collection, name)
-            stack.enter_context(
-                patch.object(collection, name, side_effect=sem_sessao(method))
-            )
-        yield start, session
 
 
 def test_cadastro_trabalhador(
@@ -116,3 +61,103 @@ def test_cadastro_trabalhador_campo_ausente(
         "erro": f"O campo '{campo}' deve ser um texto preenchido"
     }
     assert snapshot(database) == before
+
+
+@pytest.mark.parametrize("payload", [[], "texto", {"nome": " "}, {"email": "invalido"},
+    {"telefone": "123"}, {"telefone": "+55 11 99999-9999"}, {"cargo": 123}])
+def test_cadastro_dados_invalidos(
+    client, headers, database, trabalhador, obra_existente, payload
+):
+    dados = {**trabalhador, **payload} if isinstance(payload, dict) else payload
+    before = snapshot(database)
+
+    response = client.post(
+        f"/trabalhadores/obra/{obra_existente['_id']}/", json=dados, headers=headers
+    )
+
+    assert response.status_code == 422
+    assert "erro" in response.get_json()
+    assert snapshot(database) == before
+
+
+@pytest.mark.parametrize("corpo", [None, '{"nome":', "null"])
+def test_cadastro_corpo_ausente_ou_malformado(
+    client, headers, database, obra_existente, corpo
+):
+    before = snapshot(database)
+    response = client.post(
+        f"/trabalhadores/obra/{obra_existente['_id']}/", data=corpo,
+        content_type="application/json", headers=headers,
+    )
+    assert response.status_code == 422
+    assert snapshot(database) == before
+
+
+def test_cadastro_id_obra_invalido(client, headers, database, trabalhador):
+    before = snapshot(database)
+    response = client.post("/trabalhadores/obra/invalido/", json=trabalhador, headers=headers)
+    assert response.status_code == 400
+    assert snapshot(database) == before
+
+
+def test_cadastro_obra_inexistente_nao_cria_orfao(
+    client, headers, database, trabalhador, sessao_cadastro
+):
+    before = snapshot(database)
+    response = client.post(
+        f"/trabalhadores/obra/{ObjectId()}/", json=trabalhador, headers=headers
+    )
+    # Regressão: o status deve ficar fora de jsonify, na tupla de retorno.
+    assert snapshot(database) == before
+    assert response.status_code == 404
+    assert response.get_json() == {"erro": "Obra não encontrada"}
+
+
+@pytest.mark.parametrize("telefone,esperado", [
+    (" (11) 3333-4444 ", "1133334444"), (" (11) 99999-9999 ", "11999999999"),
+])
+def test_cadastro_normaliza_campos_e_ignora_campos_controlados_pela_api(
+    client, headers, database, obra_existente, sessao_cadastro, telefone, esperado
+):
+    response = client.post(
+        f"/trabalhadores/obra/{obra_existente['_id']}/", headers=headers,
+        json={"nome": " Ana ", "email": " ana@example.com ", "telefone": telefone,
+              "cargo": " ENGENHEIRO ", "ativo": False, "obras": [999],
+              "data_cadastro": "2000-01-01", "senha": "ignorada"},
+    )
+
+    assert response.status_code == 201
+    saved = database.tbl_trabalhadores.find_one({"_id": ObjectId(response.get_json()["id"])})
+    assert saved == {
+        "_id": saved["_id"], "nome": "Ana", "email": "ana@example.com",
+        "telefone": esperado, "cargo": "engenheiro", "ativo": True,
+        "obras": [str(obra_existente["_id"])], "data_cadastro": datetime(2030, 10, 20, 12),
+    }
+    assert database.tbl_obras.find_one({"_id": obra_existente["_id"]})["trabalhadores"] == ["ana@example.com"]
+
+
+@pytest.mark.parametrize("collection,operation", [
+    ("cliente_mongo", "start_session"), ("colecao_obras", "find_one"),
+    ("colecao_trabalhadores", "insert_one"), ("colecao_obras", "update_one"),
+])
+def test_cadastro_trata_falha_em_cada_etapa(
+    client, headers, database, trabalhador, obra_existente, sessao_cadastro,
+    modulo_trabalhadores, monkeypatch, collection, operation
+):
+    def falhar(*args, **kwargs):
+        raise PyMongoError("detalhe interno simulado")
+
+    before = snapshot(database)
+    with monkeypatch.context() as context:
+        context.setattr(getattr(modulo_trabalhadores, collection), operation, falhar)
+        response = client.post(
+            f"/trabalhadores/obra/{obra_existente['_id']}/", json=trabalhador, headers=headers
+        )
+
+    assert response.status_code == 500
+    assert "erro" in response.get_json()
+    assert "detalhe interno" not in response.get_data(as_text=True)
+    # Sessões simuladas não revertem uma inserção anterior ao erro no update.
+    # O rollback desse cenário é verificado separadamente no Atlas.
+    if operation != "update_one" or sessao_cadastro is None:
+        assert snapshot(database) == before
