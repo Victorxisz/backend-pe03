@@ -81,12 +81,31 @@ def _serializar_dependencia(vinculo):
 
 def listar_dependencias(marco_id):
     object_id_marco = _converter_id(marco_id, "marco_id")
-    _, vinculos = _buscar_contexto_dependencias(object_id_marco)
+    obra, vinculos = _buscar_contexto_dependencias(object_id_marco)
 
-    return [
-        _serializar_dependencia(vinculo)
+    vinculos_do_marco = [
+        vinculo
         for vinculo in vinculos
         if vinculo["marco_id"] == object_id_marco
+    ]
+
+    if not vinculos_do_marco:
+        return []
+
+    marcos = repository.buscar_marcos_da_obra(obra["_id"])
+
+    nomes = {
+        marco["_id"]: marco["nome"]
+        for marco in marcos
+    }
+
+    return [
+        {
+            **_serializar_dependencia(vinculo),
+            "marco_nome": nomes.get(vinculo["marco_id"]),
+            "depende_de_nome": nomes.get(vinculo["depende_de_id"]),
+        }
+        for vinculo in vinculos_do_marco
     ]
 
 
@@ -204,3 +223,20 @@ def remover_dependencia(marco_id, dependencia_id):
         "As dependências foram alteradas por outra requisição. Tente novamente",
         409,
     )
+
+def listar_marcos_da_obra(obra_id):
+    object_id_obra = _converter_id(obra_id, "obra_id")
+
+    if not repository.obra_existe(object_id_obra):
+        raise ErroMarco("Obra não encontrada", 404, ["obra_id"])
+
+    marcos = repository.buscar_marcos_da_obra(object_id_obra)
+
+    return [
+        {
+            "id": str(marco["_id"]),
+            "nome": marco["nome"],
+            "estado": marco["estado"],
+        }
+        for marco in marcos
+    ]

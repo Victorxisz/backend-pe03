@@ -57,7 +57,10 @@ def test_ct11_lista_e_detalhes(client, headers, database, two_works):
 def test_ct11_marcos_nao_vazam(client, headers, database, two_works):
     # Preparação
     a, b = two_works
-    marco = {"_id": ObjectId(), "obra_id": a["_id"], "nome": "Marco exclusivo A"}
+    marco = {
+        "_id": ObjectId(), "obra_id": a["_id"],
+        "nome": "Marco exclusivo A", "estado": "a iniciar",
+    }
     database.tbl_marcos.insert_one(marco)
     before = snapshot(database)
 
@@ -67,8 +70,10 @@ def test_ct11_marcos_nao_vazam(client, headers, database, two_works):
 
     # Verificação
     assert ra.status_code == rb.status_code == 200
-    assert [m["id"] for m in ra.get_json()["marcos"]] == [str(marco["_id"])]
-    assert rb.get_json()["marcos"] == []
+    assert ra.get_json() == [{
+        "id": str(marco["_id"]), "nome": "Marco exclusivo A", "estado": "a iniciar",
+    }]
+    assert rb.get_json() == []
     assert snapshot(database) == before
 
 

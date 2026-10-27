@@ -53,7 +53,11 @@ def test_ct22_cria_consulta_e_persiste_vinculo(client, headers, database, marcos
     assert vinculo["depende_de_id"] == str(b)
     resposta = client.get(caminho(a), headers=headers)
     assert resposta.status_code == 200
-    assert resposta.get_json() == [vinculo]
+    assert resposta.get_json() == [{
+        **vinculo,
+        "marco_nome": "Alvenaria",
+        "depende_de_nome": "Estrutura",
+    }]
     for outro in (b, c):
         resposta = client.get(caminho(outro), headers=headers)
         assert resposta.status_code == 200
@@ -73,6 +77,26 @@ def test_ct22_criacao_informa_location(client, headers, marcos):
     )
     assert resposta.status_code == 201
     assert resposta.headers["Location"] == caminho(a, resposta.get_json()["id"])
+
+
+def test_consulta_exibe_nomes_atualizados_sem_modificar_vinculo(
+    client, headers, database, marcos
+):
+    a, b, _, _ = marcos
+    vinculo = adicionar(client, headers, a, b)
+    database.tbl_marcos.update_one({"_id": a}, {"$set": {"nome": "Alvenaria externa"}})
+    database.tbl_marcos.update_one({"_id": b}, {"$set": {"nome": "Estrutura revisada"}})
+    antes = snapshot(database)
+
+    resposta = client.get(caminho(a), headers=headers)
+
+    assert resposta.status_code == 200
+    assert resposta.get_json() == [{
+        **vinculo,
+        "marco_nome": "Alvenaria externa",
+        "depende_de_nome": "Estrutura revisada",
+    }]
+    assert snapshot(database) == antes
 
 
 @pytest.mark.parametrize("cenario", ["autorreferencia", "outra_obra", "duplicada"])
@@ -124,7 +148,11 @@ def test_ct24_aceita_caminhos_convergentes_sem_ciclo(client, headers, marcos):
     vinculo = adicionar(client, headers, c, d)
     resposta = client.get(caminho(c), headers=headers)
     assert resposta.status_code == 200
-    assert resposta.get_json() == [vinculo]
+    assert resposta.get_json() == [{
+        **vinculo,
+        "marco_nome": "Fundação",
+        "depende_de_nome": "Cobertura",
+    }]
 
 
 def test_ct25_remove_apenas_vinculo_solicitado(client, headers, database, marcos):
@@ -138,8 +166,16 @@ def test_ct25_remove_apenas_vinculo_solicitado(client, headers, database, marcos
 
     assert resposta.status_code == 204
     assert resposta.data == b""
-    assert client.get(caminho(a), headers=headers).get_json() == [manter]
-    assert client.get(caminho(b), headers=headers).get_json() == [outro]
+    assert client.get(caminho(a), headers=headers).get_json() == [{
+        **manter,
+        "marco_nome": "Alvenaria",
+        "depende_de_nome": "Fundação",
+    }]
+    assert client.get(caminho(b), headers=headers).get_json() == [{
+        **outro,
+        "marco_nome": "Estrutura",
+        "depende_de_nome": "Fundação",
+    }]
     assert list(database.tbl_marcos.find()) == marcos_antes
     obra_id = database.tbl_marcos.find_one({"_id": a})["obra_id"]
     salvos = database.tbl_obras.find_one({"_id": obra_id})["dependencias_marcos"]
