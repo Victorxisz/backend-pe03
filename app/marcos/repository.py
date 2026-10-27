@@ -4,6 +4,10 @@ import db
 from app.historico import repository as historico_repository
 
 
+class EstadoMarcoAlterado(Exception):
+    """Indica que outra requisição alterou o marco durante a operação."""
+
+
 def obra_existe(obra_id):
     return db.colecao_obras.find_one({"_id": obra_id}, {"_id": 1}) is not None
 
@@ -47,7 +51,7 @@ def salvar_estado_com_historico(marco_id, estado_anterior, estado_novo, evento):
             {"$set": {"estado": estado_novo}},
         )
         if resultado.matched_count != 1:
-            raise RuntimeError("O estado do marco foi alterado concorrentemente")
+            raise EstadoMarcoAlterado("O estado do marco foi alterado concorrentemente")
     except Exception:
         historico_repository.remover_evento(evento_id)
         raise

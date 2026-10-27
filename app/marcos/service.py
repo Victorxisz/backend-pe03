@@ -60,13 +60,16 @@ def alterar_estado_marco(marco_id, dados, autor):
         raise ErroMarco("Marco não encontrado", 404, ["marco_id"])
 
     novo_estado = dados["estado"]
+    anterior = marco.get("estado", "a iniciar")
+    if anterior == novo_estado:
+        return {"id": str(object_id), "estado": anterior}
+
     pendentes = repository.dependencias_pendentes(marco) if novo_estado == "concluído" else []
     if pendentes and dados.get("confirmar_dependencias") is not True:
         raise ErroMarco("Há dependências pendentes", 409, [], {
             "codigo": "DEPENDENCIAS_PENDENTES", "dependencias": pendentes
         })
 
-    anterior = marco.get("estado", "a iniciar")
     evento = {
         "tipo": "estado_marco",
         "alvo": {"tipo": "marco", "id": object_id},
@@ -80,6 +83,11 @@ def alterar_estado_marco(marco_id, dados, autor):
     }
     try:
         repository.salvar_estado_com_historico(object_id, anterior, novo_estado, evento)
-    except Exception:
-        raise
+    except repository.EstadoMarcoAlterado:
+        raise ErroMarco(
+            "O estado do marco foi alterado por outra requisição; atualize os dados e tente novamente",
+            409,
+            [],
+            {"codigo": "MARCO_ALTERADO_CONCORRENTEMENTE"},
+        )
     return {"id": str(object_id), "estado": novo_estado}
