@@ -5,7 +5,7 @@ from flask_jwt_extended import get_jwt_identity
 from app.auth.permissions import sessao_obrigatoria
 from pymongo.errors import PyMongoError
 
-from .service import ErroObra, buscar_obra, criar_obra, editar_descricao
+from .service import ErroObra, buscar_obra, criar_obra, editar_descricao, listar_obras, listar_marcos
 
 obras_bp = Blueprint("obras", __name__, url_prefix="/obras")
 @obras_bp.before_request
@@ -40,6 +40,30 @@ def consultar_obra(obra_id):
         current_app.logger.error("Falha no banco durante consulta da obra")
         return jsonify(mensagem="Não foi possível consultar a obra"), 500
     return jsonify(obra), 200
+
+
+@obras_bp.get("")
+def consultar_obras():
+    try:
+        obras = listar_obras(request.args)
+    except ErroObra as erro:
+        return jsonify(mensagem=str(erro), campos=erro.campos), erro.status
+    except PyMongoError:
+        current_app.logger.error("Falha no banco durante listagem de obras")
+        return jsonify(mensagem="Não foi possível consultar as obras"), 500
+    return jsonify(obras=obras), 200
+
+
+@obras_bp.get("/<string:obra_id>/marcos")
+def consultar_marcos(obra_id):
+    try:
+        marcos = listar_marcos(obra_id)
+    except ErroObra as erro:
+        return jsonify(mensagem=str(erro), campos=erro.campos), erro.status
+    except PyMongoError:
+        current_app.logger.error("Falha no banco durante consulta de marcos")
+        return jsonify(mensagem="Não foi possível consultar os marcos da obra"), 500
+    return jsonify(marcos=marcos), 200
 
 
 @obras_bp.patch("/<string:obra_id>")
