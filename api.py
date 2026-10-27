@@ -14,6 +14,7 @@ from trabalhadores import trabalhadores_bp
 from construtora import bcrypt, construtora_bp
 from app.obras.routes import obras_bp
 from app.marcos.routes import estado_marcos_bp, marcos_bp
+from app.avancos.routes import avancos_bp
 from db import colecao_sessoes_revogadas
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
@@ -64,6 +65,7 @@ app.register_blueprint(construtora_bp)
 app.register_blueprint(obras_bp)
 app.register_blueprint(marcos_bp)
 app.register_blueprint(estado_marcos_bp)
+app.register_blueprint(avancos_bp)
 
 if __name__ == "__main__":
     app.run(debug=True)
