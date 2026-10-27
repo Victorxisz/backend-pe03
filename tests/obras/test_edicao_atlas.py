@@ -1,11 +1,9 @@
-"""Integração UC-04 com Atlas exclusivo de teste, sem depender do GET."""
-
-import os
+"""Integração UC-04 com MONGO_URI e coleções temporárias, sem depender do GET."""
 
 import pytest
 from bson import ObjectId
-from pymongo import MongoClient
 
+from mongo_support import BancoDaExecucao, conectar_mongo
 from support import snapshot
 
 ID = "507f1f77bcf86cd799439011"
@@ -51,10 +49,8 @@ def test_ct16_ct17_persistencia_atlas(
     # Execução
     response = client.patch(PATH, json=changes, headers=headers)
     # Conexão independente: nenhuma coleção/memória compartilhada com a aplicação.
-    with MongoClient(
-        os.environ["TEST_MONGO_URI"], serverSelectionTimeoutMS=5000
-    ) as fresh:
-        after = snapshot(fresh[database.name])
+    with conectar_mongo() as fresh:
+        after = snapshot(BancoDaExecucao(fresh[database.name], database.prefixo))
 
     # Verificação
     assert response.status_code == status

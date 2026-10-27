@@ -27,7 +27,7 @@ def test_ct09_persistencia_atlas_apos_novo_processo(
     path = BASE + "/" + identifier
     with app.test_client() as fresh:
         reloaded = fresh.get(path, headers=headers)
-    env = dict(os.environ, TEST_DATABASE_NAME=database.name, TEST_RESOURCE_PATH=path)
+    env = dict(os.environ, TEST_COLLECTION_PREFIX=database.prefixo, TEST_RESOURCE_PATH=path)
     result = subprocess.run(
         [sys.executable, str(probe)],
         env=env,
