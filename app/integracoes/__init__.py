@@ -1,0 +1,1 @@
+"""Integrações externas da aplicação."""

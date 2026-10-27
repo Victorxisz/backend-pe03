@@ -2,10 +2,12 @@
 
 from bson import ObjectId
 from bson.errors import InvalidId
+from .dependencias import cria_ciclo
 
 from . import repository
 from .validacoes import validar_marco
 
+MAX_TENTATIVAS_DEPENDENCIA = 5
 
 class ErroMarco(Exception):
     def __init__(self, mensagem, status, campos=()):

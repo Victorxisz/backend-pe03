@@ -17,7 +17,7 @@ if not mongo_uri:
 # Cliente compartilhado pelas rotas dentro deste processo.
 cliente_mongo = MongoClient(mongo_uri)
 
-# Seleciona explicitamente o banco usado pela aplicação.
+# O nome do banco deve estar informado na URI.
 banco_dados = cliente_mongo["banco_de_dados"]
 
 colecao_trabalhadores = banco_dados["tbl_trabalhadores"]

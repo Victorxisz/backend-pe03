@@ -83,7 +83,7 @@ quando esses cenários forem escritos; a reorganização preserva a cobertura ex
 O modo de importação `importlib` permite nomes como `test_cadastro.py` em pastas distintas.
 Tokens das fixtures usam o mesmo gerador da aplicação, com ID da construtora,
 `tipo` e `sessao_id`. CT-01 verifica a emissão dos tokens; CT-04 verifica que logout
-bloqueia o PATCH e a renovação mesmo enquanto o GET de obras está pendente.
+bloqueia o PATCH e a renovação; as consultas também exigem uma conta ativa.
 
 Para executar apenas o UC-04 local:
 
@@ -259,7 +259,7 @@ Para executar a cobertura UC-04:
 
 CT-16 verifica o documento efetivamente atualizado no banco isolado, além do JSON
 retornado. A releitura HTTP foi mantida no cenário separado
-`test_ct16_releitura_http`, pendente do GET. CT-17 verifica que a tentativa
+`test_ct16_releitura_http`, usando o GET já registrado. CT-17 verifica que a tentativa
 proibida preserva o banco inteiro. As verificações adicionais cobrem corpo/campos
 inválidos, IDs, falha de gravação e preservação de outra obra. A execução local usa
 memória; a validação da persistência no Atlas de teste continua separada.
@@ -279,8 +279,8 @@ da gravação; não demonstram rollback após timeout com resultado indeterminad
 .\.venv\Scripts\python -m pytest tests/obras/test_edicao.py tests/obras/test_edicao_atlas.py -k "ct16 or ct17" -v
 ```
 
-- **GET pendente:** `test_ct16_releitura_http`, em `tests/obras/test_edicao.py`, precisa de
-  `GET /obras/{id}` para validar a releitura por HTTP.
+- **Releitura HTTP:** `test_ct16_releitura_http`, em `tests/obras/test_edicao.py`,
+  usa `GET /obras/{id}` para validar os dados após a edição.
 - **Atlas pendente:** `tests/obras/test_edicao_atlas.py` tem três cenários: correção
   persistida, rejeição de prazo e rejeição de conclusão. Consultam as mesmas coleções
   temporárias por outra conexão MongoDB, sem mocks de gravação e sem depender do
@@ -340,3 +340,115 @@ do banco da aplicação.
 ```powershell
 .\.venv\Scripts\python -m pytest tests/trabalhadores/test_cadastro.py -v
 ```
+
+
+## UC-03 — listagem, filtros e consulta de obras
+
+Todas as consultas abaixo exigem uma sessão JWT de construtora ativa e não revogada:
+
+- `GET /obras`: retorna `{"obras": [...]}`; sem resultados, retorna lista vazia e HTTP 200.
+- `GET /obras/{id}`: retorna o detalhe; ID inválido retorna 400 e obra ausente retorna 404.
+- `GET /obras/{id}/marcos`: lista somente marcos vinculados à obra; obra sem marcos retorna lista vazia, obra ausente retorna 404.
+
+A listagem aceita `nome`, `cliente`, `estado`, `registroDe`, `registroAte`,
+`entregaDe` e `entregaAte`. Nome e cliente usam busca parcial literal sem distinguir
+maiúsculas de minúsculas. Estado aceita `planejada`, `em andamento`, `concluída`
+e `suspensa`. Os filtros são combinados por interseção.
+Datas usam `AAAA-MM-DD`; os limites são inclusivos e podem ser enviados separadamente.
+O registro considera o dia em UTC; entrega estimada considera o fim do intervalo.
+Filtros desconhecidos, datas inválidas e intervalos invertidos retornam 422 antes
+da consulta das obras. Falhas de consulta retornam 500 com mensagem sem detalhes do driver.
+
+Lista e detalhe retornam os mesmos alertas derivados, sem alterar o banco.
+`atrasada` aparece após a data exata ou o fim estimado, preservando o estado da obra.
+Obras concluídas não recebem atraso baseado no relógio atual; a regra histórica
+com data efetiva de conclusão continua dependendo do contrato desse campo.
+
+```powershell
+.\.venv\Scripts\python -m pytest tests/obras/test_consultas.py -v
+```
+
+A execução local usa mongomock. A persistência após reinício continua sendo
+verificada separadamente com Atlas exclusivo de teste.
+
+
+## UC-08 — infraestrutura de fotos, vídeos e documentos
+
+Provedor adotado neste cartão: Cloudinary. Formatos e limites iniciais acordados:
+JPEG/PNG até 10 MiB, MP4 até 100 MiB e PDF até 10 MiB. Os limites, timeout e validade
+do acesso são configuráveis no ambiente; consulte `.env.example`. Instale as novas
+dependências de `requirements.txt`. Nenhuma credencial é fixada no código ou enviada ao React.
+
+`app/integracoes/armazenamento.py` fornece `ArmazenamentoCloudinary`:
+
+- `enviar(arquivo_validado)`: envia e confirma os metadados retornados pelo provedor.
+- `verificar_disponibilidade(referencia)`: distingue arquivo ausente de falha do serviço.
+- `obter_acesso(referencia)`: fornece URL HTTPS assinada com expiração (padrão 5 minutos).
+- `remover(referencia)`: remove por referência externa, com invalidação e resultado verificado; remover arquivo já ausente é permitido.
+
+A referência persistida contém `provedor="cloudinary"`, `public_id`,
+`resource_type`, `delivery_type` e `formato`. Os metadados contêm `tipo`, `nome`,
+`tamanho`, `mime` e `referencia_externa`; não guarde a URL temporária como referência.
+Uploads usam IDs aleatórios, sem sobrescrever arquivos existentes, e entrega
+`authenticated`. Fotos usam recurso `image`, vídeos `video` e PDFs `raw`.
+Veja a [documentação oficial de acesso protegido](https://cloudinary.com/documentation/control_access_to_media)
+e a [Upload API](https://cloudinary.com/documentation/image_upload_api_reference).
+A conta Cloudinary precisa permitir entrega autenticada e download de PDFs;
+limitações ou cotas da conta causam erro explícito, sem fallback público.
+
+`app/avancos/midias.py` valida o conteúdo com Pillow (fotos), PyAV (contêiner MP4
+com vídeo decodificável) e pypdf (estrutura e conteúdo de PDF não criptografado).
+Não confia na extensão ou no Content-Type informado pelo cliente. Limita a leitura
+por bytes e rejeita arquivos vazios, formatos não permitidos e conteúdo inválido.
+Isso valida formato e tamanho; não substitui uma análise de malware.
+
+O serviço reutilizável recebe arquivos `FileStorage` e uma função de persistência:
+
+```python
+from app.avancos.midias import ServicoMidias
+
+servico = ServicoMidias()  # lê configuração do ambiente do servidor
+resultado = servico.executar_com_midias(arquivos, salvar_avanco)
+# salvar_avanco(metadados) deve salvar o negócio atomicamente e retornar o resultado.
+```
+
+Todo o lote é validado antes do primeiro upload. A função `salvar_avanco` só é
+chamada após todos os envios confirmados. Se um envio ou a gravação falhar, o
+serviço remove os novos arquivos. Como um timeout pode ocorrer após o upload,
+o ID externo é escolhido antes da chamada para permitir compensação.
+Os arquivos de versões anteriores não são removidos durante uma correção, pois
+podem estar referenciados no histórico.
+
+`ErroMidia` indica entrada inválida (422) ou tamanho excedido (413).
+`ErroArmazenamento` indica configuração/indisponibilidade (503), ou mídia ausente
+(404 ao obter acesso). `ErroLimpeza.pendentes` lista referências cuja remoção não
+foi confirmada. O serviço de negócio deve guardar essas referências para nova
+tentativa e nunca anunciar sucesso nesse caso. A compensação não é uma transação
+distribuída: interrupções do processo e resultados indeterminados do banco exigem
+reconciliação no serviço de rascunho/correção.
+
+Este cartão entrega infraestrutura reutilizável, sem criar uma rota pública de
+upload isolado. O serviço de rascunho deve validar marco, data e descrição, chamar
+a infraestrutura e persistir o avanço com estado `rascunho`. A correção deve
+preservar histórico e tratar as referências. Portanto, os testes abaixo cobrem
+a parte de armazenamento de CT-31/32/34/35 e CT-109/110; não comprovam sozinhos
+os casos de uso completos de rascunho, edição ou publicação.
+
+```powershell
+.\.venv\Scripts\python -m pytest tests/test_armazenamento.py -v
+```
+
+Por padrão, o SDK externo é simulado e os arquivos de teste são gerados localmente.
+O teste real usa somente credenciais `TEST_CLOUDINARY_CLOUD_NAME`,
+`TEST_CLOUDINARY_API_KEY` e `TEST_CLOUDINARY_API_SECRET` de uma conta de teste.
+Não lê `.env` nem usa as credenciais normais como fallback. Após definir essas
+variáveis na sessão, habilite explicitamente:
+
+```powershell
+$env:RUN_CLOUDINARY_TESTS = "1"
+.\.venv\Scripts\python -m pytest tests/test_armazenamento.py -m cloudinary -v
+```
+
+O teste real envia PNG, MP4 e PDF, abre o acesso assinado, compara os bytes e remove
+os arquivos. Exerce APIs e cotas reais da conta de teste. Sem essa execução,
+a integração externa permanece pendente; testes locais não a substituem.
