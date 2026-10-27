@@ -452,3 +452,72 @@ $env:RUN_CLOUDINARY_TESTS = "1"
 O teste real envia PNG, MP4 e PDF, abre o acesso assinado, compara os bytes e remove
 os arquivos. Exerce APIs e cotas reais da conta de teste. Sem essa execução,
 a integração externa permanece pendente; testes locais não a substituem.
+
+
+## Integração dos cartões UC-08 — envio e acesso autenticado
+
+O envio de `app/avancos/midias.py` e as rotas de acesso agora usam o mesmo adaptador
+`ArmazenamentoCloudinary`. A leitura fica em `app/avancos/acesso_midias.py`, e o
+acesso ao MongoDB em `app/avancos/repository.py`. Não há fallback automático para
+arquivos locais. As credenciais são as mesmas variáveis `CLOUDINARY_*` documentadas acima.
+
+Rotas registradas em `api.py`:
+
+- `GET /avancos/{avancoId}/midias`: lista os metadados das mídias do avanço.
+- `GET /midias/{midiaId}`: retorna os metadados de uma mídia vinculada a avanço existente.
+- `GET /midias/{midiaId}/conteudo`: recupera o arquivo no Cloudinary e o entrega pelo Flask.
+
+Todas exigem JWT de uma construtora ativa; token ausente, expirado ou revogado
+não permite consultar o banco de mídia nem alcançar o provedor. Os metadados
+públicos incluem uma rota relativa `conteudo`, sem `public_id`, credenciais,
+referência externa ou URL Cloudinary. O acesso ao original é assinado apenas
+no servidor; a resposta HTTP não redireciona o navegador ao provedor.
+Respostas usam `Cache-Control: private, no-store` e `X-Content-Type-Options: nosniff`.
+O React deve enviar o Bearer token também ao buscar os bytes, por exemplo com
+`fetch` e conversão para Blob; um elemento HTML com `src` sozinho não envia
+esse cabeçalho. Vídeos aceitam requisições Range autenticadas.
+
+Contrato persistido em `tbl_midias`:
+
+```python
+{
+    "_id": ObjectId(),
+    "avanco_id": id_do_avanco,  # ObjectId de um registro em tbl_avancos
+    "data_envio": datetime.now(timezone.utc),
+    **metadados_retornados_pelo_envio,
+}
+```
+
+`metadados_retornados_pelo_envio` contém `tipo`, `nome`, `tamanho`, `mime` e
+`referencia_externa` estruturada, incluindo `provedor="cloudinary"`.
+A referência é salva inteira; não deve ser convertida para string nem substituída
+por uma URL. O campo público `formato` continua como alias de `mime` para
+compatibilidade com o cartão de acesso anterior.
+
+O callback `salvar` de `ServicoMidias.executar_com_midias` deve persistir esses
+metadados com o vínculo, junto da operação de negócio do avanço. Ele só é chamado
+depois dos uploads e deve falhar por exceção se a gravação não for concluída.
+A validação de marco, data e descrição e a criação do rascunho continuam sendo
+responsabilidade desse serviço de negócio; estas rotas não criam avanços.
+
+Registro inexistente ou mídia órfã retorna 404. Registro existente com arquivo
+ausente no provedor retorna 502 com `CONTEUDO_AUSENTE_NO_PROVEDOR`; falha de rede,
+cota ou acesso retorna 502 com `PROVEDOR_INDISPONIVEL`. Dados internos do driver
+ou do Cloudinary não entram na resposta. O download é limitado ao tamanho salvo
+e recusado se os bytes recebidos não corresponderem ao tamanho esperado.
+
+```powershell
+.\.venv\Scripts\python -m pytest tests/test_armazenamento.py tests/test_acesso_midias.py -v
+```
+
+Os testes locais geram arquivos válidos, simulam somente a fronteira externa e
+exercitam envio → referência no MongoDB em memória → rota autenticada → bytes.
+Cobrem os três tipos, sessão ausente/expirada/revogada, conta inativa, isolamento
+entre avanços, mídia órfã, falhas do banco/provedor e nova instância Flask.
+A nova instância usa o mesmo banco e o mesmo provedor simulados; não é uma prova
+de persistência real após reinício de processo/Atlas.
+
+Os testes `-m cloudinary` de acesso também são opt-in, com `RUN_CLOUDINARY_TESTS=1`
+e credenciais `TEST_CLOUDINARY_*`. Eles enviam arquivos reais pela integração,
+recuperam os bytes pelas rotas protegidas e removem os arquivos ao terminar.
+Sem essa execução, o provedor externo continua não validado de ponta a ponta.

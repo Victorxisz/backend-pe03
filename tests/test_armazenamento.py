@@ -8,54 +8,16 @@ from dataclasses import replace
 from io import BytesIO
 from unittest.mock import Mock
 from urllib.request import urlopen
+from urllib.parse import parse_qs, urlparse
 
-import av
 import pytest
 from cloudinary.exceptions import NotFound
-from PIL import Image
-from pypdf import PdfWriter
 from werkzeug.datastructures import FileStorage
 
+from support_midias import config, conteudos, arquivo
 from app.config import ConfiguracaoArmazenamento
 from app.avancos.midias import ErroMidia, ServicoMidias, validar_arquivo
 from app.integracoes.armazenamento import ArmazenamentoCloudinary, ErroArmazenamento, ErroLimpeza
-
-
-@pytest.fixture
-def config():
-    return ConfiguracaoArmazenamento("nuvem-ficticia", "chave-ficticia", "segredo-ficticio")
-
-
-@pytest.fixture(scope="module")
-def conteudos():
-    imagens = {}
-    for formato, extensao in (("JPEG", "jpg"), ("PNG", "png")):
-        buffer = BytesIO()
-        Image.new("RGB", (16, 16), "blue").save(buffer, format=formato)
-        imagens[extensao] = buffer.getvalue()
-    buffer = BytesIO()
-    pdf = PdfWriter()
-    pdf.add_blank_page(width=72, height=72)
-    pdf.write(buffer)
-    imagens["pdf"] = buffer.getvalue()
-    buffer = BytesIO()
-    with av.open(buffer, mode="w", format="mp4") as video:
-        stream = video.add_stream("mpeg4", rate=1)
-        stream.width = stream.height = 16
-        stream.pix_fmt = "yuv420p"
-        frame = av.VideoFrame(16, 16, "yuv420p")
-        for plane in frame.planes:
-            plane.update(bytes(plane.buffer_size))
-        for packet in stream.encode(frame):
-            video.mux(packet)
-        for packet in stream.encode():
-            video.mux(packet)
-    imagens["mp4"] = buffer.getvalue()
-    return imagens
-
-
-def arquivo(conteudo, nome="evidencia.bin", mime="application/octet-stream"):
-    return FileStorage(stream=BytesIO(conteudo), filename=nome, content_type=mime)
 
 
 @pytest.fixture
@@ -269,6 +231,7 @@ def test_ct109_acesso_assinado_temporario(provedor, conteudos, config, extensao)
     assert access["url"].startswith("https://")
     assert "signature=" in access["url"]
     assert "expires_at=" in access["url"]
+    assert parse_qs(urlparse(access["url"]).query)["format"] == [extensao]
     assert config.api_secret not in access["url"]
     assert isinstance(access["expira_em"], int)
     resource.assert_called_once()

@@ -14,10 +14,11 @@ from app.integracoes.armazenamento import ArmazenamentoCloudinary, ErroArmazenam
 
 
 class ErroMidia(ValueError):
-    def __init__(self, mensagem, status=422):
+    def __init__(self, mensagem, status=422, codigo="MIDIA_INVALIDA", campos=None):
         super().__init__(mensagem)
         self.status = status
-        self.campos = ["midias"]
+        self.codigo = codigo
+        self.campos = ["midias"] if campos is None else list(campos)
 
 
 @dataclass(frozen=True)
