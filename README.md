@@ -1,5 +1,34 @@
 # Projeto Ágil — acompanhamento de obras
 
+## Cadastro de marcos — UC-05
+
+`POST /obras/{obraId}/marcos` exige token de acesso da construtora e uma obra
+existente. Recebe somente `nome`, `descricao`, `inicio_previsto` e `fim_previsto`.
+Os textos devem ser preenchidos e as datas devem existir no formato `AAAA-MM-DD`,
+com fim maior ou igual ao início. O estado inicial é sempre `a iniciar`.
+
+A resposta `201` contém `id` e `obra_id` textuais, os dados do marco e `Location`
+com `/obras/{obraId}/marcos/{id}`. O `_id` interno permanece somente no banco.
+Dados inválidos retornam `422`, ID de obra inválido retorna `400` e obra
+inexistente retorna `404`, sem gravação. Falha no banco retorna `500`.
+
+```powershell
+.\venv\Scripts\python -m pytest tests/test_marcos.py -v
+```
+
+CT-18 e CT-19 verificam o fluxo desde o cadastro da obra, a resposta do marco,
+o documento salvo e a preservação do banco nas rejeições. CT-21 usa a mesma
+`MONGO_URI` da aplicação, no ambiente ou no `.env`, conforme a seção abaixo:
+
+```powershell
+.\venv\Scripts\python -m pytest tests/test_marcos.py -k ct21 --atlas -v
+```
+
+CT-21 inicia outro processo com uma aplicação Flask e conexão MongoDB novas e
+confere todos os campos do marco na coleção temporária. Essa verificação cobre a persistência
+do cadastro; a releitura por HTTP depende da implementação do cartão de consultas.
+Sem `--atlas`, CT-21 fica como `SKIP`; os testes em memória não comprovam persistência.
+
 ## Executar os testes
 
 Na pasta `backend-pe03`, usando PowerShell:
@@ -71,30 +100,28 @@ de todas as coleções não vazias antes/depois das rejeições. Isso exercita a
 seu acesso ao armazenamento em memória, **não comprova persistência no Atlas**.
 
 O adaptador em `tests/support.py` substitui o cliente MongoDB antes de importar a
-aplicação e redireciona a seleção do banco em `db.py` para o namespace
-de teste. Não modifica a configuração de produção. Cada teste recebe um banco
-`tests_<prefixo>_<uuid>` descartável; somente esse banco é removido no teardown.
+aplicação. O banco continua sendo `banco_de_dados`, como em `db.py`. Cada cenário
+usa coleções com prefixo aleatório `tests_<uuid>_`, mantendo os nomes lógicos
+`tbl_obras`, `tbl_marcos` e demais coleções dentro do teste. Ao terminar, somente
+as coleções daquele prefixo são removidas; nenhum banco é criado ou apagado.
 
-Para integração real, use um **cluster de teste separado da demonstração**, com
-credenciais exclusivas autorizadas a criar/remover os bancos descartáveis.
-Defina `TEST_MONGO_URI` no ambiente da sessão com a URI desse cluster, cujo banco
-na URI comece por `tests_` (exemplo de formato fictício:
-`mongodb+srv://usuario:senha@cluster-teste.example/tests_pe03`). Não copie a URI
-da demonstração, não grave credenciais no README nem no Git. O nome do banco
-sozinho não comprova que o cluster é exclusivo: essa separação deve existir na
-configuração do Atlas.
+Para integração real, `--atlas` usa a **mesma `MONGO_URI` da aplicação**: primeiro
+a variável de ambiente e, se ausente, o arquivo `.env` da raiz. Não é necessário
+outro banco ou outra variável de conexão. As coleções normais da aplicação ficam
+fora das consultas e da limpeza dos testes. A credencial precisa permitir criar
+e remover as coleções temporárias no banco `banco_de_dados`.
 
 ```powershell
-# Após definir TEST_MONGO_URI com a credencial exclusiva de teste:
+# Com MONGO_URI já configurada para a aplicação:
 .\.venv\Scripts\python -m pytest --atlas -v
 # Critério final: rotas ausentes também devem reprovar a execução.
 .\.venv\Scripts\python -m pytest --atlas --require-routes -v
 ```
 
-`--atlas` nunca usa fallback para a URI da demonstração. URI ausente/inválida ou
+Com `--atlas`, URI ausente/inválida ou
 conexão indisponível causam erro explícito. Não é necessário manter Flask rodando.
 CT-09 cria a obra, consulta com novo cliente e inicia outro processo Python com
-uma aplicação Flask e conexão MongoDB novas, consultando o mesmo banco de teste.
+uma aplicação Flask e conexão MongoDB novas, consultando as mesmas coleções temporárias.
 Os dois processos usam o mesmo relógio controlado; as consultas são comparadas
 aos campos enviados na criação, ao ID e à auditoria retornados pelo cadastro.
 Sem `--atlas`, CT-09 fica como `SKIP`; não há versão em memória apresentada como
@@ -255,19 +282,17 @@ da gravação; não demonstram rollback após timeout com resultado indeterminad
 - **Releitura HTTP:** `test_ct16_releitura_http`, em `tests/obras/test_edicao.py`,
   usa `GET /obras/{id}` para validar os dados após a edição.
 - **Atlas pendente:** `tests/obras/test_edicao_atlas.py` tem três cenários: correção
-  persistida, rejeição de prazo e rejeição de conclusão. Consultam o mesmo banco
-  descartável por outra conexão MongoDB, sem mocks de gravação e sem depender do
+  persistida, rejeição de prazo e rejeição de conclusão. Consultam as mesmas coleções
+  temporárias por outra conexão MongoDB, sem mocks de gravação e sem depender do
   GET. Por padrão ficam como `SKIP` antes de abrir qualquer conexão externa.
 
-Para executar somente a integração, depois de configurar `TEST_MONGO_URI` com
-credenciais exclusivas do cluster de teste conforme as instruções anteriores:
+Para executar somente a integração, usando `MONGO_URI` do ambiente ou do `.env`:
 
 ```powershell
 .\.venv\Scripts\python -m pytest tests/obras/test_edicao_atlas.py --atlas --require-routes -v
 ```
 
-Não usar a base da demonstração. Os testes de Atlas não foram executados nesta
-validação local. Falhas reais de rede durante uma gravação não são provocadas
+Os testes em memória não comprovam persistência. Falhas reais de rede durante uma gravação não são provocadas
 por esta suíte; os cenários de erro no método da coleção continuam simulados.
 
 
@@ -309,8 +334,8 @@ O `mongomock` não suporta sessões: somente no modo local, a fixture desse arqu
 simula o contexto da sessão/transação e remove o argumento `session` antes de
 executar as operações reais no armazenamento em memória. Isso verifica o fluxo
 e os dados salvos, sem comprovar atomicidade ou rollback no MongoDB. Com
-`--atlas`, a adaptação fica desativada e usa-se a sessão real no banco de teste.
-O Atlas não foi acessado nesta validação.
+`--atlas`, a adaptação fica desativada e usa-se a sessão real nas coleções temporárias
+do banco da aplicação.
 
 ```powershell
 .\.venv\Scripts\python -m pytest tests/trabalhadores/test_cadastro.py -v

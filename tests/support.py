@@ -1,6 +1,7 @@
-"""Carregamento isolado: nunca lê .env nem escolhe a base da demonstração."""
+"""Carregamento da aplicação com as coleções reservadas à execução dos testes."""
 
 import importlib
+import os
 import sys
 from contextlib import contextmanager
 from pathlib import Path
@@ -16,7 +17,7 @@ class RestrictedClient:
         self.database = database
 
     def __getitem__(self, name):
-        # db.py ainda fixa banco_de_dados. Redireciona para o namespace descartável.
+        # Mantém banco_de_dados, redirecionando apenas os nomes das coleções.
         return self.database
 
     def get_database(self, *args, **kwargs):
@@ -41,7 +42,7 @@ def isolated_app(database):
         with patch.dict(
             "os.environ",
             {
-                "MONGO_URI": "mongodb://127.0.0.1/tests_disabled",
+                "MONGO_URI": os.environ.get("MONGO_URI") or "mongodb://127.0.0.1/tests_disabled",
                 "JWT_SECRET_KEY": SECRET,
             },
         ), patch("dotenv.load_dotenv"), patch(

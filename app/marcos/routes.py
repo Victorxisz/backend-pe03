@@ -14,7 +14,7 @@ from .service import (
 )
 
 
-marcos_bp = Blueprint("marcos", __name__)
+marcos_bp = Blueprint("marcos", __name__, url_prefix="/obras")
 
 
 def _responder_erro_marco(erro):
@@ -37,13 +37,15 @@ def cadastrar_marco(obra_id):
     except ErroMarco as erro:
         return _responder_erro_marco(erro)
     except PyMongoError:
-        return _responder_erro_banco("Não foi possível salvar o marco")
+        current_app.logger.error("Falha no banco durante cadastro de marco")
+        return jsonify(mensagem="Não foi possível salvar o marco"), 500
+    return responder_marco_cadastrado(marco)
 
+
+def responder_marco_cadastrado(marco):
     resposta = jsonify(marco)
     resposta.status_code = 201
-    resposta.headers["Location"] = (
-        f"/obras/{obra_id}/marcos/{marco['id']}"
-    )
+    resposta.headers["Location"] = f"/obras/{marco['obra_id']}/marcos/{marco['id']}"
     return resposta
 
 

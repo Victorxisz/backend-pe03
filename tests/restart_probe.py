@@ -6,24 +6,20 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from pymongo import MongoClient
+from mongo_support import conectar_mongo, recuperar_banco_da_execucao
 from support import TEST_INSTANT, isolated_app
 from freezegun import freeze_time
 
 
-@freeze_time(TEST_INSTANT)
+@freeze_time(TEST_INSTANT, ignore=["pymongo"])
 def main():
-    name = os.environ["TEST_DATABASE_NAME"]
-    if not name.startswith("tests_"):
-        raise ValueError("Namespace de teste obrigatório")
-    with MongoClient(
-        os.environ["TEST_MONGO_URI"], serverSelectionTimeoutMS=5000
-    ) as mongo:
-        with isolated_app(mongo[name]) as app:
+    with conectar_mongo() as mongo:
+        database = recuperar_banco_da_execucao(mongo)
+        with isolated_app(database) as app:
             with app.app_context():
                 from construtora import gerar_tokens_construtora
 
-                account = mongo[name].tbl_construtora.find_one({"email": "construtora@example.com"})
+                account = database.tbl_construtora.find_one({"email": "construtora@example.com"})
                 token, _ = gerar_tokens_construtora(account["_id"])
             response = app.test_client().get(
                 os.environ["TEST_RESOURCE_PATH"],

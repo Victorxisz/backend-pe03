@@ -1,5 +1,5 @@
-import os
 import uuid
+from unittest.mock import patch
 from datetime import timedelta
 
 import mongomock
@@ -8,15 +8,14 @@ from bson import ObjectId
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import create_access_token, create_refresh_token
 from freezegun import freeze_time
-from pymongo import MongoClient
-from pymongo.uri_parser import parse_uri
 from werkzeug.exceptions import HTTPException
 
+from mongo_support import BancoDaExecucao, NOME_DO_BANCO, conectar_mongo, obter_mongo_uri
 from support import TEST_INSTANT, isolated_app
 
 
 def pytest_addoption(parser):
-    parser.addoption("--atlas", action="store_true", help="Usar somente TEST_MONGO_URI")
+    parser.addoption("--atlas", action="store_true", help="Usar MONGO_URI do ambiente ou .env")
     parser.addoption(
         "--require-routes",
         action="store_true",
@@ -27,45 +26,27 @@ def pytest_addoption(parser):
 @pytest.fixture(scope="session")
 def storage(request):
     if not request.config.getoption("--atlas"):
-        yield mongomock.MongoClient(), "tests_memory"
+        with mongomock.MongoClient() as client:
+            yield client
         return
-    uri = os.environ.get("TEST_MONGO_URI", "")
-    # Valida antes de criar cliente. Não imprime URI/credenciais em erros.
     try:
-        parsed = parse_uri(uri)
-        valid = uri.startswith("mongodb+srv://") and (
-            parsed["database"] or ""
-        ).startswith("tests_")
-    except Exception:
-        valid = False
-    if not valid:
-        pytest.fail(
-            "--atlas exige TEST_MONGO_URI do Atlas com banco iniciado por tests_; .env não é lido",
-            pytrace=False,
-        )
-    client = MongoClient(uri, serverSelectionTimeoutMS=5000)
+        client = conectar_mongo()
+    except RuntimeError as erro:
+        pytest.fail(str(erro), pytrace=False)
     try:
-        client.admin.command("ping")
-    except Exception:
+        with patch.dict("os.environ", {"MONGO_URI": obter_mongo_uri()}):
+            yield client
+    finally:
         client.close()
-        pytest.fail(
-            "Atlas de teste indisponível; verifique acesso e credenciais de teste",
-            pytrace=False,
-        )
-    yield client, parsed["database"]
-    client.close()
 
 
 @pytest.fixture
 def database(storage):
-    client, prefix = storage
-    # O Atlas Free limita o nome do banco a 38 bytes.
-    name = prefix[:13] + "_" + uuid.uuid4().hex[:24]
-    assert name.startswith("tests_")
-    db = client[name]
-    yield db
-    # Só remove o namespace aleatório criado por esta fixture.
-    client.drop_database(name)
+    db = BancoDaExecucao(storage[NOME_DO_BANCO], "tests_" + uuid.uuid4().hex + "_")
+    try:
+        yield db
+    finally:
+        db.limpar_colecoes()
 
 
 @pytest.fixture
@@ -80,7 +61,7 @@ def prerequisites(request):
         "--atlas"
     ):
         pytest.skip(
-            f"{request.node.name}: exige --atlas e TEST_MONGO_URI; memória não comprova persistência"
+            f"{request.node.name}: exige --atlas com MONGO_URI; memória não comprova persistência"
         )
     marker = request.node.get_closest_marker("routes")
     if not marker:
@@ -101,7 +82,7 @@ def prerequisites(request):
 
 @pytest.fixture
 def clock():
-    with freeze_time(TEST_INSTANT):
+    with freeze_time(TEST_INSTANT, ignore=["pymongo"]):
         yield
 
 
