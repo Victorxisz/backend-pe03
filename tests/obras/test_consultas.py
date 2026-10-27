@@ -1,6 +1,8 @@
 """CT-11 a CT-15: consulta, filtros e atraso derivado."""
 
 from datetime import datetime, timezone
+from unittest.mock import patch
+from pymongo.errors import PyMongoError
 import pytest
 from bson import ObjectId
 from support import snapshot
@@ -181,3 +183,121 @@ def test_ct15_filtros_invalidos(client, headers, database, two_works, query, fie
     assert_error(response, 422, field)
     assert snapshot(database) == before
 
+
+
+@routes(("GET", BASE))
+def test_ct11_lista_vazia(client, headers, database):
+    # Preparação
+    before = snapshot(database)
+    # Execução
+    response = client.get(BASE, headers=headers)
+    # Verificação
+    assert response.status_code == 200
+    assert response.get_json() == {"obras": []}
+    assert snapshot(database) == before
+
+
+@routes(("GET", BASE))
+@pytest.mark.parametrize("estado", ["planejada", "em andamento", "concluída", "suspensa"])
+def test_ct12_filtro_estado(client, headers, database, obra, estado):
+    # Preparação
+    target = seed(database, obra, estado=estado)
+    seed(database, obra, _id=ObjectId(), estado="outro estado")
+    # Execução
+    response = client.get(BASE, query_string={"estado": estado}, headers=headers)
+    # Verificação
+    assert response.status_code == 200
+    assert [d["id"] for d in response.get_json()["obras"]] == [str(target["_id"])]
+
+
+@routes(("GET", BASE))
+@pytest.mark.parametrize("query,indices", [
+    ({"nome": "aurora"}, [0]),
+    ({"nome": ".*"}, []),
+    ({"registroDe": "2030-11-01"}, [1]),
+    ({"registroAte": "2030-10-10"}, [0]),
+    ({"entregaDe": "2031-01-01"}, [1]),
+    ({"entregaAte": "2030-12-20"}, [0]),
+])
+def test_ct12_busca_literal_e_limites_abertos(client, headers, two_works, query, indices):
+    # Preparação
+    expected = {str(two_works[i]["_id"]) for i in indices}
+    # Execução
+    response = client.get(BASE, query_string=query, headers=headers)
+    # Verificação
+    assert response.status_code == 200
+    assert {d["id"] for d in response.get_json()["obras"]} == expected
+
+
+@routes(("GET", BASE))
+def test_ct12_registro_inclui_final_do_dia(client, headers, database, obra):
+    # Preparação
+    target = seed(database, obra, data_registro=datetime(2030, 10, 10, 23, 59, 59, 999000))
+    seed(database, obra, _id=ObjectId(), data_registro=datetime(2030, 10, 11))
+    # Execução
+    response = client.get(BASE, query_string={"registroAte": "2030-10-10"}, headers=headers)
+    # Verificação
+    assert response.status_code == 200
+    assert [d["id"] for d in response.get_json()["obras"]] == [str(target["_id"])]
+
+
+@routes(("GET", BASE), ("GET", DETAIL))
+def test_ct14_alertas_coerentes_na_lista_e_detalhe(client, headers, database, obra):
+    # Preparação
+    seed(database, obra, critica=True, entrega={"modalidade": "data_exata", "data": "2030-10-19"})
+    before = snapshot(database)
+    # Execução
+    listed = client.get(BASE, headers=headers)
+    detail = client.get(DETAIL, headers=headers)
+    # Verificação
+    assert listed.status_code == detail.status_code == 200
+    assert listed.get_json()["obras"][0] == detail.get_json()
+    assert detail.get_json()["alertas"] == ["crítica", "atrasada"]
+    assert snapshot(database) == before
+
+
+@routes(("GET", BASE))
+@pytest.mark.parametrize("query,field", [({"estado": "atrasada"}, "estado"), ({"filtro": "x"}, "filtro")])
+def test_ct15_filtro_rejeitado_antes_da_consulta(client, headers, query, field):
+    # Preparação
+    with patch("app.obras.repository.consultar_obras") as consultar:
+        # Execução
+        response = client.get(BASE, query_string=query, headers=headers)
+    # Verificação
+    assert_error(response, 422, field)
+    consultar.assert_not_called()
+
+
+@routes(("GET", BASE), ("GET", DETAIL + "/marcos"))
+@pytest.mark.parametrize("path", [BASE, DETAIL + "/marcos"])
+def test_ct11_consultas_exigem_sessao(client, path):
+    # Preparação: nenhuma sessão autenticada.
+    # Execução
+    response = client.get(path)
+    # Verificação
+    assert response.status_code == 401
+
+
+@routes(("GET", DETAIL + "/marcos"))
+@pytest.mark.parametrize("identifier,status", [("invalido", 400), (ID, 404)])
+def test_ct15_marcos_de_obra_invalida(client, headers, identifier, status):
+    # Preparação: nenhuma obra cadastrada.
+    # Execução
+    response = client.get(BASE + "/" + identifier + "/marcos", headers=headers)
+    # Verificação
+    assert_error(response, status, "id")
+
+
+@routes(("GET", BASE), ("GET", DETAIL + "/marcos"))
+@pytest.mark.parametrize("path,method", [(BASE, "consultar_obras"), (DETAIL + "/marcos", "consultar_marcos")])
+def test_ct15_falha_banco_consultas(client, headers, database, obra, path, method):
+    # Preparação
+    seed(database, obra)
+    before = snapshot(database)
+    with patch("app.obras.repository." + method, side_effect=PyMongoError("detalhe privado")):
+        # Execução
+        response = client.get(path, headers=headers)
+    # Verificação
+    assert_error(response, 500)
+    assert "detalhe privado" not in response.get_data(as_text=True)
+    assert snapshot(database) == before

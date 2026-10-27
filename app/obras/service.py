@@ -1,7 +1,8 @@
 """Cadastro, consulta e edição descritiva das obras."""
 
 from copy import deepcopy
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
+import re
 
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -29,6 +30,11 @@ def obra_para_dict(documento):
         if registro.tzinfo is None:
             registro = registro.replace(tzinfo=timezone.utc)
         obra["data_registro"] = registro.isoformat()
+    entrega = documento.get("entrega", {})
+    limite = entrega.get("data") if entrega.get("modalidade") == "data_exata" else entrega.get("fim")
+    obra["alertas"] = ["crítica"] if documento.get("critica") else []
+    if limite and documento.get("estado") != "concluída" and date.fromisoformat(limite) < datetime.now(timezone.utc).date():
+        obra["alertas"].append("atrasada")
     return obra
 
 
@@ -65,13 +71,73 @@ def buscar_obra(identifier):
     documento = repository.buscar_obra_por_id(obra_id)
     if documento is None:
         raise ErroObra("Obra não encontrada", 404, ["id"])
-    obra = obra_para_dict(documento)
-    entrega = documento.get("entrega", {})
-    limite = entrega.get("data") if entrega.get("modalidade") == "data_exata" else entrega.get("fim")
-    obra["alertas"] = ["crítica"] if documento.get("critica") else []
-    if limite and documento.get("estado") != "concluída" and date.fromisoformat(limite) < datetime.now(timezone.utc).date():
-        obra["alertas"].append("atrasada")
-    return obra
+    return obra_para_dict(documento)
+
+
+def listar_obras(parametros):
+    permitidos = {"nome", "cliente", "estado", "registroDe", "registroAte", "entregaDe", "entregaAte"}
+    desconhecidos = sorted(set(parametros) - permitidos)
+    if desconhecidos:
+        raise ErroObra("Filtros desconhecidos", 422, desconhecidos)
+    datas = {}
+    for campo in ("registroDe", "registroAte", "entregaDe", "entregaAte"):
+        if campo not in parametros:
+            continue
+        valor = parametros[campo]
+        try:
+            data = date.fromisoformat(valor)
+            if data.isoformat() != valor:
+                raise ValueError
+        except (ValueError, TypeError):
+            raise ErroObra("Informe uma data válida no formato AAAA-MM-DD", 422, [campo])
+        datas[campo] = data
+    for inicio, fim in (("registroDe", "registroAte"), ("entregaDe", "entregaAte")):
+        if inicio in datas and fim in datas and datas[fim] < datas[inicio]:
+            raise ErroObra("O fim do filtro não pode ser anterior ao início", 422, [fim])
+
+    filtro = {}
+    for campo in ("nome", "cliente"):
+        if campo in parametros:
+            filtro[campo] = {"$regex": re.escape(parametros[campo].strip()), "$options": "i"}
+    if "estado" in parametros:
+        estado = parametros["estado"]
+        if estado not in {"planejada", "em andamento", "concluída", "suspensa"}:
+            raise ErroObra("Estado da obra inválido", 422, ["estado"])
+        filtro["estado"] = estado
+    registro = {}
+    if "registroDe" in datas:
+        registro["$gte"] = datetime.combine(datas["registroDe"], time.min, tzinfo=timezone.utc)
+    if "registroAte" in datas:
+        # Inclui todo o último dia sem depender da precisão do armazenamento.
+        fim = datas["registroAte"]
+        if fim == date.max:
+            registro["$lte"] = datetime.max.replace(tzinfo=timezone.utc)
+        else:
+            registro["$lt"] = datetime.combine(fim + timedelta(days=1), time.min, tzinfo=timezone.utc)
+    if registro:
+        filtro["data_registro"] = registro
+    entrega = {}
+    for campo, operador in (("entregaDe", "$gte"), ("entregaAte", "$lte")):
+        if campo in datas:
+            entrega[operador] = datas[campo].isoformat()
+    if entrega:
+        filtro["$or"] = [
+            {"entrega.modalidade": "data_exata", "entrega.data": entrega},
+            {"entrega.modalidade": "intervalo_estimado", "entrega.fim": entrega},
+        ]
+    return [obra_para_dict(documento) for documento in repository.consultar_obras(filtro)]
+
+
+def listar_marcos(identifier):
+    # Valida o ID e diferencia obra inexistente de obra sem marcos.
+    buscar_obra(identifier)
+    return [
+        {"id": str(documento["_id"]), **{
+            campo: str(valor) if isinstance(valor, ObjectId) else valor
+            for campo, valor in documento.items() if campo != "_id"
+        }}
+        for documento in repository.consultar_marcos(ObjectId(identifier))
+    ]
 
 
 def editar_descricao(identifier, dados):

@@ -54,7 +54,7 @@ quando esses cenários forem escritos; a reorganização preserva a cobertura ex
 O modo de importação `importlib` permite nomes como `test_cadastro.py` em pastas distintas.
 Tokens das fixtures usam o mesmo gerador da aplicação, com ID da construtora,
 `tipo` e `sessao_id`. CT-01 verifica a emissão dos tokens; CT-04 verifica que logout
-bloqueia o PATCH e a renovação mesmo enquanto o GET de obras está pendente.
+bloqueia o PATCH e a renovação; as consultas também exigem uma conta ativa.
 
 Para executar apenas o UC-04 local:
 
@@ -232,7 +232,7 @@ Para executar a cobertura UC-04:
 
 CT-16 verifica o documento efetivamente atualizado no banco isolado, além do JSON
 retornado. A releitura HTTP foi mantida no cenário separado
-`test_ct16_releitura_http`, pendente do GET. CT-17 verifica que a tentativa
+`test_ct16_releitura_http`, usando o GET já registrado. CT-17 verifica que a tentativa
 proibida preserva o banco inteiro. As verificações adicionais cobrem corpo/campos
 inválidos, IDs, falha de gravação e preservação de outra obra. A execução local usa
 memória; a validação da persistência no Atlas de teste continua separada.
@@ -252,8 +252,8 @@ da gravação; não demonstram rollback após timeout com resultado indeterminad
 .\.venv\Scripts\python -m pytest tests/obras/test_edicao.py tests/obras/test_edicao_atlas.py -k "ct16 or ct17" -v
 ```
 
-- **GET pendente:** `test_ct16_releitura_http`, em `tests/obras/test_edicao.py`, precisa de
-  `GET /obras/{id}` para validar a releitura por HTTP.
+- **Releitura HTTP:** `test_ct16_releitura_http`, em `tests/obras/test_edicao.py`,
+  usa `GET /obras/{id}` para validar os dados após a edição.
 - **Atlas pendente:** `tests/obras/test_edicao_atlas.py` tem três cenários: correção
   persistida, rejeição de prazo e rejeição de conclusão. Consultam o mesmo banco
   descartável por outra conexão MongoDB, sem mocks de gravação e sem depender do
@@ -315,3 +315,33 @@ O Atlas não foi acessado nesta validação.
 ```powershell
 .\.venv\Scripts\python -m pytest tests/trabalhadores/test_cadastro.py -v
 ```
+
+
+## UC-03 — listagem, filtros e consulta de obras
+
+Todas as consultas abaixo exigem uma sessão JWT de construtora ativa e não revogada:
+
+- `GET /obras`: retorna `{"obras": [...]}`; sem resultados, retorna lista vazia e HTTP 200.
+- `GET /obras/{id}`: retorna o detalhe; ID inválido retorna 400 e obra ausente retorna 404.
+- `GET /obras/{id}/marcos`: lista somente marcos vinculados à obra; obra sem marcos retorna lista vazia, obra ausente retorna 404.
+
+A listagem aceita `nome`, `cliente`, `estado`, `registroDe`, `registroAte`,
+`entregaDe` e `entregaAte`. Nome e cliente usam busca parcial literal sem distinguir
+maiúsculas de minúsculas. Estado aceita `planejada`, `em andamento`, `concluída`
+e `suspensa`. Os filtros são combinados por interseção.
+Datas usam `AAAA-MM-DD`; os limites são inclusivos e podem ser enviados separadamente.
+O registro considera o dia em UTC; entrega estimada considera o fim do intervalo.
+Filtros desconhecidos, datas inválidas e intervalos invertidos retornam 422 antes
+da consulta das obras. Falhas de consulta retornam 500 com mensagem sem detalhes do driver.
+
+Lista e detalhe retornam os mesmos alertas derivados, sem alterar o banco.
+`atrasada` aparece após a data exata ou o fim estimado, preservando o estado da obra.
+Obras concluídas não recebem atraso baseado no relógio atual; a regra histórica
+com data efetiva de conclusão continua dependendo do contrato desse campo.
+
+```powershell
+.\.venv\Scripts\python -m pytest tests/obras/test_consultas.py -v
+```
+
+A execução local usa mongomock. A persistência após reinício continua sendo
+verificada separadamente com Atlas exclusivo de teste.
