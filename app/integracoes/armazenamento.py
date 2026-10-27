@@ -4,6 +4,8 @@ import re
 from io import BytesIO
 from time import time
 from uuid import uuid4
+from urllib.error import HTTPError
+from urllib.request import urlopen
 
 import cloudinary.api
 import cloudinary.uploader
@@ -99,7 +101,7 @@ class ArmazenamentoCloudinary:
         try:
             url = cloudinary.utils.private_download_url(
                 opcoes.pop("public_id"),
-                None if opcoes["resource_type"] == "raw" else referencia.get("formato"),
+                referencia.get("formato"),
                 expires_at=expires_at, attachment=True, **opcoes, **self._opcoes(),
             )
         except Exception:
@@ -114,3 +116,22 @@ class ArmazenamentoCloudinary:
                 raise ValueError("Remoção não confirmada")
         except Exception:
             raise ErroArmazenamento("Não foi possível remover a mídia") from None
+
+    def obter_conteudo(self, referencia, tamanho_esperado):
+        """Baixa o original no servidor, sem expor a URL assinada ao navegador."""
+        teto = max(self.config.limite_foto, self.config.limite_video, self.config.limite_documento)
+        if type(tamanho_esperado) is not int or not 0 < tamanho_esperado <= teto:
+            raise ErroArmazenamento("Tamanho da mídia armazenada inválido", 502)
+        acesso = self.obter_acesso(referencia)
+        try:
+            with urlopen(acesso["url"], timeout=self.config.timeout) as resposta:
+                conteudo = resposta.read(tamanho_esperado + 1)
+        except HTTPError as erro:
+            if erro.code == 404:
+                raise ErroArmazenamento("Mídia não encontrada no armazenamento", 404) from None
+            raise ErroArmazenamento("Não foi possível recuperar o arquivo da mídia") from None
+        except Exception:
+            raise ErroArmazenamento("Não foi possível recuperar o arquivo da mídia") from None
+        if len(conteudo) != tamanho_esperado:
+            raise ErroArmazenamento("O armazenamento devolveu um arquivo de tamanho inconsistente", 502)
+        return conteudo
