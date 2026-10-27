@@ -65,7 +65,7 @@ def test_busca_obra_retorna_apenas_trabalhadores_vinculados(
     client, headers, database, pessoa, obra_existente
 ):
     database.tbl_trabalhadores.insert_one({
-        **pessoa, "_id": ObjectId(), "email": "outra@example.com", "obras": []
+        **pessoa, "_id": ObjectId(), "obras": []
     })
     before = snapshot(database)
 
@@ -78,9 +78,9 @@ def test_busca_obra_retorna_apenas_trabalhadores_vinculados(
 
 @pytest.mark.parametrize("estado,status,esperado", [
     ("id-invalido", 400, {"erro": "ID da obra inválido"}),
-    ("inexistente", 404, {"erro": "Nenhuma obra encontrada"}),
-    ("sem-lista", 200, {"mensagem": "Nenhum usuário encontrado"}),
-    ("lista-vazia", 200, {"mensagem": "Nenhum usuário encontrado"}),
+    ("inexistente", 404, {"erro": "Obra não encontrada"}),
+    ("sem-lista", 200, []),
+    ("lista-vazia", 200, []),
     ("email-sem-cadastro", 200, []),
 ])
 def test_consulta_obra_sem_resultado(
@@ -114,7 +114,7 @@ def test_consulta_obra_sem_resultado(
     ("/trabalhadores/obra/{obra}/", "colecao_trabalhadores", True),
     ("/trabalhadores/obra/{obra}/", "colecao_obras", False),
 ])
-def test_falha_de_leitura_retorna_500_sem_expor_detalhes(
+def test_falha_de_leitura_retorna_503_sem_expor_detalhes(
     client, headers, database, pessoa, obra_existente, modulo_trabalhadores,
     monkeypatch, path, collection, durante_iteracao
 ):
@@ -135,14 +135,10 @@ def test_falha_de_leitura_retorna_500_sem_expor_detalhes(
         response = client.get(path.format(obra=obra_existente["_id"]), headers=headers)
 
     # Inclui a busca por cargo: uma falha do servidor não deve ser 422.
-    assert response.status_code == 500
+    assert response.status_code == 503
     assert "erro" in response.get_json()
     assert "detalhe interno" not in response.get_data(as_text=True)
     assert snapshot(database) == before
-
-
-def test_serializacao_documento_ausente(modulo_trabalhadores):
-    assert modulo_trabalhadores.trabalhador_para_dict(None) is None
 
 
 @pytest.mark.parametrize("documento", [

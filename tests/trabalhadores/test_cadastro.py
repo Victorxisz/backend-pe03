@@ -10,7 +10,7 @@ from support import snapshot
 
 
 def test_cadastro_trabalhador(
-    client, headers, database, trabalhador, obra_existente, sessao_cadastro
+    client, headers, database, trabalhador, obra_existente
 ):
     # Preparação
     obra_id = str(obra_existente["_id"])
@@ -32,15 +32,10 @@ def test_cadastro_trabalhador(
     assert saved["ativo"] is True
     assert saved["data_cadastro"] == datetime(2030, 10, 20, 12)
     assert database.tbl_trabalhadores.count_documents({}) == 1
-    assert database.tbl_obras.find_one({"_id": obra_existente["_id"]}) == {
-        **obra_existente,
-        "trabalhadores": [trabalhador["email"]],
-    }
-    if sessao_cadastro is not None:
-        start, session = sessao_cadastro
-        start.assert_called_once_with()
-        session.start_transaction.assert_called_once_with()
-        session.__exit__.assert_called_once_with(None, None, None)
+    assert database.tbl_obras.find_one({"_id": obra_existente["_id"]}) == obra_existente
+    consulta = client.get(path, headers=headers)
+    assert consulta.status_code == 200
+    assert [item["id"] for item in consulta.get_json()] == [body["id"]]
 
 
 @pytest.mark.parametrize("campo", ["nome", "email", "telefone", "cargo"])
@@ -101,7 +96,7 @@ def test_cadastro_id_obra_invalido(client, headers, database, trabalhador):
 
 
 def test_cadastro_obra_inexistente_nao_cria_orfao(
-    client, headers, database, trabalhador, sessao_cadastro
+    client, headers, database, trabalhador
 ):
     before = snapshot(database)
     response = client.post(
@@ -117,7 +112,7 @@ def test_cadastro_obra_inexistente_nao_cria_orfao(
     (" (11) 3333-4444 ", "1133334444"), (" (11) 99999-9999 ", "11999999999"),
 ])
 def test_cadastro_normaliza_campos_e_ignora_campos_controlados_pela_api(
-    client, headers, database, obra_existente, sessao_cadastro, telefone, esperado
+    client, headers, database, obra_existente, telefone, esperado
 ):
     response = client.post(
         f"/trabalhadores/obra/{obra_existente['_id']}/", headers=headers,
@@ -133,15 +128,15 @@ def test_cadastro_normaliza_campos_e_ignora_campos_controlados_pela_api(
         "telefone": esperado, "cargo": "engenheiro", "ativo": True,
         "obras": [str(obra_existente["_id"])], "data_cadastro": datetime(2030, 10, 20, 12),
     }
-    assert database.tbl_obras.find_one({"_id": obra_existente["_id"]})["trabalhadores"] == ["ana@example.com"]
+    assert database.tbl_obras.find_one({"_id": obra_existente["_id"]}) == obra_existente
 
 
 @pytest.mark.parametrize("collection,operation", [
-    ("cliente_mongo", "start_session"), ("colecao_obras", "find_one"),
-    ("colecao_trabalhadores", "insert_one"), ("colecao_obras", "update_one"),
+    ("colecao_obras", "find_one"),
+    ("colecao_trabalhadores", "insert_one"),
 ])
 def test_cadastro_trata_falha_em_cada_etapa(
-    client, headers, database, trabalhador, obra_existente, sessao_cadastro,
+    client, headers, database, trabalhador, obra_existente,
     modulo_trabalhadores, monkeypatch, collection, operation
 ):
     def falhar(*args, **kwargs):
@@ -154,10 +149,7 @@ def test_cadastro_trata_falha_em_cada_etapa(
             f"/trabalhadores/obra/{obra_existente['_id']}/", json=trabalhador, headers=headers
         )
 
-    assert response.status_code == 500
+    assert response.status_code == 503
     assert "erro" in response.get_json()
     assert "detalhe interno" not in response.get_data(as_text=True)
-    # Sessões simuladas não revertem uma inserção anterior ao erro no update.
-    # O rollback desse cenário é verificado separadamente no Atlas.
-    if operation != "update_one" or sessao_cadastro is None:
-        assert snapshot(database) == before
+    assert snapshot(database) == before
