@@ -218,3 +218,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Midias gravadas pelo armazenamento local do servidor
+var/
