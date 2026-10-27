@@ -1,11 +1,16 @@
-"""Regras da edição descritiva; prazo e conclusão pertencem ao fluxo de mudanças."""
+"""Cadastro, consulta e edição descritiva das obras."""
+
+from copy import deepcopy
+from datetime import date, datetime, timezone
 
 from bson import ObjectId
 from bson.errors import InvalidId
 
 from . import repository
+from .validacoes import validar_criacao_obra
 
 EDITAVEIS = {"nome", "descricao", "localizacao", "cliente"}
+CADASTRAVEIS = EDITAVEIS | {"tipo", "inicio", "entrega"}
 
 
 class ErroObra(Exception):
@@ -13,6 +18,60 @@ class ErroObra(Exception):
         super().__init__(mensagem)
         self.status = status
         self.campos = list(campos)
+
+
+def obra_para_dict(documento):
+    obra = {campo: valor for campo, valor in documento.items() if campo != "_id"}
+    obra["id"] = str(documento["_id"])
+    registro = obra.get("data_registro")
+    if isinstance(registro, datetime):
+        # O PyMongo pode devolver UTC sem tzinfo; a API sempre informa o fuso.
+        if registro.tzinfo is None:
+            registro = registro.replace(tzinfo=timezone.utc)
+        obra["data_registro"] = registro.isoformat()
+    return obra
+
+
+def criar_obra(dados, autor):
+    erro = validar_criacao_obra(dados)
+    if erro:
+        raise ErroObra(erro["mensagem"], 422, erro["campos"])
+
+    proibidos = sorted(set(dados) - CADASTRAVEIS)
+    if proibidos:
+        raise ErroObra("Envie somente os campos do cadastro da obra", 422, proibidos)
+
+    documento = deepcopy(dados)
+    registro = datetime.now(timezone.utc)
+    # BSON armazena milissegundos; POST e consultas devem devolver o mesmo instante.
+    registro = registro.replace(microsecond=(registro.microsecond // 1000) * 1000)
+    documento.update(
+        _id=ObjectId(),
+        autor=autor,
+        data_registro=registro,
+        estado="planejada",
+        critica=False,
+    )
+    repository.salvar_obra(documento)
+    return obra_para_dict(documento)
+
+
+def buscar_obra(identifier):
+    try:
+        obra_id = ObjectId(identifier)
+    except (InvalidId, TypeError):
+        raise ErroObra("ID da obra inválido", 400, ["id"])
+
+    documento = repository.buscar_obra_por_id(obra_id)
+    if documento is None:
+        raise ErroObra("Obra não encontrada", 404, ["id"])
+    obra = obra_para_dict(documento)
+    entrega = documento.get("entrega", {})
+    limite = entrega.get("data") if entrega.get("modalidade") == "data_exata" else entrega.get("fim")
+    obra["alertas"] = ["crítica"] if documento.get("critica") else []
+    if limite and documento.get("estado") != "concluída" and date.fromisoformat(limite) < datetime.now(timezone.utc).date():
+        obra["alertas"].append("atrasada")
+    return obra
 
 
 def editar_descricao(identifier, dados):

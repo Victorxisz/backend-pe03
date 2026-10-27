@@ -37,5 +37,5 @@ def criar_marco(obra_id, dados):
         "estado": "a iniciar",
     }
     identifier = repository.inserir_marco(documento)
-    return {"id": str(identifier), **{k: v for k, v in documento.items() if k != "obra_id"},
+    return {"id": str(identifier), **{k: v for k, v in documento.items() if k not in ("obra_id", "_id")},
             "obra_id": str(object_id_obra)}

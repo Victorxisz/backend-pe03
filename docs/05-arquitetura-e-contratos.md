@@ -27,7 +27,10 @@ Cada recurso tem URI própria. `GET` consulta, `POST` cria, `PATCH` modifica e `
 
 ### Recursos propostos
 
-`/api/v1` é o prefixo sugerido. Identificadores são opacos para o cliente; o React não deve depender do formato interno `_id` do MongoDB.
+As rotas usam diretamente os caminhos dos recursos, sem prefixo de versão ou
+aliases. Para obras, a coleção usa `/obras` e uma obra específica usa
+`/obras/{obraId}`; os métodos HTTP distinguem as operações. Identificadores são
+opacos para o cliente; o React não deve depender do formato interno `_id` do MongoDB.
 
 | Recurso | Métodos previstos | Funcionalidade |
 | --- | --- | --- |
@@ -57,12 +60,31 @@ Excluir isoladamente uma mudança já aplicada não integra o MVP; sua exclusão
 - Todas as rotas que alteram dados validam autenticação no servidor. O React pode esconder botões, mas isso não substitui autorização na API.
 - Paginação, ordenação e tamanho máximo de arquivos devem ser fechados antes de integrar grandes listas e vídeos; os valores podem ser modestos no MVP.
 
-### Exemplo de prazo de obra
+### Cadastro de obra — contrato implementado
+
+`POST /obras` exige token de acesso em
+`Authorization: Bearer <token>`. Os campos obrigatórios são `nome`, `tipo`,
+`cliente`, `localizacao`, `descricao`, `inicio` e `entrega`. Os textos devem ser
+não vazios; `tipo` aceita `casa` ou `apartamentos`.
+
+O servidor gera `autor` com o ID da construtora autenticada e `data_registro`
+com o instante UTC, além de iniciar `estado` como `planejada` e `critica` como
+`false`. Esses campos e quaisquer campos desconhecidos são rejeitados no corpo
+da requisição. Os nomes antigos `cliente_referencia` e `criado_em` não fazem
+parte deste contrato; usar `cliente` e `data_registro`, respectivamente.
+
+A criação retorna `201`, os dados persistidos, `id` textual e `Location` com
+`/obras/{id}`. Dados inválidos, inclusive JSON malformado,
+retornam `422` com `mensagem` e `campos`; falha de gravação retorna `500` com
+`mensagem`. Consulta GET da URI indicada em `Location` continua pendente.
+
+Exemplo de corpo:
 
 ```json
 {
   "nome": "Residencial Aurora",
   "tipo": "apartamentos",
+  "cliente": "Cliente de referência",
   "localizacao": "Campinas, SP",
   "descricao": "Construção residencial",
   "inicio": "2026-10-15",
@@ -74,7 +96,10 @@ Excluir isoladamente uma mudança já aplicada não integra o MVP; sua exclusão
 }
 ```
 
-Quando a modalidade for `data_exata`, `entrega` contém `data` em vez de `inicio` e `fim`. O contrato final deve incluir cliente de referência e estado conforme a decisão de modelagem RN-02.
+Quando a modalidade for `data_exata`, `entrega` contém somente `modalidade` e
+`data`. Em `intervalo_estimado`, contém somente `modalidade`, `inicio` e `fim`;
+o fim não pode ser anterior ao início (o mesmo dia é aceito). Todas as datas
+devem ser dias existentes em `AAAA-MM-DD`. Não é permitido misturar as modalidades.
 
 ## Segurança e configuração
 
