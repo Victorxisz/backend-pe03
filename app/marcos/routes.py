@@ -9,6 +9,7 @@ from .service import (
     criar_dependencia,
     criar_marco,
     listar_dependencias,
+    listar_marcos_da_obra,
     remover_dependencia,
 )
 
@@ -99,3 +100,17 @@ def excluir_dependencia(marco_id, dependencia_id):
         )
 
     return "", 204
+
+@marcos_bp.get("/obras/<string:obra_id>/marcos")
+@jwt_required()
+def consultar_marcos_da_obra(obra_id):
+    try:
+        marcos = listar_marcos_da_obra(obra_id)
+    except ErroMarco as erro:
+        return _responder_erro_marco(erro)
+    except PyMongoError:
+        return _responder_erro_banco(
+            "Não foi possível consultar os marcos"
+        )
+
+    return jsonify(marcos), 200

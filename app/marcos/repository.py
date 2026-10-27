@@ -31,3 +31,11 @@ def substituir_dependencias(obra, novos_vinculos):
     )
 
     return resultado.modified_count == 1
+
+def buscar_marcos_da_obra(obra_id):
+    return list(
+        db.colecao_marcos.find(
+            {"obra_id": obra_id},
+            {"nome": 1, "estado": 1},
+        ).sort([("nome", 1), ("_id", 1)])
+    )
