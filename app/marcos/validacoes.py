@@ -4,6 +4,7 @@ from datetime import date
 
 
 CAMPOS_DO_MARCO = ("nome", "descricao", "inicio_previsto", "fim_previsto")
+ESTADOS_MARCO = ("a iniciar", "em andamento", "concluído")
 
 
 def validar_marco(dados_do_marco):
@@ -58,4 +59,22 @@ def validar_data_prevista(data_prevista, campo):
             return mensagem, [campo]
     except ValueError:
         return mensagem, [campo]
+    return None
+
+
+def validar_alteracao_estado(dados):
+    if not isinstance(dados, dict):
+        return "Envie um objeto JSON", ["corpo"]
+
+    campos_extra = sorted(set(dados) - {"estado", "motivo", "confirmar_dependencias"})
+    campos_ausentes = [campo for campo in ("estado", "motivo") if campo not in dados]
+    if campos_extra or campos_ausentes:
+        return "Envie estado e motivo; confirmação de dependências é opcional", campos_extra + campos_ausentes
+
+    if dados["estado"] not in ESTADOS_MARCO:
+        return "Estado deve ser 'a iniciar', 'em andamento' ou 'concluído'", ["estado"]
+    if not isinstance(dados["motivo"], str) or not dados["motivo"].strip():
+        return "O campo 'motivo' deve ser um texto preenchido", ["motivo"]
+    if "confirmar_dependencias" in dados and not isinstance(dados["confirmar_dependencias"], bool):
+        return "O campo 'confirmar_dependencias' deve ser booleano", ["confirmar_dependencias"]
     return None

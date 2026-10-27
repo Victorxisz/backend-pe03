@@ -63,7 +63,7 @@ def consultar_marcos(obra_id):
     except PyMongoError:
         current_app.logger.error("Falha no banco durante consulta de marcos")
         return jsonify(mensagem="Não foi possível consultar os marcos da obra"), 500
-    return jsonify(marcos=marcos), 200
+    return jsonify(marcos), 200
 
 
 @obras_bp.patch("/<string:obra_id>")

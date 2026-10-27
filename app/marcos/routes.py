@@ -1,27 +1,27 @@
 """Contrato HTTP de marcos e suas dependências."""
 
 from flask import Blueprint, current_app, jsonify, request
-from flask_jwt_extended import jwt_required
+from flask_jwt_extended import get_jwt_identity, jwt_required
 from pymongo.errors import PyMongoError
 
 from .service import (
     ErroMarco,
+    alterar_estado_marco,
     criar_dependencia,
     criar_marco,
     listar_dependencias,
-    listar_marcos_da_obra,
     remover_dependencia,
 )
 
 
-marcos_bp = Blueprint("marcos", __name__, url_prefix="/obras")
+marcos_bp = Blueprint("marcos", __name__)
+estado_marcos_bp = Blueprint("estado_marcos", __name__, url_prefix="/api/v1/marcos")
 
 
 def _responder_erro_marco(erro):
-    return jsonify(
-        mensagem=str(erro),
-        campos=erro.campos,
-    ), erro.status
+    corpo = {"mensagem": str(erro), "campos": erro.campos}
+    corpo.update(erro.detalhes)
+    return jsonify(corpo), erro.status
 
 
 def _responder_erro_banco(mensagem):
@@ -39,13 +39,10 @@ def cadastrar_marco(obra_id):
     except PyMongoError:
         current_app.logger.error("Falha no banco durante cadastro de marco")
         return jsonify(mensagem="Não foi possível salvar o marco"), 500
-    return responder_marco_cadastrado(marco)
 
-
-def responder_marco_cadastrado(marco):
     resposta = jsonify(marco)
     resposta.status_code = 201
-    resposta.headers["Location"] = f"/obras/{marco['obra_id']}/marcos/{marco['id']}"
+    resposta.headers["Location"] = f"/obras/{obra_id}/marcos/{marco['id']}"
     return resposta
 
 
@@ -57,10 +54,7 @@ def consultar_dependencias(marco_id):
     except ErroMarco as erro:
         return _responder_erro_marco(erro)
     except PyMongoError:
-        return _responder_erro_banco(
-            "Não foi possível consultar as dependências"
-        )
-
+        return _responder_erro_banco("Não foi possível consultar as dependências")
     return jsonify(dependencias), 200
 
 
@@ -68,16 +62,11 @@ def consultar_dependencias(marco_id):
 @jwt_required()
 def cadastrar_dependencia(marco_id):
     try:
-        dependencia = criar_dependencia(
-            marco_id,
-            request.get_json(silent=True),
-        )
+        dependencia = criar_dependencia(marco_id, request.get_json(silent=True))
     except ErroMarco as erro:
         return _responder_erro_marco(erro)
     except PyMongoError:
-        return _responder_erro_banco(
-            "Não foi possível salvar a dependência"
-        )
+        return _responder_erro_banco("Não foi possível salvar a dependência")
 
     resposta = jsonify(dependencia)
     resposta.status_code = 201
@@ -97,22 +86,23 @@ def excluir_dependencia(marco_id, dependencia_id):
     except ErroMarco as erro:
         return _responder_erro_marco(erro)
     except PyMongoError:
-        return _responder_erro_banco(
-            "Não foi possível remover a dependência"
-        )
-
+        return _responder_erro_banco("Não foi possível remover a dependência")
     return "", 204
 
-@marcos_bp.get("/obras/<string:obra_id>/marcos")
+
+@estado_marcos_bp.patch("/<string:marco_id>")
 @jwt_required()
-def consultar_marcos_da_obra(obra_id):
+def atualizar_marco(marco_id):
     try:
-        marcos = listar_marcos_da_obra(obra_id)
+        marco = alterar_estado_marco(
+            marco_id, request.get_json(silent=True), get_jwt_identity()
+        )
     except ErroMarco as erro:
         return _responder_erro_marco(erro)
     except PyMongoError:
-        return _responder_erro_banco(
-            "Não foi possível consultar os marcos"
-        )
-
-    return jsonify(marcos), 200
+        current_app.logger.error("Falha no banco durante alteração de estado do marco")
+        return jsonify(mensagem="Não foi possível salvar o estado do marco"), 500
+    except Exception:
+        current_app.logger.exception("Falha ao persistir alteração de estado do marco")
+        return jsonify(mensagem="Não foi possível salvar o estado do marco"), 500
+    return jsonify(marco), 200

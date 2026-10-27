@@ -134,7 +134,8 @@ def listar_marcos(identifier):
     return [
         {"id": str(documento["_id"]), **{
             campo: str(valor) if isinstance(valor, ObjectId) else valor
-            for campo, valor in documento.items() if campo != "_id"
+            for campo, valor in documento.items()
+            if campo not in {"_id", "obra_id"}
         }}
         for documento in repository.consultar_marcos(ObjectId(identifier))
     ]
