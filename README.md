@@ -345,3 +345,85 @@ com data efetiva de conclusão continua dependendo do contrato desse campo.
 
 A execução local usa mongomock. A persistência após reinício continua sendo
 verificada separadamente com Atlas exclusivo de teste.
+
+
+## UC-08 — infraestrutura de fotos, vídeos e documentos
+
+Provedor adotado neste cartão: Cloudinary. Formatos e limites iniciais acordados:
+JPEG/PNG até 10 MiB, MP4 até 100 MiB e PDF até 10 MiB. Os limites, timeout e validade
+do acesso são configuráveis no ambiente; consulte `.env.example`. Instale as novas
+dependências de `requirements.txt`. Nenhuma credencial é fixada no código ou enviada ao React.
+
+`app/integracoes/armazenamento.py` fornece `ArmazenamentoCloudinary`:
+
+- `enviar(arquivo_validado)`: envia e confirma os metadados retornados pelo provedor.
+- `verificar_disponibilidade(referencia)`: distingue arquivo ausente de falha do serviço.
+- `obter_acesso(referencia)`: fornece URL HTTPS assinada com expiração (padrão 5 minutos).
+- `remover(referencia)`: remove por referência externa, com invalidação e resultado verificado; remover arquivo já ausente é permitido.
+
+A referência persistida contém `provedor="cloudinary"`, `public_id`,
+`resource_type`, `delivery_type` e `formato`. Os metadados contêm `tipo`, `nome`,
+`tamanho`, `mime` e `referencia_externa`; não guarde a URL temporária como referência.
+Uploads usam IDs aleatórios, sem sobrescrever arquivos existentes, e entrega
+`authenticated`. Fotos usam recurso `image`, vídeos `video` e PDFs `raw`.
+Veja a [documentação oficial de acesso protegido](https://cloudinary.com/documentation/control_access_to_media)
+e a [Upload API](https://cloudinary.com/documentation/image_upload_api_reference).
+A conta Cloudinary precisa permitir entrega autenticada e download de PDFs;
+limitações ou cotas da conta causam erro explícito, sem fallback público.
+
+`app/avancos/midias.py` valida o conteúdo com Pillow (fotos), PyAV (contêiner MP4
+com vídeo decodificável) e pypdf (estrutura e conteúdo de PDF não criptografado).
+Não confia na extensão ou no Content-Type informado pelo cliente. Limita a leitura
+por bytes e rejeita arquivos vazios, formatos não permitidos e conteúdo inválido.
+Isso valida formato e tamanho; não substitui uma análise de malware.
+
+O serviço reutilizável recebe arquivos `FileStorage` e uma função de persistência:
+
+```python
+from app.avancos.midias import ServicoMidias
+
+servico = ServicoMidias()  # lê configuração do ambiente do servidor
+resultado = servico.executar_com_midias(arquivos, salvar_avanco)
+# salvar_avanco(metadados) deve salvar o negócio atomicamente e retornar o resultado.
+```
+
+Todo o lote é validado antes do primeiro upload. A função `salvar_avanco` só é
+chamada após todos os envios confirmados. Se um envio ou a gravação falhar, o
+serviço remove os novos arquivos. Como um timeout pode ocorrer após o upload,
+o ID externo é escolhido antes da chamada para permitir compensação.
+Os arquivos de versões anteriores não são removidos durante uma correção, pois
+podem estar referenciados no histórico.
+
+`ErroMidia` indica entrada inválida (422) ou tamanho excedido (413).
+`ErroArmazenamento` indica configuração/indisponibilidade (503), ou mídia ausente
+(404 ao obter acesso). `ErroLimpeza.pendentes` lista referências cuja remoção não
+foi confirmada. O serviço de negócio deve guardar essas referências para nova
+tentativa e nunca anunciar sucesso nesse caso. A compensação não é uma transação
+distribuída: interrupções do processo e resultados indeterminados do banco exigem
+reconciliação no serviço de rascunho/correção.
+
+Este cartão entrega infraestrutura reutilizável, sem criar uma rota pública de
+upload isolado. O serviço de rascunho deve validar marco, data e descrição, chamar
+a infraestrutura e persistir o avanço com estado `rascunho`. A correção deve
+preservar histórico e tratar as referências. Portanto, os testes abaixo cobrem
+a parte de armazenamento de CT-31/32/34/35 e CT-109/110; não comprovam sozinhos
+os casos de uso completos de rascunho, edição ou publicação.
+
+```powershell
+.\.venv\Scripts\python -m pytest tests/test_armazenamento.py -v
+```
+
+Por padrão, o SDK externo é simulado e os arquivos de teste são gerados localmente.
+O teste real usa somente credenciais `TEST_CLOUDINARY_CLOUD_NAME`,
+`TEST_CLOUDINARY_API_KEY` e `TEST_CLOUDINARY_API_SECRET` de uma conta de teste.
+Não lê `.env` nem usa as credenciais normais como fallback. Após definir essas
+variáveis na sessão, habilite explicitamente:
+
+```powershell
+$env:RUN_CLOUDINARY_TESTS = "1"
+.\.venv\Scripts\python -m pytest tests/test_armazenamento.py -m cloudinary -v
+```
+
+O teste real envia PNG, MP4 e PDF, abre o acesso assinado, compara os bytes e remove
+os arquivos. Exerce APIs e cotas reais da conta de teste. Sem essa execução,
+a integração externa permanece pendente; testes locais não a substituem.

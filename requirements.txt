@@ -7,3 +7,7 @@ flask-bcrypt
 flask-jwt-extended==4.7.4
 freezegun>=1.5,<2
 mongomock>=4.3,<5
+cloudinary>=1.44,<2
+Pillow>=11,<13
+pypdf>=5,<7
+av>=14,<18
