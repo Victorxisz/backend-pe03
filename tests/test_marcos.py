@@ -5,7 +5,7 @@ from bson import ObjectId
 from support import snapshot
 
 
-PATH = "/api/v1/obras/{}/marcos"
+PATH = "/obras/{}/marcos"
 
 
 def payload():
