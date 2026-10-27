@@ -1,4 +1,4 @@
-"""Processo independente usado exclusivamente por CT-09."""
+"""Processo independente para releitura autenticada de recursos no Atlas."""
 
 import json
 import os
