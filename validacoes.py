@@ -1,5 +1,6 @@
 import re
-
+from bson import ObjectId
+from bson.errors import InvalidId
 
 CAMPOS_TEXTO = ("nome", "email", "telefone", "cargo")
 CAMPOS_ATUALIZAVEIS = set(CAMPOS_TEXTO) | {"obras"}
@@ -84,18 +85,23 @@ def validar_dados_trabalhador(dados, atualizacao=False):
     if atualizacao and "obras" in dados:
         obras = dados["obras"]
 
-        if not isinstance(obras, list) or not all(
-            type(codigo_obra) is int and codigo_obra > 0
-            for codigo_obra in obras
-        ):
+        if not isinstance(obras, list):
             return {
-                "erro": (
-                    "Obras deve ser uma lista "
-                    "de números inteiros positivos"
-                )
+                "erro": "Obras deve ser uma lista de IDs MongoDB"
             }, 422
 
-    return None
+        for codigo_obra in obras:
+            if not isinstance(codigo_obra, str):
+                return {
+                    "erro": "Cada ID de obra deve ser um texto"
+                }, 422
+
+            try:
+                ObjectId(codigo_obra)
+            except (InvalidId, TypeError):
+                return {
+                    "erro": "A lista contém um ID de obra inválido"
+                }, 422
 
 
 def normalizar_dados_trabalhador(dados, incluir_obras=False):
@@ -124,10 +130,11 @@ def normalizar_dados_trabalhador(dados, incluir_obras=False):
         )
 
     if incluir_obras and "obras" in dados:
-        # Remove códigos repetidos, preservando a ordem.
-        dados_normalizados["obras"] = list(
-            dict.fromkeys(dados["obras"])
-        )
+        # Padroniza IDs e remove repetições.
+        dados_normalizados["obras"] = list(dict.fromkeys(
+            str(ObjectId(codigo_obra))
+            for codigo_obra in dados["obras"]
+        ))
 
     return dados_normalizados
 
