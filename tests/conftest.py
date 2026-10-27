@@ -1,10 +1,12 @@
 import os
 import uuid
+from datetime import timedelta
 
 import mongomock
 import pytest
 from bson import ObjectId
 from flask_bcrypt import Bcrypt
+from flask_jwt_extended import create_access_token, create_refresh_token
 from freezegun import freeze_time
 from pymongo import MongoClient
 from pymongo.uri_parser import parse_uri
@@ -129,6 +131,26 @@ def headers(app, client, account):
 
         token, _ = gerar_tokens_construtora(account["_id"])
     return {"Authorization": "Bearer " + token}
+
+
+@pytest.fixture
+def emitir_headers(app, client, account):
+    """Emite tokens reais, inclusive para os cenários negativos de autenticação."""
+    def emitir(tipo_token="access", identidade=None, claims=None, expirado=False):
+        informacoes = {"tipo": "construtora", "sessao_id": uuid.uuid4().hex}
+        if claims is not None:
+            informacoes.update(claims)
+        criar = create_refresh_token if tipo_token == "refresh" else create_access_token
+        opcoes = {"expires_delta": timedelta(seconds=-60)} if expirado else {}
+        with app.app_context():
+            token = criar(
+                identity=str(account["_id"]) if identidade is None else identidade,
+                additional_claims=informacoes,
+                **opcoes,
+            )
+        return {"Authorization": "Bearer " + token}
+
+    return emitir
 
 
 @pytest.fixture

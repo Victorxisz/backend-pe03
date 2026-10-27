@@ -1,12 +1,16 @@
 """Contrato HTTP do cadastro, consulta e edição de obras."""
 
-from flask import Blueprint, current_app, jsonify, request, url_for
-from flask_jwt_extended import get_jwt_identity, jwt_required
+from flask import Blueprint, current_app, jsonify, request
+from app.auth.permissions import sessao_obrigatoria
 from pymongo.errors import PyMongoError
 
 from .service import ErroObra, buscar_obra, criar_obra, editar_descricao
 
 obras_bp = Blueprint("obras", __name__, url_prefix="/obras")
+@obras_bp.before_request
+@sessao_obrigatoria
+def exigir_sessao():
+    pass
 
 
 @obras_bp.post("")
@@ -40,7 +44,6 @@ def consultar_obra(obra_id):
 
 
 @obras_bp.patch("/<string:obra_id>")
-@jwt_required()
 def corrigir_descricao(obra_id):
     try:
         documento = editar_descricao(obra_id, request.get_json(silent=True))
