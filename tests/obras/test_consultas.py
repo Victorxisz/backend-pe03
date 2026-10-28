@@ -198,7 +198,11 @@ def test_ct11_lista_vazia(client, headers, database):
     response = client.get(BASE, headers=headers)
     # Verificação
     assert response.status_code == 200
-    assert response.get_json() == {"obras": []}
+    assert response.get_json() == {
+        "obras": [],
+        "situacao": "lista_vazia",
+        "filtros_aplicados": {},
+    }
     assert snapshot(database) == before
 
 
@@ -305,4 +309,122 @@ def test_ct15_falha_banco_consultas(client, headers, database, obra, path, metho
     # Verificação
     assert_error(response, 500)
     assert "detalhe privado" not in response.get_data(as_text=True)
+    assert snapshot(database) == before
+
+
+@routes(("GET", BASE), ("GET", DETAIL))
+@pytest.mark.parametrize("modalidade", ["data_exata", "intervalo_estimado"])
+@pytest.mark.parametrize(
+    "conclusao,alertas",
+    [
+        ("2030-09-29", ["crítica"]),
+        ("2030-09-30", ["crítica"]),
+        ("2030-10-01", ["crítica", "atrasada"]),
+        (None, ["crítica"]),
+    ],
+    ids=["antes-do-prazo", "no-prazo", "depois-do-prazo", "sem-data-historica"],
+)
+def test_ct14_atraso_historico_na_lista_e_detalhe(
+    client, headers, database, obra, modalidade, conclusao, alertas
+):
+    # O relógio está em 20/10: o prazo já venceu em todos os casos.
+    # Para uma obra concluída, somente a conclusão determina o atraso.
+    entrega = (
+        {"modalidade": modalidade, "data": "2030-09-30"}
+        if modalidade == "data_exata"
+        else {
+            "modalidade": modalidade,
+            "inicio": "2030-09-01",
+            "fim": "2030-09-30",
+        }
+    )
+    campos = {"data_conclusao": conclusao} if conclusao is not None else {}
+    seed(database, obra, estado="concluída", critica=True, entrega=entrega, **campos)
+    before = snapshot(database)
+
+    listed = client.get(BASE, headers=headers)
+    detail = client.get(DETAIL, headers=headers)
+
+    assert listed.status_code == detail.status_code == 200
+    body = detail.get_json()
+    assert listed.get_json()["obras"] == [body]
+    assert body["estado"] == "concluída"
+    assert body["alertas"] == alertas
+    if conclusao is not None:
+        assert body["data_conclusao"] == conclusao
+    else:
+        # Compatibilidade com registros antigos; a consulta não inventa uma data.
+        assert "data_conclusao" not in body
+    assert snapshot(database) == before
+
+
+@routes(("GET", BASE))
+@pytest.mark.parametrize(
+    "query,indices,situacao,filtros",
+    [
+        ({}, [0, 1], "com_resultados", {}),
+        ({"nome": "", "cliente": "   "}, [0, 1], "com_resultados", {}),
+        (
+            {"nome": "  aurora  ", "cliente": "   "},
+            [0],
+            "com_resultados",
+            {"nome": "aurora"},
+        ),
+        (
+            {"nome": "Obra inexistente"},
+            [],
+            "sem_resultados",
+            {"nome": "Obra inexistente"},
+        ),
+        (
+            {"nome": "Aurora", "cliente": "Cliente Ipê"},
+            [],
+            "sem_resultados",
+            {"nome": "Aurora", "cliente": "Cliente Ipê"},
+        ),
+        (
+            {"nome": "   ", "estado": "suspensa"},
+            [],
+            "sem_resultados",
+            {"estado": "suspensa"},
+        ),
+    ],
+    ids=[
+        "sem-filtros", "textos-vazios", "texto-com-espacos",
+        "sem-correspondencia", "intersecao-vazia", "vazio-com-estado",
+    ],
+)
+def test_ct12_ct13_metadados_dos_filtros(
+    client, headers, database, two_works, query, indices, situacao, filtros
+):
+    before = snapshot(database)
+
+    response = client.get(BASE, query_string=query, headers=headers)
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["situacao"] == situacao
+    assert body["filtros_aplicados"] == filtros
+    assert {doc["id"] for doc in body["obras"]} == {
+        str(two_works[index]["_id"]) for index in indices
+    }
+    assert snapshot(database) == before
+
+
+@routes(("GET", BASE))
+@pytest.mark.parametrize("campo", ["nome", "cliente"])
+@pytest.mark.parametrize("valor", ["", "   "], ids=["vazio", "espacos"])
+def test_ct11_filtro_vazio_nao_muda_situacao_da_lista_vazia(
+    client, headers, database, campo, valor
+):
+    before = snapshot(database)
+
+    response = client.get(BASE, query_string={campo: valor}, headers=headers)
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "obras": [],
+        "situacao": "lista_vazia",
+        "filtros_aplicados": {},
+    }
     assert snapshot(database) == before

@@ -51,7 +51,27 @@ def consultar_obras():
     except PyMongoError:
         current_app.logger.error("Falha no banco durante listagem de obras")
         return jsonify(mensagem="Não foi possível consultar as obras"), 500
-    return jsonify(obras=obras), 200
+
+    filtros_aplicados = {}
+
+    for campo in request.args:
+        valor = request.args[campo].strip()
+
+        if valor:
+            filtros_aplicados[campo] = valor
+
+    if obras:
+        situacao = "com_resultados"
+    elif filtros_aplicados:
+        situacao = "sem_resultados"
+    else:
+        situacao = "lista_vazia"
+    
+    return jsonify(
+            obras=obras,
+            situacao=situacao,
+            filtros_aplicados=filtros_aplicados,
+        ), 200
 
 
 @obras_bp.get("/<string:obra_id>/marcos")
