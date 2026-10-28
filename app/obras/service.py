@@ -22,14 +22,31 @@ class ErroObra(Exception):
 
 
 def obra_para_dict(documento):
-    obra = {campo: valor for campo, valor in documento.items() if campo != "_id"}
+    obra = {
+        campo: valor
+        for campo, valor in documento.items()
+        if campo != "_id"
+    }
+
     obra["id"] = str(documento["_id"])
+
     registro = obra.get("data_registro")
     if isinstance(registro, datetime):
-        # O PyMongo pode devolver UTC sem tzinfo; a API sempre informa o fuso.
         if registro.tzinfo is None:
             registro = registro.replace(tzinfo=timezone.utc)
+
         obra["data_registro"] = registro.isoformat()
+
+    if "dependencias_marcos" in documento:
+        obra["dependencias_marcos"] = [
+            {
+                "id": str(vinculo["_id"]),
+                "marco_id": str(vinculo["marco_id"]),
+                "depende_de_id": str(vinculo["depende_de_id"]),
+            }
+            for vinculo in documento["dependencias_marcos"]
+        ]
+
     obra["alertas"] = calcular_alertas(documento)
     return obra
 
