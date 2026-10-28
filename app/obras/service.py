@@ -22,19 +22,32 @@ class ErroObra(Exception):
 
 
 def obra_para_dict(documento):
-    obra = {campo: valor for campo, valor in documento.items() if campo != "_id"}
+    obra = {
+        campo: valor
+        for campo, valor in documento.items()
+        if campo != "_id"
+    }
+
     obra["id"] = str(documento["_id"])
+
     registro = obra.get("data_registro")
     if isinstance(registro, datetime):
-        # O PyMongo pode devolver UTC sem tzinfo; a API sempre informa o fuso.
         if registro.tzinfo is None:
             registro = registro.replace(tzinfo=timezone.utc)
+
         obra["data_registro"] = registro.isoformat()
-    entrega = documento.get("entrega", {})
-    limite = entrega.get("data") if entrega.get("modalidade") == "data_exata" else entrega.get("fim")
-    obra["alertas"] = ["crítica"] if documento.get("critica") else []
-    if limite and documento.get("estado") != "concluída" and date.fromisoformat(limite) < datetime.now(timezone.utc).date():
-        obra["alertas"].append("atrasada")
+
+    if "dependencias_marcos" in documento:
+        obra["dependencias_marcos"] = [
+            {
+                "id": str(vinculo["_id"]),
+                "marco_id": str(vinculo["marco_id"]),
+                "depende_de_id": str(vinculo["depende_de_id"]),
+            }
+            for vinculo in documento["dependencias_marcos"]
+        ]
+
+    obra["alertas"] = calcular_alertas(documento)
     return obra
 
 
@@ -96,9 +109,21 @@ def listar_obras(parametros):
             raise ErroObra("O fim do filtro não pode ser anterior ao início", 422, [fim])
 
     filtro = {}
+
     for campo in ("nome", "cliente"):
-        if campo in parametros:
-            filtro[campo] = {"$regex": re.escape(parametros[campo].strip()), "$options": "i"}
+        if campo not in parametros:
+            continue
+
+        valor = parametros[campo].strip()
+
+        if not valor:
+            continue
+
+        filtro[campo] = {
+            "$regex": re.escape(valor),
+            "$options": "i"
+        }
+
     if "estado" in parametros:
         estado = parametros["estado"]
         if estado not in {"planejada", "em andamento", "concluída", "suspensa"}:
@@ -171,3 +196,37 @@ def editar_descricao(identifier, dados):
     if documento is None:
         raise ErroObra("Obra não encontrada", 404, ["id"])
     return documento
+
+
+def calcular_alertas (documento):
+    alertas = ["crítica"] if documento.get("critica") else []
+
+    entrega = documento.get("entrega", {})
+    modalidade = entrega.get("modalidade")
+
+    if modalidade == "data_exata":
+        limite = entrega.get("data")
+    elif modalidade == "intervalo_estimado":
+        limite = entrega.get("fim")
+    else:
+        return alertas
+
+    if not limite:
+        return alertas
+
+    prazo = date.fromisoformat(limite)
+
+    if documento.get("estado") == "concluída":
+        data_conclusao = documento.get("data_conclusao")
+
+        if not data_conclusao:
+            return alertas
+
+        referencia = date.fromisoformat(data_conclusao)
+    else:
+        referencia = datetime.now(timezone.utc).date()
+
+    if referencia > prazo:
+        alertas.append("atrasada")
+
+    return alertas
