@@ -15,7 +15,7 @@ from .service import (
 
 
 marcos_bp = Blueprint("marcos", __name__)
-estado_marcos_bp = Blueprint("estado_marcos", __name__, url_prefix="/api/v1/marcos")
+estado_marcos_bp = Blueprint("estado_marcos", __name__, url_prefix="/marcos")
 
 
 def _responder_erro_marco(erro):

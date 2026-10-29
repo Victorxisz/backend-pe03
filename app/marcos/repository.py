@@ -2,10 +2,15 @@
 
 import db
 from app.historico import repository as historico_repository
+from bson import ObjectId
+from bson.errors import InvalidId
 
 
 class EstadoMarcoAlterado(Exception):
     """Indica que outra requisição alterou o marco durante a operação."""
+
+class DependenciaInconsistente(Exception):
+    """Indica uma referência de dependência inválida ou inexistente."""
 
 
 def obra_existe(obra_id):
@@ -56,33 +61,65 @@ def dependencias_pendentes(marco):
             for vinculo in obra.get("dependencias_marcos", [])
             if vinculo.get("marco_id") == marco["_id"]
         )
+
     pendentes = []
+    ids_verificados = set()
+
     for dependencia_id in ids:
         try:
-            from bson import ObjectId
+            oid = (
+                dependencia_id
+                if isinstance(dependencia_id, ObjectId)
+                else ObjectId(str(dependencia_id))
+            )
+        except (InvalidId, TypeError, ValueError) as erro:
+            raise DependenciaInconsistente(
+                "Dependência com identificador inválido"
+            ) from erro
 
-            oid = dependencia_id if isinstance(dependencia_id, ObjectId) else ObjectId(str(dependencia_id))
-        except (TypeError, ValueError):
+        if oid in ids_verificados:
             continue
+        ids_verificados.add(oid)
+
         dependencia = buscar_marco_por_id(oid)
-        if dependencia and dependencia.get("estado") != "concluído":
+
+        if dependencia is None:
+            raise DependenciaInconsistente(
+                "Marco de dependência não encontrado"
+            )
+
+        if dependencia.get("obra_id") != marco["obra_id"]:
+            raise DependenciaInconsistente(
+                "A dependência pertence a outra obra"
+            )
+
+        if dependencia.get("estado") != "concluído":
             pendentes.append({
                 "id": str(oid),
                 "nome": dependencia.get("nome", "Marco"),
                 "estado": dependencia.get("estado", "a iniciar"),
             })
+
     return pendentes
 
 
 def salvar_estado_com_historico(marco_id, estado_anterior, estado_novo, evento):
-    evento_id = historico_repository.inserir_evento(evento)
-    try:
+    def executar (session):
         resultado = db.colecao_marcos.update_one(
-            {"_id": marco_id, "estado": estado_anterior},
-            {"$set": {"estado": estado_novo}},
+            {"_id":marco_id, "estado": estado_anterior},
+            {"$set": {"estado":estado_novo}},
+            session=session,
         )
+
         if resultado.matched_count != 1:
-            raise EstadoMarcoAlterado("O estado do marco foi alterado concorrentemente")
-    except Exception:
-        historico_repository.remover_evento(evento_id)
-        raise
+            raise EstadoMarcoAlterado(
+                "O estado do marco foi alterado concorrentemente"
+            )
+
+        historico_repository.inserir_evento(
+            dict(evento),
+            session=session,
+        )
+
+    with db.cliente_mongo.start_session() as session:
+        session.with_transaction(executar)

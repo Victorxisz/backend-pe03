@@ -66,7 +66,19 @@ def alterar_estado_marco(marco_id, dados, autor):
     if anterior == novo_estado:
         return {"id": str(object_id), "estado": anterior}
 
-    pendentes = repository.dependencias_pendentes(marco) if novo_estado == "concluído" else []
+    try:
+        pendentes = (
+            repository.dependencias_pendentes(marco)
+            if novo_estado == "concluído"
+            else []
+        )
+    except repository.DependenciaInconsistente as erro:
+        raise ErroMarco(
+            "As dependências do marco precisam ser corrigidas",
+            409,
+            detalhes={"codigo": "DEPENDENCIA_INCONSISTENTE"},
+        ) from erro
+    
     if pendentes and dados.get("confirmar_dependencias") is not True:
         raise ErroMarco("Há dependências pendentes", 409, [], {
             "codigo": "DEPENDENCIAS_PENDENTES", "dependencias": pendentes
