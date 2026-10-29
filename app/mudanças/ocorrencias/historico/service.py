@@ -108,8 +108,3 @@ def consultar_publicacoes(avanco_id):
     return [_representar(documento)]
 
 
-def consultar_previa(obra_id):
-    identificador = _id(obra_id, "obra_id")
-    if repository.buscar_obra(identificador) is None:
-        raise ErroPublicacao("Obra não encontrada", 404, ["obra_id"])
-    return [_representar(item) for item in repository.consultar_publicados(identificador)]

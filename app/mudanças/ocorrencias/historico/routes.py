@@ -5,7 +5,7 @@ from flask_jwt_extended import get_jwt_identity
 from pymongo.errors import PyMongoError
 
 from app.auth.permissions import sessao_obrigatoria
-from .service import ErroPublicacao, consultar_previa, consultar_publicacoes, publicar_avanco
+from .service import ErroPublicacao, consultar_publicacoes, publicar_avanco
 
 publicacoes_bp = Blueprint("publicacoes", __name__)
 
@@ -49,6 +49,3 @@ def listar(avanco_id):
     return jsonify(publicacoes=consultar_publicacoes(avanco_id))
 
 
-@publicacoes_bp.get("/obras/<string:obra_id>/previa")
-def previa(obra_id):
-    return jsonify(atualizacoes=consultar_previa(obra_id))
