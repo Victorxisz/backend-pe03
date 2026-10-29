@@ -3,8 +3,13 @@
 import db
 
 
-def inserir_evento(evento):
-    return db.colecao_historico.insert_one(evento).inserted_id
+def inserir_evento(evento, *, session=None):
+    resultado = db.colecao_historico.insert_one(
+        evento,
+        session=session,
+    )
+
+    return resultado.inserted_id
 
 
 def remover_evento(evento_id):
