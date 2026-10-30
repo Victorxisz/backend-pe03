@@ -584,3 +584,52 @@ Cobrem fotos/vídeos/PDFs, ausência de efeitos antes do DELETE, arquivos
 compartilhados e históricos, autenticação, conflitos de revisão/publicação,
 falhas parciais, retomada após timeout e falhas de finalização no banco.
 Não comprovam persistência no Atlas nem remoção no Cloudinary real.
+
+### Cadastro de avanço com evidências
+
+`POST /avancos` exige a sessão da construtora e `multipart/form-data`:
+`marco_id` (ID de um marco existente), `data` (`AAAA-MM-DD`), `descricao`
+e um ou mais arquivos no campo repetido `midias`. ID, autoria, instante de
+registro, estado `rascunho` e revisão são gerados pelo servidor.
+
+Exemplo no React:
+
+```javascript
+const dados = new FormData();
+dados.append('marco_id', marcoId);
+dados.append('data', data);
+dados.append('descricao', descricao);
+for (const arquivo of arquivos) dados.append('midias', arquivo);
+const resposta = await fetch(`${apiUrl}/avancos`, {
+  method: 'POST',
+  headers: { Authorization: `Bearer ${token}` },
+  body: dados,
+});
+const resultado = await resposta.json();
+if (!resposta.ok) throw new Error(resultado.mensagem);
+```
+
+O navegador define o Content-Type com o boundary do formulário. A resposta
+`201` contém o recurso e `Location: /avancos/{id}`. `GET /avancos/{id}` recupera
+o rascunho autenticado. Cada mídia inclui `conteudo: /midias/{id}/conteudo`;
+o React deve buscar esse conteúdo com o mesmo Bearer e usar um Blob para exibi-lo.
+As referências privadas do Cloudinary nunca são enviadas ao React.
+
+Todos os arquivos são validados antes dos uploads. O MongoDB confirma avanço
+e metadados em uma transação (requer Atlas ou replica set). Se a gravação
+falhar, os uploads são removidos; falhas nessa limpeza são registradas em
+`tbl_limpezas_midias`, para tratamento posterior pela equipe, e a API retorna
+`503`, sem anunciar cadastro concluído. Não há worker automático de limpeza.
+Se o resultado do commit for desconhecido, os arquivos são preservados para
+não apagar evidências possivelmente confirmadas. Um novo POST pode duplicar
+um pedido cujo resultado ficou incerto; este endpoint ainda não possui chave
+de idempotência.
+
+Testes locais do fluxo (Cloudinary simulado e rollback Mongo simulado):
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/test_cadastro_rascunhos.py -q
+```
+
+Com `--atlas`, os testes usam coleções temporárias e a transação Mongo real;
+o provedor de arquivos permanece simulado nesses testes.

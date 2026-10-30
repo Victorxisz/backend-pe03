@@ -1,24 +1,101 @@
-"""Exclusão retomável de rascunhos, sem excluir avanços publicados."""
+"""Cadastro, consulta, edição e exclusão de avanços em rascunho."""
 
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
-"""Regras de negócio da edição de avanços em rascunho."""
+import logging
+
+import db
+from pymongo.errors import PyMongoError
 
 from bson import ObjectId
 from bson.errors import InvalidId
 
-from app.integracoes.armazenamento import ErroArmazenamento
+from app.integracoes.armazenamento import ErroArmazenamento, ErroLimpeza
+from app.mudanças.ocorrencias.historico.validacoes import validar_midias
+from .validacoes import normalizar_edicao, validar_edicao
+from .midias import ServicoMidias
 from . import midias, repository
 from .revisoes import ConflitoRascunho
 
+logger = logging.getLogger(__name__)
 TEMPO_BLOQUEIO = timedelta(minutes=5)
 
 
 class ErroAvanco(Exception):
-    def __init__(self, mensagem, status, codigo, campos=(), pendentes=None):
+    def __init__(self, mensagem, status, codigo="AVANCO_INVALIDO", campos=(), pendentes=None):
         super().__init__(mensagem)
+        if not isinstance(codigo, str):
+            campos, codigo = codigo, "AVANCO_INVALIDO"
         self.status, self.codigo = status, codigo
         self.campos, self.pendentes = list(campos), pendentes
+
+
+def representar_rascunho(documento):
+    registro = documento["data_registro"]
+    if registro.tzinfo is None:
+        registro = registro.replace(tzinfo=timezone.utc)
+    return dict(id=str(documento["_id"]), marco_id=str(documento["marco_id"]),
+                data=documento["data"], descricao=documento["descricao"],
+                autor=documento["autor"], data_registro=registro.isoformat(),
+                estado=documento["estado"], revisao=documento["revisao"],
+                midias=[dict(id=str(m["_id"]), tipo=m["tipo"], nome=m["nome"],
+                            tamanho=m["tamanho"], mime=m["mime"],
+                            conteudo=f"/midias/{m['_id']}/conteudo")
+                        for m in repository.consultar_midias(documento["_id"])])
+
+
+def consultar_rascunho(avanco_id):
+    documento = repository.buscar_avanco(_identificar_avanco(avanco_id))
+    if documento is None or documento.get("estado") != "rascunho":
+        raise ErroAvanco("Rascunho não encontrado", 404, "AVANCO_NAO_ENCONTRADO")
+    return representar_rascunho(documento)
+
+
+def criar_rascunho(dados, arquivos, autor):
+    permitidos = {"marco_id", "data", "descricao"}
+    if not isinstance(dados, dict) or set(dados) != permitidos:
+        raise ErroAvanco("Envie somente marco_id, data e descricao", 422,
+                         "DADOS_INVALIDOS", sorted(permitidos))
+    erro = validar_edicao({k: dados[k] for k in ("data", "descricao")})
+    if erro:
+        raise ErroAvanco(erro[0], 422, "DADOS_INVALIDOS", erro[1])
+    try:
+        marco_id = ObjectId(dados["marco_id"])
+    except (InvalidId, TypeError):
+        raise ErroAvanco("ID do marco inválido", 422, "DADOS_INVALIDOS", ["marco_id"]) from None
+    marco = db.colecao_marcos.find_one({"_id": marco_id})
+    if marco is None or db.colecao_obras.find_one({"_id": marco.get("obra_id")}) is None:
+        raise ErroAvanco("Marco ou obra não encontrado", 404, "MARCO_NAO_ENCONTRADO", ["marco_id"])
+    agora = datetime.now(timezone.utc)
+    agora = agora.replace(microsecond=agora.microsecond // 1000 * 1000)
+    documento = dict(_id=ObjectId(), marco_id=marco_id, data=dados["data"],
+                     descricao=dados["descricao"].strip(), estado="rascunho",
+                     autor=autor, data_registro=agora, revisao=0)
+
+    def salvar(metadados):
+        registros = [dict(m, _id=ObjectId(), avanco_id=documento["_id"], data_envio=agora)
+                     for m in metadados]
+        return repository.salvar_criacao(documento, registros, marco)
+
+    try:
+        midias.ServicoMidias().executar_com_midias(arquivos, salvar)
+    except ErroLimpeza as erro:
+        # Referências privadas permanecem no servidor para posterior limpeza.
+        db.banco_dados["tbl_limpezas_midias"].insert_one(
+            dict(_id=ObjectId(), referencias=erro.pendentes, data_registro=agora,
+                 motivo="cadastro_nao_concluido"))
+        raise ErroAvanco("Cadastro não concluído; há arquivos pendentes de limpeza", 503,
+                         "LIMPEZA_PENDENTE", ["midias"], len(erro.pendentes)) from None
+    except midias.ErroMidia:
+        raise
+    except (ErroArmazenamento, ValueError):
+        raise ErroAvanco("Não foi possível armazenar as mídias. Tente novamente", 503,
+                         "ARMAZENAMENTO_INDISPONIVEL", ["midias"]) from None
+    except ConflitoRascunho:
+        raise ErroAvanco("O marco ou a obra foi alterado durante o cadastro", 409,
+                         "VINCULO_ALTERADO", ["marco_id"]) from None
+    return representar_rascunho(documento)
+
 
 
 def _conflito():
@@ -89,27 +166,7 @@ def excluir_rascunho(avanco_id):
     finally:
         if not concluido:
             repository.liberar_exclusao(identificador, token)
-from . import repository
-from .validacoes import normalizar_edicao, validar_edicao
 
-from app.integracoes.armazenamento import ErroArmazenamento
-from app.mudanças.ocorrencias.historico.validacoes import validar_midias
-
-from .midias import ServicoMidias
-from .revisoes import ConflitoRascunho
-
-import logging
-
-from pymongo.errors import PyMongoError
-
-logger = logging.getLogger(__name__)    
-
-
-class ErroAvanco(Exception):
-    def __init__(self, mensagem, status, campos=()):
-        super().__init__(mensagem)
-        self.status = status
-        self.campos = list(campos)
 
 
 def _identificar_avanco(valor):

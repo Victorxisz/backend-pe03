@@ -29,6 +29,26 @@ def buscar_avanco(avanco_id):
     return db.banco_dados["tbl_avancos"].find_one({"_id": avanco_id})
 
 
+def salvar_criacao(documento, midias, marco):
+    """Confirma registro e mídias juntos; Atlas suporta a transação."""
+    def gravar(sessao):
+        # A escrita no vínculo impede que a exclusão do marco/obra confirme
+        # simultaneamente com um cadastro que os utiliza.
+        for colecao, filtro in (
+            (db.colecao_obras, {"_id": marco["obra_id"]}),
+            (db.colecao_marcos, {"_id": marco["_id"], "obra_id": marco["obra_id"]}),
+        ):
+            if colecao.update_one(filtro, {"$inc": {"_versao_avancos": 1}},
+                                  session=sessao).matched_count != 1:
+                raise ConflitoRascunho()
+        db.banco_dados["tbl_avancos"].insert_one(dict(documento), session=sessao)
+        db.banco_dados["tbl_midias"].insert_many([dict(m) for m in midias], session=sessao)
+        return documento
+
+    with db.cliente_mongo.start_session() as sessao:
+        return sessao.with_transaction(gravar)
+
+
 def iniciar_exclusao(documento, arquivos, token, agora, ate):
     # O mesmo CAS usado pela publicação impede a disputa publicar/excluir.
     return db.banco_dados["tbl_avancos"].find_one_and_update(
