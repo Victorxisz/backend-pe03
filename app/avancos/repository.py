@@ -1,4 +1,4 @@
-"""Consulta dos avanços e dos metadados de suas mídias no MongoDB."""
+"""Persistência de avanços, revisões e limpeza de mídias."""
 
 from bson import ObjectId
 from pymongo import ReturnDocument
@@ -15,6 +15,18 @@ def avanco_existe(avanco_id):
         {"_id": avanco_id, "estado": {"$ne": ESTADO_EXCLUSAO}},
         {"_id": 1},
     ) is not None
+
+
+def marco_existe(marco_id):
+    return db.colecao_marcos.find_one({"_id": marco_id}, {"_id": 1}) is not None
+
+
+def inserir_avanco(documento):
+    return db.banco_dados["tbl_avancos"].insert_one(documento).inserted_id
+
+
+def buscar_avanco(avanco_id):
+    return db.banco_dados["tbl_avancos"].find_one({"_id": avanco_id})
 
 
 def consultar_midias(avanco_id):
@@ -249,8 +261,7 @@ def retomar_exclusao(avanco_id, token, agora, ate):
         {"_id": avanco_id, "estado": ESTADO_EXCLUSAO, "publicacao": {"$exists": False},
          "$or": [{"exclusao.token": None}, {"exclusao.ate": {"$lte": agora}}]},
         {"$set": {"exclusao.token": token, "exclusao.ate": ate},
-         "$inc": {"exclusao.tentativas": 1}},
-        return_document=ReturnDocument.AFTER,
+         "$inc": {"exclusao.tentativas": 1}}, return_document=ReturnDocument.AFTER,
     )
 
 
@@ -259,29 +270,21 @@ def _operacao(avanco_id, token):
 
 
 def renovar_exclusao(avanco_id, token, ate):
-    return db.banco_dados["tbl_avancos"].update_one(
-        _operacao(avanco_id, token), {"$set": {"exclusao.ate": ate}}
-    ).matched_count == 1
+    return db.banco_dados["tbl_avancos"].update_one(_operacao(avanco_id, token), {"$set": {"exclusao.ate": ate}}).matched_count == 1
 
 
 def concluir_arquivo(avanco_id, token, chave):
-    return db.banco_dados["tbl_avancos"].update_one(
-        _operacao(avanco_id, token), {"$pull": {"exclusao.pendentes": {"chave": chave}}}
-    ).matched_count == 1
+    return db.banco_dados["tbl_avancos"].update_one(_operacao(avanco_id, token), {"$pull": {"exclusao.pendentes": {"chave": chave}}}).matched_count == 1
 
 
 def liberar_exclusao(avanco_id, token):
-    db.banco_dados["tbl_avancos"].update_one(
-        _operacao(avanco_id, token),
-        {"$set": {"exclusao.token": None, "exclusao.ate": None}},
-    )
+    db.banco_dados["tbl_avancos"].update_one(_operacao(avanco_id, token), {"$set": {"exclusao.token": None, "exclusao.ate": None}})
 
 
 def registrar_falha_limpeza(avanco_id, token, agora):
     db.banco_dados["tbl_avancos"].update_one(
         _operacao(avanco_id, token),
-        {"$set": {"exclusao.ultima_falha_em": agora,
-                  "exclusao.ultimo_erro": "Não foi possível remover um arquivo no provedor"}},
+        {"$set": {"exclusao.ultima_falha_em": agora, "exclusao.ultimo_erro": "Não foi possível remover um arquivo no provedor"}},
     )
 
 
@@ -363,7 +366,6 @@ def validar_referencias_das_midias(avanco_id, midias):
 def arquivo_tem_outras_referencias(avanco_id, arquivo):
     """Preserva arquivos usados por outras mídias ou snapshots históricos."""
     from .midias import chave_arquivo, ErroMidia
-
     identidade = chave_arquivo(arquivo["referencia"])
     ids = set(arquivo["midia_ids"])
     textos = {str(valor) for valor in ids}

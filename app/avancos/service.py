@@ -19,7 +19,6 @@ from .validacoes import normalizar_edicao, validar_edicao
 logger = logging.getLogger(__name__)
 TEMPO_BLOQUEIO = timedelta(minutes=5)
 
-
 class ErroAvanco(Exception):
     def __init__(
         self,
@@ -35,7 +34,6 @@ class ErroAvanco(Exception):
         self.campos = list(campos)
         self.codigo = codigo
         self.pendentes = pendentes
-
 
 def _conflito():
     return ErroAvanco(
