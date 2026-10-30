@@ -154,16 +154,13 @@ def listar_obras(parametros):
 
 
 def listar_marcos(identifier):
-    # Valida o ID e diferencia obra inexistente de obra sem marcos.
-    buscar_obra(identifier)
-    return [
-        {"id": str(documento["_id"]), **{
-            campo: str(valor) if isinstance(valor, ObjectId) else valor
-            for campo, valor in documento.items()
-            if campo not in {"_id", "obra_id"}
-        }}
-        for documento in repository.consultar_marcos(ObjectId(identifier))
-    ]
+    # Compatibilidade para consumidores do serviço anterior à migração da rota.
+    from app.marcos.service import ErroMarco, listar_marcos as consultar_marcos
+
+    try:
+        return consultar_marcos(identifier)
+    except ErroMarco as erro:
+        raise ErroObra(str(erro), erro.status, erro.campos) from erro
 
 
 def editar_descricao(identifier, dados):
