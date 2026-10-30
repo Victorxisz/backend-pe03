@@ -9,6 +9,7 @@ from secret_audit import find_secrets
     [
         "mongodb+srv" + "://user:synthetic-value@host/db",
         "JWT_SECRET_KEY" + " = 'synthetic-value'",
+        "CLOUDINARY_API_KEY" + " = 'teste-synthetic-value'",
         "-----BEGIN " + "PRIVATE KEY-----",
     ],
 )
@@ -33,3 +34,10 @@ def test_permitir_exemplo_explicitamente_ficticio():
 
     # Verificação
     assert findings == []
+
+
+@pytest.mark.parametrize("valor", ["teste", "TESTE"])
+def test_permitir_valor_exato_usado_pelo_provedor_simulado(valor):
+    content = "CLOUDINARY_API_KEY" + " = '" + valor + "'"
+
+    assert find_secrets(content) == []

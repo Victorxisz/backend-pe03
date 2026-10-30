@@ -170,14 +170,18 @@ class ServicoMidias:
 
     def limpar_sem_referencias(self, midias, referencia_em_uso):
         pendentes = []
+
         for midia in midias:
             referencia = midia["referencia_externa"]
+
             try:
                 if referencia_em_uso(referencia):
                     continue
+
                 self.armazenamento.remover(referencia)
             except (ErroArmazenamento, PyMongoError):
                 pendentes.append(referencia)
+
         return pendentes
 
 

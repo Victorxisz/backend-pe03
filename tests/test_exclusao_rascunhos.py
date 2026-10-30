@@ -145,7 +145,13 @@ def test_ct39_preserva_arquivo_referenciado_no_historico(client, headers, databa
     # Execução
     response = client.delete(cenario.path, headers=headers)
     # Verificação
-    assert response.status_code == 204
+    if tipo == "id":
+        assert response.status_code == 409
+        assert database.tbl_avancos.find_one({"_id": cenario.avanco["_id"]})["estado"] == "rascunho"
+        assert client.get("/midias/" + str(cenario.midias[0]["_id"]), headers=headers).status_code == 200
+        cenario.destroy.assert_not_called()
+    else:
+        assert response.status_code == 204
     assert chave(cenario.midias[0]) in cenario.objetos
     assert database.tbl_historico.find_one({"_id": historico["_id"]}) == historico
 
@@ -413,3 +419,83 @@ def test_ct39_repetir_exclusao_concluida_nao_remove_outros_arquivos(client, head
     # Verificação
     assert response.status_code == 404
     assert cenario.destroy.call_count == chamadas
+
+
+
+@pytest.mark.parametrize(
+    "formato", [str, lambda valor: valor], ids=["texto", "ObjectId"]
+)
+def test_exclusao_preserva_acesso_a_midia_usada_em_publicacao(client, headers, database, cenario, formato):
+    midia = cenario.midias[0]
+    database.tbl_avancos.insert_one({
+        "estado": "publicado",
+        "publicacao": {"midias": [{"id": formato(midia["_id"])}]},
+    })
+    antes = snapshot(database)
+    resposta = client.delete(cenario.path, headers=headers)
+    assert resposta.status_code == 409
+    assert snapshot(database) == antes
+    assert client.get("/midias/" + str(midia["_id"]), headers=headers).status_code == 200
+    cenario.destroy.assert_not_called()
+
+
+def preparar_tarefa_antiga(database, cenario, *, compartilhada=False):
+    midia = cenario.adicionar()
+    database.tbl_midias.delete_one({"_id": midia["_id"]})
+    database.tbl_limpezas_midias.insert_one({
+        "_id": midia["_id"], "avanco_id": cenario.avanco["_id"], "midia": midia,
+    })
+    if compartilhada:
+        outro = database.tbl_avancos.insert_one({"estado": "rascunho"}).inserted_id
+        cenario.adicionar(dono=outro, referencia=midia["referencia_externa"])
+    return midia
+
+
+def test_exclusao_limpa_pendencias_de_edicoes_anteriores(client, headers, database, cenario):
+    preparar_tarefa_antiga(database, cenario)
+    resposta = client.delete(cenario.path, headers=headers)
+    assert resposta.status_code == 204
+    assert not cenario.objetos
+    assert database.tbl_limpezas_midias.count_documents({"avanco_id": cenario.avanco["_id"]}) == 0
+    assert cenario.destroy.call_count == 4
+
+
+def test_falha_em_pendencia_antiga_impede_204_e_permite_retomada(client, headers, database, cenario):
+    midia = preparar_tarefa_antiga(database, cenario)
+    cenario.falhas.add(chave(midia))
+    resposta = client.delete(cenario.path, headers=headers)
+    assert resposta.status_code == 503
+    assert resposta.get_json()["pendentes"] == 1
+    assert database.tbl_limpezas_midias.find_one({"_id": midia["_id"]})
+    cenario.falhas.clear()
+    assert client.delete(cenario.path, headers=headers).status_code == 204
+    assert not cenario.objetos
+    assert database.tbl_limpezas_midias.count_documents({}) == 0
+
+
+def test_pendencia_antiga_compartilhada_preserva_arquivo(client, headers, database, cenario):
+    midia = preparar_tarefa_antiga(database, cenario, compartilhada=True)
+    assert client.delete(cenario.path, headers=headers).status_code == 204
+    assert set(cenario.objetos) == {chave(midia)}
+    assert database.tbl_limpezas_midias.count_documents({}) == 0
+
+
+def test_retomada_incorpora_tarefa_antiga_fora_do_diario(client, headers, database, cenario):
+    cenario.falhas.update(cenario.objetos)
+    assert client.delete(cenario.path, headers=headers).status_code == 503
+    preparar_tarefa_antiga(database, cenario)
+    cenario.falhas.clear()
+    assert client.delete(cenario.path, headers=headers).status_code == 204
+    assert not cenario.objetos
+    assert database.tbl_limpezas_midias.count_documents({}) == 0
+
+
+def test_tarefa_de_limpeza_nao_e_referencia_ativa(client, headers, database, cenario):
+    midia = cenario.midias[0]
+    database.tbl_limpezas_midias.insert_one({
+        "_id": midia["_id"], "avanco_id": cenario.avanco["_id"], "midia": midia,
+    })
+    assert client.delete(cenario.path, headers=headers).status_code == 204
+    assert not cenario.objetos
+    assert cenario.destroy.call_count == 3
+    assert database.tbl_limpezas_midias.count_documents({}) == 0
