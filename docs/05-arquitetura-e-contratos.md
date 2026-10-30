@@ -68,8 +68,9 @@ Excluir isoladamente uma mudança já aplicada não integra o MVP; sua exclusão
 não vazios; `tipo` aceita `casa` ou `apartamentos`.
 
 O servidor gera `autor` com o ID da construtora autenticada e `data_registro`
-com o instante UTC, além de iniciar `estado` como `planejada` e `critica` como
-`false`. Esses campos e quaisquer campos desconhecidos são rejeitados no corpo
+com o instante UTC, além de iniciar `estado` como `planejada`. O único alerta,
+`atrasada`, é derivado do prazo e não é armazenado como campo editável.
+Campos controlados pelo servidor e campos desconhecidos são rejeitados no corpo
 da requisição. Os nomes antigos `cliente_referencia` e `criado_em` não fazem
 parte deste contrato; usar `cliente` e `data_registro`, respectivamente.
 
@@ -121,3 +122,7 @@ devem ser dias existentes em `AAAA-MM-DD`. Não é permitido misturar as modalid
 7. Integração React → Flask → Atlas funciona no EC2 com mídia recuperável.
 
 Esses testes cobrem riscos reais do produto; não precisam replicar cada linha de implementação.
+
+## Refatoração com POO e conclusão de obra
+
+A organização efetiva e o contrato `PATCH /obras/{id}/estado` estão em [modelo com POO](13-modelo-poo.md). A conclusão registra a data do servidor e mantém histórico junto ao estado.

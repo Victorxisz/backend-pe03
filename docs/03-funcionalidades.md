@@ -45,9 +45,9 @@ Este catálogo descreve **o que o usuário consegue fazer e por quê**. `P0` com
 
 **Tipos de mudança confirmados:** prazo de obra, prazo de marco, situação de marco e estado de finalização. Em todos: objeto alvo, campo, valor anterior, valor novo, motivo, autor e data. A aplicação não deve aceitar um histórico que afirme um valor novo sem que esse valor seja aplicado.
 
-**Dados mínimos da ocorrência:** identificador, obra, título, descrição, data de registro, estado e autor. Marco, foto/vídeo/documento e responsável são opcionais. Para `sem solução — aceita`, registrar justificativa, pessoa que aceitou e data da aceitação. A medida compensatória pode ser registrada, mas não exigida.
+**Dados mínimos da ocorrência:** identificador, obra, título, descrição, data de registro, estado e autor. Marco, foto/vídeo/documento e responsável são opcionais. O responsável opcional deve referenciar um trabalhador. Para `sem solução — aceita`, registrar justificativa, pessoa que aceitou e data da aceitação, preservando todas as aceitações anteriores. A medida compensatória pode ser registrada, mas não exigida.
 
-**Trabalhador no MVP:** nome, email, telefone, cargo, estado ativo, data de cadastro e vínculos com obras. O cadastro já iniciado no servidor não substitui login nem a autorização da construtora; listagem, validação de obra existente e integração com a interface ainda precisam ser concluídas.
+**Trabalhador no MVP:** nome, email, telefone, cargo, estado ativo, data de cadastro, vínculo com a construtora e vínculos com obras. O cadastro já iniciado no servidor não substitui login nem a autorização da construtora; listagem, validação de obra existente e integração com a interface ainda precisam ser concluídas.
 
 ## Dados simulados e transparência
 
@@ -79,3 +79,5 @@ Estas capacidades pertencem à visão de produto, mas não às entregas `P0` ou 
 ## Dependências entre funcionalidades
 
 `F-01 → F-02 → F-06 → F-08 → F-10` é a primeira trilha de implementação. `F-12` e `F-14` usam obra e marco já persistidos. `F-11` depende da publicação. `F-17` e `F-18` dependem de dados de exemplo vinculados a registros existentes. `F-19` exige exclusão em cascata confirmada; `F-20` depende da existência da obra. [O plano de entrega](07-plano-e-decisoes.md) transforma essa ordem em checkpoints.
+
+**Decisão de 30/10/2026:** existe apenas o alerta `atrasada`, derivado da data exata ou do fim do intervalo. A data efetiva de conclusão é automática. Ver [modelo implementado](13-modelo-poo.md).

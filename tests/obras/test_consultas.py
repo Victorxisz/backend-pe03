@@ -261,7 +261,8 @@ def test_ct14_alertas_coerentes_na_lista_e_detalhe(client, headers, database, ob
     # Verificação
     assert listed.status_code == detail.status_code == 200
     assert listed.get_json()["obras"][0] == detail.get_json()
-    assert detail.get_json()["alertas"] == ["crítica", "atrasada"]
+    assert detail.get_json()["alertas"] == ["atrasada"]
+    assert "critica" not in detail.get_json()
     assert snapshot(database) == before
 
 
@@ -317,10 +318,10 @@ def test_ct15_falha_banco_consultas(client, headers, database, obra, path, metho
 @pytest.mark.parametrize(
     "conclusao,alertas",
     [
-        ("2030-09-29", ["crítica"]),
-        ("2030-09-30", ["crítica"]),
-        ("2030-10-01", ["crítica", "atrasada"]),
-        (None, ["crítica"]),
+        ("2030-09-29", []),
+        ("2030-09-30", []),
+        ("2030-10-01", ["atrasada"]),
+        (None, []),
     ],
     ids=["antes-do-prazo", "no-prazo", "depois-do-prazo", "sem-data-historica"],
 )
