@@ -643,3 +643,65 @@ transação real do Atlas e falha injetada na gravação de metadados.
 Ao fim, os arquivos e bancos temporários são removidos. Se a limpeza de arquivo
 falhar, o banco de teste é preservado para permitir a reconciliação. Nenhum desses
 serviços reais foi acessado na execução local desta tarefa.
+
+## UC-09 — excluir avanço em rascunho (CT-39)
+
+`DELETE /avancos/{avancoId}` exige a sessão de uma construtora ativa. O backend
+não altera nada ao apenas consultar ou abrir a confirmação: a interface deve
+cancelar sem enviar DELETE. Esta rota não exclui avanços publicados.
+
+- `204`, sem corpo: arquivos exclusivos removidos, mídias do rascunho removidas e avanço excluído.
+- `400`: ID inválido; `404`: avanço inexistente (inclusive ao repetir uma exclusão já concluída).
+- `409`: não é rascunho, revisão mudou ou outra requisição ainda está excluindo.
+- `422`: referência de uma mídia é inválida; nada é removido antes de validar o lote.
+- `503`: limpeza ou finalização no banco ainda não concluída; nunca representa sucesso.
+
+A exclusão faz uma reserva atômica por estado e revisão, usando o mesmo protocolo
+`app/avancos/revisoes.py` da publicação. O estado interno `exclusao_pendente`
+impede publicar/editar o rascunho durante a limpeza e retira suas mídias das rotas
+de leitura. Não é um novo estado de negócio editável pelo React.
+
+Antes de remover o primeiro arquivo, o próprio documento do avanço recebe um
+diário durável em `exclusao`: arquivos da operação, pendentes, início, tentativas
+e bloqueio temporário. Isso evita depender da memória do processo. A lista de
+pendentes diminui a cada arquivo confirmado; arquivos com referências em outros
+registros são preservados. A identidade compara provedor, public_id, tipo de
+recurso e tipo de entrega, sem depender da ordem do dicionário ou do formato.
+Referências históricas também são preservadas de forma conservadora.
+
+Se o provedor falhar, os demais arquivos ainda são processados, a falha é
+registrada com mensagem neutra e a resposta inclui `codigo="LIMPEZA_PENDENTE"`
+e a quantidade pendente, sem referências externas nem credenciais. Para retomar,
+repita o mesmo DELETE. Os arquivos já confirmados não são removidos novamente.
+Remover um objeto já ausente é aceito pelo adaptador Cloudinary, permitindo
+recuperar também timeouts cuja resposta tenha sido perdida.
+
+O bloqueio evita duas limpezas simultâneas do mesmo avanço e é renovado durante
+a operação. Após uma interrupção abrupta, outra requisição pode retomá-la quando
+o bloqueio de cinco minutos expirar. Não há agendador automático neste cartão.
+As pendências podem ser localizadas em `tbl_avancos` pelo estado
+`exclusao_pendente`, mesmo após reiniciar o servidor.
+
+As mídias do rascunho e o avanço só são removidos do banco depois de processar os
+arquivos. Se a finalização no MongoDB falhar, o diário permanece e o DELETE pode
+ser repetido, sem retornar 204 antecipadamente. Isso é compensação retomável,
+não uma transação distribuída entre MongoDB e Cloudinary. Todos os serviços que
+editarem rascunhos devem usar `revisoes.registrar_alteracao` e respeitar o estado;
+escritas diretas no banco fora desse protocolo não são uma API suportada.
+
+A verificação de compartilhamento consulta os registros do banco e preserva
+objetos referenciados por outras mídias ou por snapshots históricos. Registros
+já reservados para exclusão não são leitores ativos; a remoção externa é
+idempotente quando duas exclusões compartilham o mesmo objeto. Para o volume
+do MVP, a busca conservadora percorre as coleções; um volume maior exigirá um
+índice/registro central de referências para evitar essa varredura.
+
+```powershell
+.\.venv\Scripts\python -m pytest tests/test_exclusao_rascunhos.py -v
+```
+
+Os testes locais usam MongoDB em memória e simulam apenas o provedor externo.
+Cobrem fotos/vídeos/PDFs, ausência de efeitos antes do DELETE, arquivos
+compartilhados e históricos, autenticação, conflitos de revisão/publicação,
+falhas parciais, retomada após timeout e falhas de finalização no banco.
+Não comprovam persistência no Atlas nem remoção no Cloudinary real.

@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from bson import ObjectId
 from bson.errors import InvalidId
 
+from app.obras import repository as obras_repository
+
 from . import repository
 from .dependencias import cria_ciclo
 from .validacoes import validar_alteracao_estado, validar_marco
@@ -66,7 +68,19 @@ def alterar_estado_marco(marco_id, dados, autor):
     if anterior == novo_estado:
         return {"id": str(object_id), "estado": anterior}
 
-    pendentes = repository.dependencias_pendentes(marco) if novo_estado == "concluído" else []
+    try:
+        pendentes = (
+            repository.dependencias_pendentes(marco)
+            if novo_estado == "concluído"
+            else []
+        )
+    except repository.DependenciaInconsistente as erro:
+        raise ErroMarco(
+            "As dependências do marco precisam ser corrigidas",
+            409,
+            detalhes={"codigo": "DEPENDENCIA_INCONSISTENTE"},
+        ) from erro
+
     if pendentes and dados.get("confirmar_dependencias") is not True:
         raise ErroMarco("Há dependências pendentes", 409, [], {
             "codigo": "DEPENDENCIAS_PENDENTES", "dependencias": pendentes
@@ -95,6 +109,53 @@ def alterar_estado_marco(marco_id, dados, autor):
             {"codigo": "MARCO_ALTERADO_CONCORRENTEMENTE"},
         )
     return {"id": str(object_id), "estado": novo_estado}
+
+
+def buscar_marco(obra_id, marco_id):
+    object_id_obra = _identificar_id(obra_id, "obra_id")
+    object_id_marco = _identificar_id(marco_id, "marco_id")
+    if not repository.obra_existe(object_id_obra):
+        raise ErroMarco("Obra não encontrada", 404, ["obra_id"])
+
+    documento = repository.buscar_marco_por_id(object_id_marco)
+    if documento is None or documento.get("obra_id") != object_id_obra:
+        raise ErroMarco("Marco não encontrado", 404, ["marco_id"])
+    return _marco_para_dict(documento)
+
+
+def listar_marcos(obra_id):
+    # Mantém os campos e erros da listagem originalmente publicada em obras.
+    try:
+        object_id_obra = _identificar_id(obra_id, "obra_id")
+    except ErroMarco:
+        raise ErroMarco("ID da obra inválido", 400, ["id"]) from None
+    if not repository.obra_existe(object_id_obra):
+        raise ErroMarco("Obra não encontrada", 404, ["id"])
+
+    return [
+        {campo: valor for campo, valor in _marco_para_dict(documento).items()
+         if campo != "obra_id"}
+        for documento in obras_repository.consultar_marcos(object_id_obra)
+    ]
+
+
+def _marco_para_dict(documento):
+    marco = {
+        campo: _serializar_object_ids(valor)
+        for campo, valor in documento.items() if campo != "_id"
+    }
+    marco["id"] = str(documento["_id"])
+    return marco
+
+
+def _serializar_object_ids(valor):
+    if isinstance(valor, ObjectId):
+        return str(valor)
+    if isinstance(valor, dict):
+        return {campo: _serializar_object_ids(item) for campo, item in valor.items()}
+    if isinstance(valor, list):
+        return [_serializar_object_ids(item) for item in valor]
+    return valor
 
 
 def listar_dependencias(marco_id):

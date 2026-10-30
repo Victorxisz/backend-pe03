@@ -3,6 +3,9 @@
 from dataclasses import dataclass
 from io import BytesIO
 import warnings
+import hashlib
+import json
+from pymongo.errors import PyMongoError
 
 import av
 from PIL import Image
@@ -106,14 +109,14 @@ class ServicoMidias:
         self.config = config or (armazenamento.config if armazenamento else ConfiguracaoArmazenamento.do_ambiente())
         self.armazenamento = armazenamento or ArmazenamentoCloudinary(self.config)
 
-    def executar_com_midias(self, arquivos, salvar, antes_envio=None, registrar_referencia=None):
+    def executar_com_midias(self, arquivos, salvar, antes_envio=None, registrar_referencia=None, permitir_sem_novos=False):
         """salvar(metadados) deve gravar o negócio atomicamente e retornar o resultado.
 
         Exceção desfaz somente os novos uploads. Mídias de versões anteriores
         não são removidas: podem continuar referenciadas pelo histórico.
         """
         arquivos = list(arquivos)
-        if not arquivos:
+        if not arquivos and not permitir_sem_novos:
             raise ErroMidia("Envie ao menos uma foto, vídeo ou documento")
         # Valida todo o lote antes de enviar o primeiro arquivo ao provedor.
         validados = [validar_arquivo(arquivo, self.config) for arquivo in arquivos]
@@ -128,7 +131,7 @@ class ServicoMidias:
                     enviados.append(self.armazenamento.enviar(arquivo, registrar_referencia))
             return salvar(enviados)
         except Exception as erro:
-            if isinstance(erro, ResultadoPersistenciaIndeterminado):
+            if isinstance(erro, ResultadoPersistenciaIndeterminado) or (isinstance(erro, PyMongoError) and erro.has_error_label("UnknownTransactionCommitResult")):
                 raise
             pendentes = list(erro.pendentes) if isinstance(erro, ErroLimpeza) else []
             for midia in reversed(enviados):
@@ -139,3 +142,51 @@ class ServicoMidias:
             if pendentes:
                 raise ErroLimpeza(pendentes) from erro
             raise
+
+    def limpar_sem_referencias(self, midias, referencia_em_uso, ):
+        pendentes = []
+
+        for midia in midias:
+            referencia = midia["referencia_externa"]
+
+            try:
+                if referencia_em_uso(referencia):
+                    continue
+
+                self.armazenamento.remover(referencia)
+            except (ErroArmazenamento, PyMongoError):
+                pendentes.append(referencia)
+
+        return pendentes
+
+def chave_arquivo(referencia):
+    """A identidade do objeto não depende da ordem dos campos nem do formato."""
+    if (not isinstance(referencia, dict)
+            or referencia.get("provedor") != "cloudinary"
+            or not isinstance(referencia.get("public_id"), str)
+            or not referencia["public_id"]
+            or not isinstance(referencia.get("resource_type"), str)
+            or referencia["resource_type"] not in {"image", "video", "raw"}
+            or referencia.get("delivery_type") != "authenticated"):
+        raise ErroMidia("Uma mídia possui referência de armazenamento inválida", 422,
+                       "REFERENCIA_INVALIDA", ["midias"])
+    return tuple(referencia[campo] for campo in
+                 ("provedor", "public_id", "resource_type", "delivery_type"))
+
+
+def preparar_limpeza(midias):
+    """Agrupa mídias que apontam ao mesmo arquivo; cada objeto é removido uma vez."""
+    arquivos = {}
+    for midia in midias:
+        referencia = midia.get("referencia_externa")
+        identidade = chave_arquivo(referencia)
+        chave = hashlib.sha256(json.dumps(identidade).encode()).hexdigest()
+        if chave not in arquivos:
+            arquivos[chave] = {"chave": chave, "referencia": dict(referencia), "midia_ids": []}
+        arquivos[chave]["midia_ids"].append(midia["_id"])
+    return list(arquivos.values())
+
+
+def remover_arquivo(referencia):
+    # Não exige configurar o provedor para excluir rascunho sem arquivos exclusivos.
+    ArmazenamentoCloudinary().remover(referencia)

@@ -1,7 +1,8 @@
 """Verifica detecção sem usar ou exibir credenciais reais."""
 
 import pytest
-from secret_audit import find_secrets
+import subprocess
+from secret_audit import audit_git, find_secrets
 
 
 @pytest.mark.parametrize(
@@ -33,3 +34,33 @@ def test_permitir_exemplo_explicitamente_ficticio():
 
     # Verificação
     assert findings == []
+
+
+def test_excecao_da_fixture_historica_nao_oculta_outros_valores():
+    # Preparação: somente a fixture completa conhecida deve ser ignorada.
+    fixture = ('for chave, valor in {"CLOUDINARY_CLOUD_NAME": "teste", "CLOUDINARY_API_' + 'KEY": "teste",\n'
+               '                     "CLOUDINARY_API_SECRET": "segredo-ficticio"}.items():')
+    isolado = 'CLOUDINARY_API_' + 'KEY = "teste"'
+
+    # Execução e verificação
+    assert find_secrets(fixture) == []
+    assert len(find_secrets(isolado)) == 1
+
+
+def test_auditoria_encontra_valor_removido_do_historico(tmp_path):
+    # Preparação: um repositório descartável com credencial inteiramente fictícia.
+    def git(*args):
+        subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
+
+    git("init", "-q")
+    arquivo = tmp_path / "configuracao.py"
+    arquivo.write_text("JWT_SECRET_" + "KEY = 'valor-sintetico-123'\n", encoding="utf-8")
+    git("add", "configuracao.py")
+    git("-c", "user.name=Teste", "-c", "user.email=teste@example.com", "commit", "-qm", "Adicionar exemplo")
+    arquivo.write_text("# exemplo removido\n", encoding="utf-8")
+    git("add", "configuracao.py")
+    git("-c", "user.name=Teste", "-c", "user.email=teste@example.com", "commit", "-qm", "Remover exemplo")
+
+    # Execução e verificação: a segunda versão não deve esconder a primeira.
+    findings = audit_git(tmp_path)
+    assert any(len(item) == 4 and item[1] == "configuracao.py" and item[2] == "segredo literal" for item in findings)

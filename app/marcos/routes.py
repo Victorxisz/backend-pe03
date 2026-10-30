@@ -4,18 +4,22 @@ from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
 from pymongo.errors import PyMongoError
 
+from app.auth.permissions import sessao_obrigatoria
+
 from .service import (
     ErroMarco,
     alterar_estado_marco,
+    buscar_marco,
     criar_dependencia,
     criar_marco,
     listar_dependencias,
+    listar_marcos,
     remover_dependencia,
 )
 
 
 marcos_bp = Blueprint("marcos", __name__)
-estado_marcos_bp = Blueprint("estado_marcos", __name__, url_prefix="/api/v1/marcos")
+estado_marcos_bp = Blueprint("estado_marcos", __name__, url_prefix="/marcos")
 
 
 def _responder_erro_marco(erro):
@@ -27,6 +31,32 @@ def _responder_erro_marco(erro):
 def _responder_erro_banco(mensagem):
     current_app.logger.exception(mensagem)
     return jsonify(mensagem=mensagem), 500
+
+
+@marcos_bp.get("/obras/<string:obra_id>/marcos/<string:marco_id>")
+@sessao_obrigatoria
+def consultar_marco(obra_id, marco_id):
+    try:
+        marco = buscar_marco(obra_id, marco_id)
+    except ErroMarco as erro:
+        return _responder_erro_marco(erro)
+    except PyMongoError:
+        current_app.logger.error("Falha no banco durante busca de marco")
+        return jsonify(mensagem="Não foi possível buscar o marco"), 500
+    return jsonify(marco), 200
+
+
+@marcos_bp.get("/obras/<string:obra_id>/marcos")
+@sessao_obrigatoria
+def consultar_marcos(obra_id):
+    try:
+        lista_marcos = listar_marcos(obra_id)
+    except ErroMarco as erro:
+        return _responder_erro_marco(erro)
+    except PyMongoError:
+        current_app.logger.error("Falha no banco durante consulta de marcos")
+        return jsonify(mensagem="Não foi possível consultar os marcos da obra"), 500
+    return jsonify(lista_marcos), 200
 
 
 @marcos_bp.post("/obras/<string:obra_id>/marcos")

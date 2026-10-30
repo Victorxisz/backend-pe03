@@ -22,17 +22,57 @@ def validar_rascunho(documento):
 
 
 def validar_midias(midias):
-    tipos = {"foto": {"image/jpeg", "image/png"}, "video": {"video/mp4"},
-             "documento": {"application/pdf"}}
+    tipos = {
+        "foto": {"image/jpeg", "image/png"},
+        "video": {"video/mp4"},
+        "documento": {"application/pdf"},
+    }
+
+    recursos = {
+        "foto":"image",
+        "video":"video",
+        "documento":"raw",
+    }
+
     if not midias:
         return False
+
     for midia in midias:
-        referencia = midia.get("referencia_externa")
-        if (not isinstance(referencia, dict) or referencia.get("provedor") != "cloudinary"
-                or not isinstance(midia.get("nome"), str) or not midia["nome"].strip()
-                or type(midia.get("tamanho")) is not int or midia["tamanho"] <= 0
-                or not isinstance(midia.get("tipo"), str)
-                or not isinstance(midia.get("mime"), str)
-                or midia.get("mime") not in tipos.get(midia.get("tipo"), set())):
+        if not isinstance(midia, dict):
             return False
+
+        tipo = midia.get("tipo")
+        mime = midia.get("mime")
+        nome = midia.get("nome")
+        tamanho = midia.get("tamanho")
+        referencia = midia.get("referencia_externa")
+
+        if (
+            not isinstance(tipo, str)
+            or tipo not in tipos
+            or not isinstance(mime, str)
+            or mime not in tipos[tipo]
+            or not isinstance(nome, str)
+            or not nome.strip()
+            or type(tamanho) is not int
+            or tamanho <= 0
+        ):
+            return False
+
+        if not isinstance(referencia, dict):
+            return False
+
+        public_id = referencia.get("public_id")
+        recurso = referencia.get("resource_type")
+
+        if (
+            referencia.get("provedor") != "cloudinary"
+            or not isinstance(public_id, str)
+            or not public_id.strip()
+            or not isinstance(recurso, str)
+            or recurso != recursos[tipo]
+            or referencia.get("delivery_type") != "authenticated"
+        ):
+            return False
+
     return True

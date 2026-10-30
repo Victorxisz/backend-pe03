@@ -40,7 +40,7 @@ def transacao_local(app, database, monkeypatch, request):
             kwargs.pop("session", None)
             return original(*args, **kwargs)
         return executar
-    for nome in ("find_one_and_update", "update_one"):
+    for nome in ("find_one_and_update", "update_one", "find", "insert_one"):
         monkeypatch.setattr(Collection, nome, sem_sessao(getattr(Collection, nome)))
 
 
@@ -207,6 +207,216 @@ def test_ct45_nova_instancia_mantem_previa_e_midia(client, headers, database, ce
         assert r.status_code == 200 and r.json == {"atualizacoes": [publicado]}
         midia = novo_client.get(publicado["midias"][0]["conteudo"], headers=headers)
         assert midia.status_code == 200 and midia.data == b"png"
+
+
+@pytest.mark.parametrize("campo,valor", [
+    ("resource_type", []), ("resource_type", {}),
+    ("resource_type", None), ("resource_type", "desconhecido"),
+    ("resource_type", "video"), ("public_id", ""),
+    ("provedor", "outro"), ("delivery_type", "upload"),
+])
+def test_referencia_invalida_nao_publica(
+    client, headers, database, cenario, campo, valor
+):
+    database.tbl_midias.update_one(
+        {"_id": cenario["midia"]},
+        {"$set": {f"referencia_externa.{campo}": valor}},
+    )
+    antes = snapshot(database)
+
+    resposta = client.post(cenario["publicar"], headers=headers)
+
+    assert resposta.status_code == 422
+    assert resposta.json["campos"] == ["midias"]
+    assert snapshot(database) == antes
+    cenario["resource"].assert_not_called()
+    cenario["download"].assert_not_called()
+
+
+@pytest.mark.parametrize("campo,valor", [
+    ("nome", " "), ("nome", None),
+    ("tamanho", 0), ("tamanho", True),
+])
+def test_metadados_invalidos_nao_publicam(
+    client, headers, database, cenario, campo, valor
+):
+    database.tbl_midias.update_one(
+        {"_id": cenario["midia"]}, {"$set": {campo: valor}},
+    )
+    antes = snapshot(database)
+
+    resposta = client.post(cenario["publicar"], headers=headers)
+
+    assert resposta.status_code == 422
+    assert resposta.json["campos"] == ["midias"]
+    assert snapshot(database) == antes
+    cenario["resource"].assert_not_called()
+
+
+@pytest.mark.parametrize("alteracao", ["adicionar", "remover", "alterar"])
+def test_mudanca_de_midia_apos_validacao_aborta_publicacao(
+    client, headers, database, cenario, monkeypatch, alteracao
+):
+    """Intercala uma edição após a última consulta do serviço, antes da transação."""
+    from app.mudanças.ocorrencias.historico import repository
+
+    original = repository.publicar
+    esperado = {}
+
+    def modificar_e_publicar(*args):
+        if alteracao == "adicionar":
+            nova = database.tbl_midias.find_one({"_id": cenario["midia"]})
+            nova["_id"] = ObjectId()
+            database.tbl_midias.insert_one(nova)
+        elif alteracao == "remover":
+            database.tbl_midias.delete_one({"_id": cenario["midia"]})
+        else:
+            database.tbl_midias.update_one(
+                {"_id": cenario["midia"]}, {"$set": {"nome": "alterada.png"}},
+            )
+        esperado.update(snapshot(database))
+        return original(*args)
+
+    monkeypatch.setattr(repository, "publicar", modificar_e_publicar)
+
+    resposta = client.post(cenario["publicar"], headers=headers)
+
+    assert resposta.status_code == 409
+    # A publicação é desfeita, mas a edição anterior à transação permanece.
+    assert snapshot(database) == esperado
+    assert client.get(cenario["previa"], headers=headers).json == {"atualizacoes": []}
+
+
+@pytest.mark.parametrize("revisao", [None, 0, 4])
+def test_publicacao_incrementa_revisao_e_repeticao_nao_incrementa(
+    client, headers, database, cenario, revisao
+):
+    # None representa o registro legado sem campo revisao.
+    if revisao is not None:
+        database.tbl_avancos.update_one(
+            {"_id": cenario["avanco"]}, {"$set": {"revisao": revisao}},
+        )
+
+    primeira = client.post(cenario["publicar"], headers=headers)
+    assert primeira.status_code == 201
+    salvo = database.tbl_avancos.find_one({"_id": cenario["avanco"]})
+    assert salvo["revisao"] == (0 if revisao is None else revisao) + 1
+    antes = snapshot(database)
+
+    segunda = client.post(cenario["publicar"], headers=headers)
+
+    assert segunda.status_code == 200
+    assert segunda.json == primeira.json
+    assert snapshot(database) == antes
+
+
+def test_edicao_registrada_apos_validacao_impede_publicacao(
+    client, headers, database, cenario, monkeypatch
+):
+    import db
+    from app.avancos.revisoes import registrar_alteracao
+    from app.mudanças.ocorrencias.historico import repository
+
+    original = repository.publicar
+    esperado = {}
+
+    def editar_e_publicar(documento, *args):
+        with db.cliente_mongo.start_session() as sessao:
+            sessao.with_transaction(
+                lambda transacao: registrar_alteracao(documento, transacao)
+            )
+        esperado.update(snapshot(database))
+        return original(documento, *args)
+
+    monkeypatch.setattr(repository, "publicar", editar_e_publicar)
+
+    resposta = client.post(cenario["publicar"], headers=headers)
+
+    assert resposta.status_code == 409
+    assert snapshot(database) == esperado
+    assert client.get(cenario["previa"], headers=headers).json == {"atualizacoes": []}
+
+
+@pytest.mark.parametrize("revisao", [None, 0, 4])
+def test_edicao_incrementa_revisao_e_recusa_documento_desatualizado(
+    app, database, cenario, revisao
+):
+    import db
+    from app.avancos.revisoes import ConflitoRascunho, registrar_alteracao
+
+    if revisao is not None:
+        database.tbl_avancos.update_one(
+            {"_id": cenario["avanco"]}, {"$set": {"revisao": revisao}},
+        )
+    documento = database.tbl_avancos.find_one({"_id": cenario["avanco"]})
+
+    def editar():
+        with db.cliente_mongo.start_session() as sessao:
+            sessao.with_transaction(
+                lambda transacao: registrar_alteracao(documento, transacao)
+            )
+
+    editar()
+    salvo = database.tbl_avancos.find_one({"_id": cenario["avanco"]})
+    assert salvo["revisao"] == (0 if revisao is None else revisao) + 1
+    antes = snapshot(database)
+
+    with pytest.raises(ConflitoRascunho):
+        editar()
+    assert snapshot(database) == antes
+
+
+@pytest.mark.parametrize("revisao", [-1, True, "1", None])
+def test_revisao_malformada_aborta_publicacao(
+    client, headers, database, cenario, revisao
+):
+    database.tbl_avancos.update_one(
+        {"_id": cenario["avanco"]}, {"$set": {"revisao": revisao}},
+    )
+    antes = snapshot(database)
+
+    resposta = client.post(cenario["publicar"], headers=headers)
+
+    assert resposta.status_code == 409
+    assert snapshot(database) == antes
+
+
+def test_edicao_nao_modifica_avanco_ja_publicado(client, headers, database, cenario):
+    import db
+    from app.avancos.revisoes import ConflitoRascunho, registrar_alteracao
+
+    assert client.post(cenario["publicar"], headers=headers).status_code == 201
+    documento = database.tbl_avancos.find_one({"_id": cenario["avanco"]})
+    antes = snapshot(database)
+
+    with pytest.raises(ConflitoRascunho):
+        with db.cliente_mongo.start_session() as sessao:
+            sessao.with_transaction(
+                lambda transacao: registrar_alteracao(documento, transacao)
+            )
+
+    assert snapshot(database) == antes
+
+
+def test_falha_apos_incremento_desfaz_revisao_e_insercao_de_midia(app, database, cenario):
+    import db
+    from app.avancos.revisoes import registrar_alteracao
+
+    documento = database.tbl_avancos.find_one({"_id": cenario["avanco"]})
+    antes = snapshot(database)
+
+    def editar_e_falhar(sessao):
+        registrar_alteracao(documento, sessao)
+        nova = database.tbl_midias.find_one({"_id": cenario["midia"]}, session=sessao)
+        nova["_id"] = ObjectId()
+        database.tbl_midias.insert_one(nova, session=sessao)
+        raise RuntimeError("Falha simulada após a edição")
+
+    with pytest.raises(RuntimeError, match="Falha simulada"):
+        with db.cliente_mongo.start_session() as sessao:
+            sessao.with_transaction(editar_e_falhar)
+
+    assert snapshot(database) == antes
 
 
 @pytest.mark.atlas

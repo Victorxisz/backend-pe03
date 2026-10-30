@@ -9,6 +9,7 @@ from app.integracoes.armazenamento import ErroArmazenamento, ErroLimpeza
 from .midias import ErroMidia, ResultadoPersistenciaIndeterminado
 from .service import consultar_avanco, consultar_avancos, criar_avanco
 from .validacoes import ErroAvanco
+from .exclusao import ErroExclusao, excluir_rascunho
 
 avancos_bp = Blueprint("avancos", __name__)
 
@@ -22,7 +23,10 @@ def exigir_sessao():
 @avancos_bp.errorhandler(ErroAvanco)
 @avancos_bp.errorhandler(ErroMidia)
 def erro_validacao(erro):
-    return jsonify(mensagem=str(erro), campos=erro.campos), erro.status
+    corpo = {"mensagem": str(erro), "campos": erro.campos}
+    if isinstance(erro, ErroMidia):
+        corpo["codigo"] = erro.codigo
+    return jsonify(corpo), erro.status
 
 
 @avancos_bp.errorhandler(ErroArmazenamento)
@@ -42,6 +46,9 @@ def erro_indeterminado(erro):
 @avancos_bp.errorhandler(PyMongoError)
 def erro_banco(erro):
     current_app.logger.error("Falha no banco durante operação de avanço")
+    if request.method == "DELETE":
+        return jsonify(mensagem="Não foi possível concluir a exclusão. Tente novamente",
+                       codigo="FALHA_NO_BANCO", campos=[]), 503
     return jsonify(mensagem="Não foi possível concluir a operação de avanço"), 500
 
 
@@ -84,3 +91,26 @@ def listar_avancos(marco_id):
 @avancos_bp.get("/avancos/<string:avanco_id>")
 def obter_avanco(avanco_id):
     return jsonify(consultar_avanco(avanco_id)), 200
+
+
+@avancos_bp.after_request
+def proteger_resposta(resposta):
+    resposta.headers["Cache-Control"] = "private, no-store"
+    return resposta
+
+
+@avancos_bp.errorhandler(ErroExclusao)
+def responder_erro_exclusao(erro):
+    corpo = dict(mensagem=str(erro), codigo=erro.codigo, campos=erro.campos)
+    if erro.pendentes is not None:
+        corpo["pendentes"] = erro.pendentes
+    resposta = jsonify(corpo)
+    if erro.status == 503 or erro.codigo == "CONFLITO_EXCLUSAO":
+        resposta.headers["Retry-After"] = "30"
+    return resposta, erro.status
+
+
+@avancos_bp.delete("/avancos/<string:avanco_id>")
+def excluir(avanco_id):
+    excluir_rascunho(avanco_id)
+    return "", 204
