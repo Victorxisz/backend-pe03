@@ -53,7 +53,7 @@ class ArmazenamentoCloudinary:
         return dict(public_id=public_id, resource_type=referencia["resource_type"],
                     type="authenticated")
 
-    def enviar(self, arquivo):
+    def enviar(self, arquivo, registrar_referencia=None):
         """Recebe somente um ArquivoValidado produzido pelo validador de mídia."""
         resource_type = {"foto": "image", "video": "video", "documento": "raw"}[arquivo.tipo]
         public_id = self.config.pasta + "/" + uuid4().hex
@@ -61,6 +61,9 @@ class ArmazenamentoCloudinary:
             public_id += ".pdf"
         referencia = dict(provedor="cloudinary", public_id=public_id, resource_type=resource_type,
                           delivery_type="authenticated", formato=arquivo.formato)
+        # A intenção deve existir no banco antes de iniciar a chamada externa.
+        if registrar_referencia is not None:
+            registrar_referencia(referencia)
         try:
             resultado = cloudinary.uploader.upload(
                 BytesIO(arquivo.conteudo), public_id=public_id, resource_type=resource_type,

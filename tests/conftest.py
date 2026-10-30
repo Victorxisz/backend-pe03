@@ -16,6 +16,8 @@ from support import TEST_INSTANT, isolated_app
 
 def pytest_addoption(parser):
     parser.addoption("--atlas", action="store_true", help="Usar MONGO_URI do ambiente ou .env")
+    parser.addoption("--uc09-atlas", action="store_true", help="UC-09 em cluster exclusivo TEST_UC09_MONGO_URI")
+    parser.addoption("--uc09-cloudinary", action="store_true", help="UC-09 com Cloudinary exclusivo de teste")
     parser.addoption(
         "--require-routes",
         action="store_true",
@@ -93,7 +95,7 @@ def client(app, clock):
 
 
 @pytest.fixture
-def account(database):
+def account(database, app):
     account = {
         "_id": ObjectId(),
         "nome": "Construtora Teste",
@@ -102,6 +104,7 @@ def account(database):
         "ativo": True,
     }
     database.tbl_construtora.insert_one(account)
+    app.config["CONSTRUTORA_ID"] = str(account["_id"])
     return account
 
 

@@ -28,55 +28,11 @@ def cadastro():
     }
 
 
-@pytest.mark.parametrize("telefone", [None, "(11) 3333-4444", "(11) 99999-9999"])
-def test_cadastro_normaliza_protege_senha_e_autentica(
-    app, client, database, cadastro, telefone
-):
-    if telefone is None:
-        cadastro.pop("telefone")
-    else:
-        cadastro["telefone"] = telefone
-
-    response = client.post("/construtora/", json=cadastro)
-
-    assert response.status_code == 201
-    body = response.get_json()
-    documento = database.tbl_construtora.find_one({
-        "_id": ObjectId(body["construtora"]["id"])
-    })
-    assert database.tbl_construtora.count_documents({}) == 1
-    esperado = None if telefone is None else "".join(c for c in telefone if c.isdigit())
-    assert documento["nome"] == "Construtora Nova"
-    assert documento["email"] == "nova@example.com"
-    assert documento.get("telefone") == esperado
-    assert documento["ativo"] is True
-    assert documento["data_cadastro"] == datetime(2030, 10, 20, 12)
-    assert "senha" not in documento
-    assert Bcrypt().check_password_hash(documento["senha_hash"], cadastro["senha"])
-    assert body["construtora"] == {
-        "id": str(documento["_id"]), "nome": documento["nome"],
-        "email": documento["email"], "telefone": esperado,
-    }
-    with app.app_context():
-        access = decode_token(body["access_token"])
-        refresh = decode_token(body["refresh_token"])
-    assert access["sub"] == refresh["sub"] == str(documento["_id"])
-    assert access["tipo"] == refresh["tipo"] == "construtora"
-    assert access["sessao_id"] == refresh["sessao_id"]
-    assert isinstance(access["sessao_id"], str) and access["sessao_id"]
-    assert access["type"] == "access"
-    assert refresh["type"] == "refresh"
-
-
-@pytest.mark.parametrize("campo", ["nome", "email", "senha"])
-def test_cadastro_exige_campos_obrigatorios(client, database, cadastro, campo):
-    cadastro.pop(campo)
+def test_cadastro_publico_bloqueado(client, database, cadastro):
     before = snapshot(database)
-
     response = client.post("/construtora/", json=cadastro)
-
-    assert response.status_code == 422
-    assert "erro" in response.get_json()
+    assert response.status_code == 403
+    assert "access_token" not in response.get_json()
     assert snapshot(database) == before
 
 
@@ -98,7 +54,7 @@ def test_dados_invalidos_nao_gravam(
 
     response = client.open(path, method=method, json=dados, headers=headers)
 
-    assert response.status_code == 422
+    assert response.status_code == (403 if method == "POST" else 422)
     assert "erro" in response.get_json()
     assert snapshot(database) == before
 
@@ -115,7 +71,7 @@ def test_corpo_ausente_ou_json_malformado(
         path, method=method, data=corpo, content_type="application/json", headers=headers
     )
 
-    assert response.status_code == 422
+    assert response.status_code == (403 if method == "POST" else 422)
     assert snapshot(database) == before
 
 
@@ -130,7 +86,7 @@ def test_email_duplicado_retorna_409(
 
     response = client.open(path, method=method, json=dados, headers=headers)
 
-    assert response.status_code == 409
+    assert response.status_code == (403 if method == "POST" else 409)
     assert snapshot(database) == before
 
 
@@ -375,7 +331,6 @@ def test_logout_com_refresh_encerra_apenas_a_sessao_informada(
 
 
 @pytest.mark.parametrize("method,path,collection,operation", [
-    ("POST", "/construtora/", "colecao_construtora", "insert_one"),
     ("PATCH", "/construtora/{id}", "colecao_construtora", "update_one"),
     ("DELETE", "/construtora/{id}", "colecao_construtora", "delete_one"),
     ("POST", "/construtora/login/", "colecao_construtora", "find_one"),

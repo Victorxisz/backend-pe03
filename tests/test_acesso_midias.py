@@ -219,11 +219,12 @@ def test_ct31_referencia_incompativel_nao_acessa_provedor(client, headers, datab
     backend.download.assert_not_called()
 
 
-def test_ct45_nova_aplicacao_recupera_referencia_cloudinary(client, headers, database, enviar_midia, conteudos):
+def test_ct45_nova_aplicacao_recupera_referencia_cloudinary(client, headers, database, enviar_midia, conteudos, account):
     # Preparação
     midia = enviar_midia()
     # Execução: recarrega Flask; o banco e o provedor externo simulado permanecem.
     with isolated_app(database) as nova_app:
+        nova_app.config["CONSTRUTORA_ID"] = str(account["_id"])
         response = nova_app.test_client().get(CONTEUDO.format(midia["_id"]), headers=headers)
     # Verificação
     assert response.status_code == 200

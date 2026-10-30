@@ -21,6 +21,14 @@ class ErroMidia(ValueError):
         self.campos = ["midias"] if campos is None else list(campos)
 
 
+class ResultadoPersistenciaIndeterminado(Exception):
+    """Commit pode ter ocorrido; nunca apague arquivos potencialmente referenciados."""
+
+    def __init__(self, referencias):
+        super().__init__("Não foi possível confirmar a gravação; a operação precisa de verificação")
+        self.referencias = referencias
+
+
 @dataclass(frozen=True)
 class ArquivoValidado:
     conteudo: bytes
@@ -98,7 +106,7 @@ class ServicoMidias:
         self.config = config or (armazenamento.config if armazenamento else ConfiguracaoArmazenamento.do_ambiente())
         self.armazenamento = armazenamento or ArmazenamentoCloudinary(self.config)
 
-    def executar_com_midias(self, arquivos, salvar):
+    def executar_com_midias(self, arquivos, salvar, antes_envio=None, registrar_referencia=None):
         """salvar(metadados) deve gravar o negócio atomicamente e retornar o resultado.
 
         Exceção desfaz somente os novos uploads. Mídias de versões anteriores
@@ -109,12 +117,19 @@ class ServicoMidias:
             raise ErroMidia("Envie ao menos uma foto, vídeo ou documento")
         # Valida todo o lote antes de enviar o primeiro arquivo ao provedor.
         validados = [validar_arquivo(arquivo, self.config) for arquivo in arquivos]
+        if antes_envio is not None:
+            antes_envio(validados)
         enviados = []
         try:
             for arquivo in validados:
-                enviados.append(self.armazenamento.enviar(arquivo))
+                if registrar_referencia is None:
+                    enviados.append(self.armazenamento.enviar(arquivo))
+                else:
+                    enviados.append(self.armazenamento.enviar(arquivo, registrar_referencia))
             return salvar(enviados)
         except Exception as erro:
+            if isinstance(erro, ResultadoPersistenciaIndeterminado):
+                raise
             pendentes = list(erro.pendentes) if isinstance(erro, ErroLimpeza) else []
             for midia in reversed(enviados):
                 try:

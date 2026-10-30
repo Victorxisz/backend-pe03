@@ -198,9 +198,10 @@ def test_rotas_exigem_sessao(app, client, headers, emitir_headers, account, data
     cenario["resource"].assert_not_called()
 
 
-def test_ct45_nova_instancia_mantem_previa_e_midia(client, headers, database, cenario):
+def test_ct45_nova_instancia_mantem_previa_e_midia(client, headers, database, cenario, account):
     publicado = client.post(cenario["publicar"], headers=headers).json
     with isolated_app(database) as nova_app:
+        nova_app.config["CONSTRUTORA_ID"] = str(account["_id"])
         novo_client = nova_app.test_client()
         r = novo_client.get(cenario["previa"], headers=headers)
         assert r.status_code == 200 and r.json == {"atualizacoes": [publicado]}
