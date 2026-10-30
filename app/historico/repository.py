@@ -1,16 +1,19 @@
-"""Acesso à persistência do histórico."""
+"""Persistência do histórico, com coleção recebida por dependência."""
 
 import db
 
 
-def inserir_evento(evento, *, session=None):
-    resultado = db.colecao_historico.insert_one(
-        evento,
-        session=session,
-    )
+class RepositorioHistorico:
+    def __init__(self, colecao=None):
+        self.colecao = colecao if colecao is not None else db.colecao_historico
 
-    return resultado.inserted_id
+    def inserir_evento(self, evento, *, session=None):
+        return self.colecao.insert_one(evento, session=session).inserted_id
+
+    def remover_evento(self, evento_id):
+        self.colecao.delete_one({"_id": evento_id})
 
 
-def remover_evento(evento_id):
-    db.colecao_historico.delete_one({"_id": evento_id})
+_repositorio = RepositorioHistorico()
+inserir_evento = _repositorio.inserir_evento
+remover_evento = _repositorio.remover_evento

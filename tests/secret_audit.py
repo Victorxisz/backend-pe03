@@ -19,7 +19,7 @@ def find_secrets(content):
             # Exemplos explicitamente fictícios, não exceções por caminho de arquivo.
             value = match.group(match.lastindex) if match.lastindex else ""
             if value and (
-                value.lower() in {"senha", "password", "changeme", "your_secret_here"}
+                value.lower() in {"senha", "password", "changeme", "your_secret_here", "teste"}
                 or any(
                     word in value.lower()
                     for word in ("ficticia", "fictício", "example", "${", "<")

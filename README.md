@@ -1,5 +1,8 @@
 # Projeto Ágil — acompanhamento de obras
 
+A organização atual com POO e as decisões de 30/10 estão em
+[Modelo e organização do backend](docs/13-modelo-poo.md).
+
 ## Cadastro de marcos — UC-05
 
 `POST /obras/{obraId}/marcos` exige token de acesso da construtora e uma obra

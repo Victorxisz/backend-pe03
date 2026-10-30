@@ -9,6 +9,21 @@ ESTADO_EXCLUSAO = "exclusao_pendente"
 from bson import ObjectId
 
 from .revisoes import ConflitoRascunho, registrar_alteracao
+from .rascunhos_repository import RepositorioRascunhos
+
+
+def salvar_edicao(documento, alteracoes, midias_anteriores, ids_manter, novas_midias):
+    return RepositorioRascunhos().salvar_edicao(
+        documento, alteracoes, midias_anteriores, ids_manter, novas_midias,
+    )
+
+
+def referencia_em_uso(referencia, ids_midias=()):
+    return RepositorioRascunhos().referencia_em_uso(referencia, ids_midias)
+
+
+def concluir_limpeza(midia_id):
+    return RepositorioRascunhos().concluir_limpeza(midia_id)
 
 
 def avanco_existe(avanco_id):

@@ -16,7 +16,7 @@ def filtro_revisao (documento):
 
     return {"revisao":revisao}
 
-def registrar_alteracao (documento, sessao):
+def registrar_alteracao(documento, sessao, *, colecao=None):
     filtro = {
         "_id": documento["_id"],
         "estado":"rascunho",
@@ -24,7 +24,8 @@ def registrar_alteracao (documento, sessao):
         **filtro_revisao(documento)
     }
 
-    resultado = db.banco_dados["tbl_avancos"].update_one(
+    avancos = colecao if colecao is not None else db.banco_dados["tbl_avancos"]
+    resultado = avancos.update_one(
         filtro,
         {"$inc": {"revisao":1}},
         session=sessao,

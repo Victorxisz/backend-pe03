@@ -192,7 +192,9 @@ A API externa escolhida deve participar de uma ação real. Se ViaCEP for adotad
 
 ## Pontos de desenho propostos, não decisões atribuídas ao grupo
 
-- Ao excluir uma obra, **proposta:** retirar apenas o vínculo de trabalhadores também vinculados a outras obras; não apagar a pessoa de todas as obras. Confirmar antes de implementar UC-17/20.
-- Ao excluir um marco, **proposta:** remover a ocorrência ligada a ele junto com os registros dependentes, conforme “apagar tudo junto”. Confirmar se o grupo prefere preservar a ocorrência na obra sem o marco.
+- Trabalhador possui vínculo próprio com a construtora. A exclusão de obra retira seus vínculos; não deve apagar a pessoa de outras obras.
+- Confirmado em 30/10: ao excluir um marco, remover suas ocorrências junto com os registros dependentes.
 - O aviso de dependência deve existir também quando a alteração vier diretamente pela API. O formato exato da confirmação HTTP ainda será definido no contrato.
 - Excluir arquivos de provedor externo junto de dados no Atlas requer estratégia de recuperação de falha; o comportamento visível está especificado, a técnica ainda não.
+
+**Decisões de 30/10:** responsável de ocorrência referencia trabalhador; aceitações podem se repetir sem apagar as anteriores; a conclusão da obra é datada automaticamente. Ver [modelo com POO](13-modelo-poo.md).

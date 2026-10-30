@@ -8,13 +8,10 @@ from bson.errors import InvalidId
 from app.integracoes.armazenamento import ArmazenamentoCloudinary, ErroArmazenamento
 from .midias import ErroMidia
 from . import repository
+from app.dominio.avancos import TIPOS_MIDIA
 
 
-TIPOS = {
-    "foto": {"image/jpeg", "image/png"},
-    "video": {"video/mp4"},
-    "documento": {"application/pdf"},
-}
+TIPOS = TIPOS_MIDIA
 
 
 def _identificador(valor, campo):

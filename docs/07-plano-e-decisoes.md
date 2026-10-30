@@ -55,7 +55,7 @@ Uma funcionalidade só está concluída quando: (1) segue a regra de domínio; (
 | D-10 | Código do React e do Flask ficará em repositórios diferentes; ambos já existem no GitHub | Esta documentação pode ser referenciada pelos dois. |
 | D-11 | Avaliações, compreensão e dúvidas do comprador serão pré-carregadas e associadas à obra, marco ou atualização | Mostrar origem simulada; não implementar comentários reais. |
 | D-12 | Uma obra tem um cliente de referência no MVP | Não criar vínculo de vários compradores nem login de cliente. |
-| D-13 | Crítica pode coexistir com andamento; atraso é derivado exclusivamente do prazo vencido | Filtrar ciclo de vida e alertas separadamente. |
+| D-13 | Crítica e atrasada foram unificadas no único alerta atrasada; ele deriva do prazo vencido | Filtrar ciclo de vida e alertas separadamente. |
 | D-14 | Dependência pendente gera aviso, não bloqueio de conclusão | A decisão de prosseguir fica com a construtora. |
 | D-15 | Obra e marco concluídos podem ser reabertos | Guardar antes/depois, motivo, autor e data. |
 | D-16 | Cadastrar trabalhadores entra no MVP, como ação da construtora | Trabalhador não autentica; a rota existente deve ser integrada a obras reais. |
@@ -68,7 +68,7 @@ Uma funcionalidade só está concluída quando: (1) segue a regra de domínio; (
 | P-01 | Professor validar o tema e dizer quais APIs externas atendem à exigência | Apresentar Cloudinary para mídia e ViaCEP como alternativa complementar | Antes de integrar mídia |
 | P-02 | Escolher provedor de armazenamento de foto, vídeo e documento | Comparar Cloudinary e S3 por acesso privado, limites e esforço; implementar um primeiro | 17/10 |
 | P-03 | Definir exclusão isolada de um registro histórico já aplicado, se algum dia necessária | Fora do MVP; preservar histórico enquanto objeto principal existir | Após o MVP |
-| P-04 | Definir a data efetiva de conclusão da obra para cálculo histórico do atraso | Não marcar obra entregue em dia como atrasada apenas porque hoje passou do prazo | Antes do filtro por atraso |
+| P-04 | Resolvida em 30/10: conclusão efetiva automática no servidor | Usar a conclusão para atraso histórico; preservar conclusões anteriores ao reabrir | Confirmada |
 | P-07 | Fixar tamanho máximo, tipos MIME e política de acesso às mídias | Usar valores pequenos no MVP e URLs de acesso restrito/temporário | Antes de F-08 |
 
 ## Riscos que merecem atenção cedo
