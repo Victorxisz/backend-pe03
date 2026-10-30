@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 from io import BytesIO
+import hashlib
+import json
 import warnings
 
 import av
@@ -124,3 +126,36 @@ class ServicoMidias:
             if pendentes:
                 raise ErroLimpeza(pendentes) from erro
             raise
+
+
+def chave_arquivo(referencia):
+    """A identidade do objeto não depende da ordem dos campos nem do formato."""
+    if (not isinstance(referencia, dict)
+            or referencia.get("provedor") != "cloudinary"
+            or not isinstance(referencia.get("public_id"), str)
+            or not referencia["public_id"]
+            or not isinstance(referencia.get("resource_type"), str)
+            or referencia["resource_type"] not in {"image", "video", "raw"}
+            or referencia.get("delivery_type") != "authenticated"):
+        raise ErroMidia("Uma mídia possui referência de armazenamento inválida", 422,
+                       "REFERENCIA_INVALIDA", ["midias"])
+    return tuple(referencia[campo] for campo in
+                 ("provedor", "public_id", "resource_type", "delivery_type"))
+
+
+def preparar_limpeza(midias):
+    """Agrupa mídias que apontam ao mesmo arquivo; cada objeto é removido uma vez."""
+    arquivos = {}
+    for midia in midias:
+        referencia = midia.get("referencia_externa")
+        identidade = chave_arquivo(referencia)
+        chave = hashlib.sha256(json.dumps(identidade).encode()).hexdigest()
+        if chave not in arquivos:
+            arquivos[chave] = {"chave": chave, "referencia": dict(referencia), "midia_ids": []}
+        arquivos[chave]["midia_ids"].append(midia["_id"])
+    return list(arquivos.values())
+
+
+def remover_arquivo(referencia):
+    # Não exige configurar o provedor para excluir rascunho sem arquivos exclusivos.
+    ArmazenamentoCloudinary().remover(referencia)
