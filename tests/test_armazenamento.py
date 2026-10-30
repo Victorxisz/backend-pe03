@@ -34,6 +34,34 @@ def provedor(monkeypatch, config):
     return ArmazenamentoCloudinary(config), upload, destroy, resource
 
 
+@pytest.mark.parametrize("campo,valor", [
+    ("resource_type", []), ("resource_type", {}),
+    ("resource_type", None), ("resource_type", "desconhecido"),
+    ("public_id", []), ("public_id", "outra-pasta/" + "a" * 32),
+    ("provedor", "outro"), ("delivery_type", "upload"),
+])
+def test_referencia_malformada_recusada_antes_de_acessar_provedor(
+    provedor, config, campo, valor
+):
+    storage, upload, destroy, resource = provedor
+    referencia = {
+        "provedor": "cloudinary",
+        "public_id": config.pasta + "/" + "a" * 32,
+        "resource_type": "image",
+        "delivery_type": "authenticated",
+        "formato": "png",
+    }
+    referencia[campo] = valor
+
+    with pytest.raises(ErroArmazenamento) as erro:
+        storage.obter_acesso(referencia)
+
+    assert erro.value.status == 422
+    upload.assert_not_called()
+    destroy.assert_not_called()
+    resource.assert_not_called()
+
+
 @pytest.mark.parametrize("extensao,tipo,mime", [
     ("jpg", "foto", "image/jpeg"), ("png", "foto", "image/png"),
     ("mp4", "video", "video/mp4"), ("pdf", "documento", "application/pdf"),
