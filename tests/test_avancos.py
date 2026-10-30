@@ -134,6 +134,7 @@ def test_ct31_ct32_criar_e_consultar(
     )
     # Verificação
     assert response.status_code == 201
+    assert "referencia_externa" not in response.get_data(as_text=True)
     resultado = response.get_json()
     assert response.headers["Location"] == f"/avancos/{resultado['id']}"
     assert resultado["estado"] == "rascunho" and resultado["autor"] == str(
@@ -802,3 +803,22 @@ def test_exclusao_preserva_arquivo_referenciado_por_upload_pendente(
     assert resposta.status_code == 204
     assert referencia["public_id"] in backend[0]
     backend[2].assert_not_called()
+
+
+def test_limpeza_considera_historico_mas_ignora_diario_concluido(
+    client, headers, database, marco, backend, conteudos, transacao_local
+):
+    # Preparação
+    from app.avancos import repository
+
+    criado = client.post(f"/marcos/{marco}/avancos", headers=headers, data=dados(conteudos["png"]))
+    assert criado.status_code == 201
+    midia = database.tbl_midias.find_one()
+    referencia = midia["referencia_externa"]
+    database.tbl_midias.delete_one({"_id": midia["_id"]})
+    historico = database.tbl_versoes.insert_one({"anterior": {"referencia_externa": referencia}})
+
+    # Execução e verificação
+    assert repository.referencia_em_uso(referencia)
+    database.tbl_versoes.delete_one({"_id": historico.inserted_id})
+    assert not repository.referencia_em_uso(referencia)

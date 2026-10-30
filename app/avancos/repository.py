@@ -380,41 +380,37 @@ def midia_tem_publicacao(midia_id, *, sessao=None):
     return documento is not None
 
 def referencia_em_uso(referencia, *, ids_midias=()):
-    campos_identidade = (
-        "provedor",
-        "public_id",
-        "resource_type",
-        "delivery_type",
-    )
-
-    # Sem uma identidade válida, não autoriza a exclusão.
-    if not isinstance(referencia, dict):
-        return True
-
-    if any(
-        not isinstance(referencia.get(campo), str)
-        or not referencia[campo].strip()
-        for campo in campos_identidade
+    campos = ("provedor", "public_id", "resource_type", "delivery_type")
+    if not isinstance(referencia, dict) or any(
+        not isinstance(referencia.get(campo), str) or not referencia[campo].strip()
+        for campo in campos
     ):
         return True
+    identidade = tuple(referencia[campo] for campo in campos)
 
-    filtro = {
-        f"referencia_externa.{campo}": referencia[campo]
-        for campo in campos_identidade
-    }
-
-    encontrada = db.banco_dados["tbl_midias"].find_one(
-        filtro,
-        {"_id": 1},
-    )
-
-    if encontrada is not None:
+    if any(midia_tem_publicacao(midia_id) for midia_id in ids_midias):
         return True
 
-    return any(
-        midia_tem_publicacao(midia_id)
-        for midia_id in ids_midias
-    )
+    def contem(valor):
+        if isinstance(valor, dict):
+            if tuple(valor.get(campo) for campo in campos) == identidade:
+                return True
+            return any(contem(item) for item in valor.values())
+        if isinstance(valor, list):
+            return any(contem(item) for item in valor)
+        return False
+
+    banco = db.banco_dados
+    for nome in banco.list_collection_names():
+        if nome == "tbl_limpezas_midias":
+            continue
+        for documento in banco[nome].find():
+            if (nome == "tbl_uploads_pendentes"
+                    and documento.get("estado") in {"concluida", "limpa"}):
+                continue
+            if contem(documento):
+                return True
+    return False
 
 def concluir_limpeza(midia_id):
     db.banco_dados["tbl_limpezas_midias"].delete_one(
