@@ -64,6 +64,9 @@ class ServicoConstrutoras:
         oid = self._identificar(identificador)
         if perfil != "construtora" or str(oid) != autor:
             raise ErroConstrutora("Você só pode alterar sua própria conta", 403)
+        conta = self.repositorio.buscar(oid)
+        if conta is not None and not Construtora.de_documento(conta).ativo:
+            raise ErroConstrutora("Sua conta está desativada", 403)
         return oid
 
     def atualizar(self, identificador, dados, autor, perfil):

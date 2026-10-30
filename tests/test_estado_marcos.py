@@ -243,3 +243,22 @@ def test_historico_inserido_tambem_e_revertido_em_falha(client, headers, databas
     assert chamadas == [True]
     assert database.tbl_marcos.find_one({"_id": marco_id})["estado"] == "a iniciar"
     assert database.tbl_historico.count_documents({}) == 0
+
+
+@pytest.mark.atlas
+def test_versao_impede_sobrescrita_apos_estado_ir_e_voltar(client, headers, database, monkeypatch):
+    """A comparação apenas do estado não detectaria essa sequência concorrente."""
+    from app.marcos import repository
+    marco_id = criar_marco(database)
+    salvar = repository.salvar_estado_com_historico
+
+    def salvar_apos_outras_decisoes(*args, **kwargs):
+        database.tbl_marcos.update_one({"_id": marco_id}, {"$inc": {"versao": 2}})
+        return salvar(*args, **kwargs)
+
+    monkeypatch.setattr(repository, "salvar_estado_com_historico", salvar_apos_outras_decisoes)
+    resposta = client.patch(PATH.format(marco_id), json=payload(), headers=headers)
+    assert resposta.status_code == 409
+    assert resposta.get_json()["codigo"] == "MARCO_ALTERADO_CONCORRENTEMENTE"
+    assert database.tbl_marcos.find_one({"_id": marco_id})["estado"] == "a iniciar"
+    assert database.tbl_historico.count_documents({}) == 0

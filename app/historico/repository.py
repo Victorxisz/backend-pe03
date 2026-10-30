@@ -10,10 +10,6 @@ class RepositorioHistorico:
     def inserir_evento(self, evento, *, session=None):
         return self.colecao.insert_one(evento, session=session).inserted_id
 
-    def remover_evento(self, evento_id):
-        self.colecao.delete_one({"_id": evento_id})
-
 
 _repositorio = RepositorioHistorico()
 inserir_evento = _repositorio.inserir_evento
-remover_evento = _repositorio.remover_evento

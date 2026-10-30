@@ -72,6 +72,7 @@ def test_ct11_marcos_nao_vazam(client, headers, database, two_works):
     assert ra.status_code == rb.status_code == 200
     assert ra.get_json() == [{
         "id": str(marco["_id"]), "nome": "Marco exclusivo A", "estado": "a iniciar",
+        "versao": 0,
     }]
     assert rb.get_json() == []
     assert snapshot(database) == before

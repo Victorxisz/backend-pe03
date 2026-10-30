@@ -1,7 +1,5 @@
 """Regras de negócio de marcos e suas dependências."""
 
-from datetime import datetime, timezone
-
 from bson import ObjectId
 from bson.errors import InvalidId
 
@@ -58,7 +56,7 @@ class ServicoMarcos:
             },
         }
 
-    def alterar_estado_marco(self, marco_id, dados, autor):
+    def alterar_estado_marco(self, marco_id, dados, autor, *, versao_esperada=None):
         object_id = self._identificar_id(marco_id, "marco_id")
         erro = validar_alteracao_estado(dados)
         if erro:
@@ -68,6 +66,8 @@ class ServicoMarcos:
         marco = self.repositorio.buscar_marco(object_id)
         if not marco:
             raise ErroMarco("Marco não encontrado", 404, ["marco_id"])
+        if versao_esperada is not None and marco.get("versao", 0) != versao_esperada:
+            raise ErroMarco("O marco foi alterado; consulte novamente", 409, ["versao"])
 
         novo_estado = dados["estado"]
         anterior = marco.get("estado", "a iniciar")
@@ -109,7 +109,9 @@ class ServicoMarcos:
             "dependencias_pendentes": pendentes,
         }
         try:
-            self.repositorio.salvar_estado_com_historico(object_id, anterior, novo_estado, evento)
+            self.repositorio.salvar_estado_com_historico(
+                object_id, anterior, novo_estado, evento, versao=marco.get("versao", 0)
+            )
         except repository.EstadoMarcoAlterado:
             raise ErroMarco(
                 "O estado do marco foi alterado por outra requisição; atualize os dados e tente novamente",
@@ -151,6 +153,7 @@ class ServicoMarcos:
             for campo, valor in documento.items() if campo != "_id"
         }
         marco["id"] = str(documento["_id"])
+        marco["versao"] = documento.get("versao", 0)
         return marco
 
     def _serializar_object_ids(self, valor):

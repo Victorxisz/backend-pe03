@@ -36,6 +36,7 @@ class ServicoObras:
         }
 
         obra["id"] = str(documento["_id"])
+        obra["versao"] = documento.get("versao", 0)
 
         registro = obra.get("data_registro")
         if isinstance(registro, datetime):
@@ -198,7 +199,7 @@ class ServicoObras:
     def calcular_alertas(self, documento):
         return Obra.de_documento(documento).alertas(self.relogio.agora().date())
 
-    def alterar_estado(self, identifier, dados, autor):
+    def alterar_estado(self, identifier, dados, autor, *, versao_esperada=None):
         try:
             obra_id = ObjectId(identifier)
         except (InvalidId, TypeError):
@@ -209,6 +210,8 @@ class ServicoObras:
         documento = self.repositorio.buscar_obra_por_id(obra_id)
         if documento is None:
             raise ErroObra("Obra não encontrada", 404, ["id"])
+        if versao_esperada is not None and documento.get("versao", 0) != versao_esperada:
+            raise ErroObra("A obra foi alterada; consulte novamente", 409, ["versao"])
         try:
             obra = Obra.de_documento(documento)
             mudanca = obra.alterar_estado(dados["estado"], dados["motivo"], autor, self.relogio.agora())

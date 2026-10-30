@@ -44,6 +44,7 @@ def test_consulta_individual_sem_corpo(client, headers, database, marco):
         **{chave: valor for chave, valor in marco.items() if chave != "_id"},
         "id": str(marco["_id"]),
         "obra_id": str(marco["obra_id"]),
+        "versao": 0,
     }
     assert "Location" not in resposta.headers
     assert snapshot(database) == antes
@@ -60,7 +61,7 @@ def test_listagem_preserva_campos_ordem_e_isolamento(client, headers, database, 
 
     assert resposta.status_code == 200
     assert resposta.get_json() == [
-        {"id": str(documento["_id"]), **{
+        {"id": str(documento["_id"]), "versao": 0, **{
             chave: valor for chave, valor in documento.items()
             if chave not in {"_id", "obra_id"}
         }}
