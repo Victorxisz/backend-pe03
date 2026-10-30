@@ -53,6 +53,11 @@ Excluir isoladamente uma mudança já aplicada não integra o MVP; sua exclusão
 
 ### Convenções compartilhadas
 
+O contrato implementado de `POST /obras/{obraId}/mudancas` (UC-12), incluindo
+versão obrigatória, campos por alvo, confirmação de dependências, armazenamento
+atômico e data efetiva de conclusão, está no [README](../README.md#replanejamento-e-situação--uc-12).
+Os métodos `GET` de mudanças continuam previstos para UC-13.
+
 - `GET /obras` aceita filtros por `nome`, `estado`, `cliente`, `entregaDe`, `entregaAte`, `registroDe` e `registroAte`. Definir o significado de cada intervalo antes de implementar os filtros.
 - Datas de dia usam `AAAA-MM-DD`; instantes de auditoria usam formato ISO 8601 com fuso explícito.
 - Uma criação retorna `201 Created`, a representação criada e `Location` com sua URI.

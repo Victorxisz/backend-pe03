@@ -1,7 +1,7 @@
 """Contrato HTTP de marcos e suas dependências."""
 
 from flask import Blueprint, current_app, jsonify, request
-from flask_jwt_extended import get_jwt_identity, jwt_required
+from flask_jwt_extended import get_jwt_identity
 from pymongo.errors import PyMongoError
 
 from app.auth.permissions import sessao_obrigatoria
@@ -60,7 +60,7 @@ def consultar_marcos(obra_id):
 
 
 @marcos_bp.post("/obras/<string:obra_id>/marcos")
-@jwt_required()
+@sessao_obrigatoria
 def cadastrar_marco(obra_id):
     try:
         marco = criar_marco(obra_id, request.get_json(silent=True))
@@ -77,7 +77,7 @@ def cadastrar_marco(obra_id):
 
 
 @marcos_bp.get("/marcos/<string:marco_id>/dependencias")
-@jwt_required()
+@sessao_obrigatoria
 def consultar_dependencias(marco_id):
     try:
         dependencias = listar_dependencias(marco_id)
@@ -89,7 +89,7 @@ def consultar_dependencias(marco_id):
 
 
 @marcos_bp.post("/marcos/<string:marco_id>/dependencias")
-@jwt_required()
+@sessao_obrigatoria
 def cadastrar_dependencia(marco_id):
     try:
         dependencia = criar_dependencia(marco_id, request.get_json(silent=True))
@@ -109,7 +109,7 @@ def cadastrar_dependencia(marco_id):
 @marcos_bp.delete(
     "/marcos/<string:marco_id>/dependencias/<string:dependencia_id>"
 )
-@jwt_required()
+@sessao_obrigatoria
 def excluir_dependencia(marco_id, dependencia_id):
     try:
         remover_dependencia(marco_id, dependencia_id)
@@ -121,7 +121,7 @@ def excluir_dependencia(marco_id, dependencia_id):
 
 
 @estado_marcos_bp.patch("/<string:marco_id>")
-@jwt_required()
+@sessao_obrigatoria
 def atualizar_marco(marco_id):
     try:
         marco = alterar_estado_marco(

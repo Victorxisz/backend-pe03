@@ -105,11 +105,12 @@ class RepositorioMarcos:
 
         return pendentes
 
-    def salvar_estado_com_historico(self, marco_id, estado_anterior, estado_novo, evento):
+    def salvar_estado_com_historico(self, marco_id, estado_anterior, estado_novo, evento, *, versao=0):
         def executar (session):
             resultado = self.banco["tbl_marcos"].update_one(
-                {"_id":marco_id, "estado": estado_anterior},
-                {"$set": {"estado":estado_novo}},
+                {"_id": marco_id, "estado": estado_anterior,
+                 "versao": versao if versao else {"$in": [None, 0]}},
+                {"$set": {"estado": estado_novo}, "$inc": {"versao": 1}},
                 session=session,
             )
 

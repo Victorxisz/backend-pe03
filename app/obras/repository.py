@@ -29,10 +29,11 @@ class RepositorioObras:
     def salvar_estado_com_historico(self, documento, evento):
         filtro = {"_id": documento["_id"], "estado": documento["estado"]}
         filtro["revisao_estado"] = documento.get("revisao_estado", {"$exists": False})
+        filtro["versao"] = documento.get("versao", {"$exists": False})
         return self.banco["tbl_obras"].find_one_and_update(
             filtro,
             {"$set": evento["valor_novo"], "$push": {"historico_estados": evento},
-             "$inc": {"revisao_estado": 1}, "$unset": {"critica": ""}},
+             "$inc": {"revisao_estado": 1, "versao": 1}, "$unset": {"critica": ""}},
             return_document=ReturnDocument.AFTER,
         )
 
