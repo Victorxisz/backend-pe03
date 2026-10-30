@@ -1,35 +1,37 @@
-"""Consulta dos avanços e dos metadados de suas mídias no MongoDB."""
+"""Persistência de avanços, revisões e limpeza de mídias."""
 
-import db
+from bson import ObjectId
 from pymongo import ReturnDocument
 
-from .revisoes import filtro_revisao
+import db
 
-ESTADO_EXCLUSAO = "exclusao_pendente"
-from bson import ObjectId
-
-from .revisoes import ConflitoRascunho, registrar_alteracao
+from .revisoes import ConflitoRascunho, filtro_revisao, registrar_alteracao
 from .rascunhos_repository import RepositorioRascunhos
 
-
-def salvar_edicao(documento, alteracoes, midias_anteriores, ids_manter, novas_midias):
-    return RepositorioRascunhos().salvar_edicao(
-        documento, alteracoes, midias_anteriores, ids_manter, novas_midias,
-    )
-
-
-def referencia_em_uso(referencia, ids_midias=()):
-    return RepositorioRascunhos().referencia_em_uso(referencia, ids_midias)
-
-
-def concluir_limpeza(midia_id):
-    return RepositorioRascunhos().concluir_limpeza(midia_id)
+ESTADO_EXCLUSAO = "exclusao_pendente"
 
 
 def avanco_existe(avanco_id):
     return db.banco_dados["tbl_avancos"].find_one(
-        {"_id": avanco_id, "estado": {"$ne": ESTADO_EXCLUSAO}}, {"_id": 1}
+        {"_id": avanco_id, "estado": {"$ne": ESTADO_EXCLUSAO}},
+        {"_id": 1},
     ) is not None
+
+
+def marco_existe(marco_id):
+    return db.colecao_marcos.find_one({"_id": marco_id}, {"_id": 1}) is not None
+
+
+def inserir_avanco(documento):
+    return db.banco_dados["tbl_avancos"].insert_one(documento).inserted_id
+
+
+def inserir_avanco_com_midias(documento, midias):
+    return RepositorioRascunhos().inserir_com_midias(documento, midias)
+
+
+def buscar_avanco(avanco_id):
+    return db.banco_dados["tbl_avancos"].find_one({"_id": avanco_id})
 
 
 def consultar_midias(avanco_id):
@@ -40,11 +42,31 @@ def buscar_midia_por_id(midia_id):
     return db.banco_dados["tbl_midias"].find_one({"_id": midia_id})
 
 
-def buscar_avanco(avanco_id):
-    return db.banco_dados["tbl_avancos"].find_one({"_id": avanco_id})
+
+
+
+def midia_tem_publicacao(midia_id, *, sessao=None):
+    documento = db.banco_dados["tbl_avancos"].find_one(
+        {
+            "publicacao.midias.id": {
+                "$in": [
+                    str(midia_id),
+                    midia_id,
+                ]
+            }
+        },
+        {"_id": 1},
+        session=sessao,
+    )
+
+    return documento is not None
+
 
 
 def iniciar_exclusao(documento, arquivos, token, agora, ate):
+    validar_referencias_das_midias(
+        documento["_id"], consultar_midias(documento["_id"])
+    )
     # O mesmo CAS usado pela publicação impede a disputa publicar/excluir.
     return db.banco_dados["tbl_avancos"].find_one_and_update(
         {"_id": documento["_id"], "estado": "rascunho", "publicacao": {"$exists": False},
@@ -62,8 +84,7 @@ def retomar_exclusao(avanco_id, token, agora, ate):
         {"_id": avanco_id, "estado": ESTADO_EXCLUSAO, "publicacao": {"$exists": False},
          "$or": [{"exclusao.token": None}, {"exclusao.ate": {"$lte": agora}}]},
         {"$set": {"exclusao.token": token, "exclusao.ate": ate},
-         "$inc": {"exclusao.tentativas": 1}},
-        return_document=ReturnDocument.AFTER,
+         "$inc": {"exclusao.tentativas": 1}}, return_document=ReturnDocument.AFTER,
     )
 
 
@@ -72,57 +93,102 @@ def _operacao(avanco_id, token):
 
 
 def renovar_exclusao(avanco_id, token, ate):
-    return db.banco_dados["tbl_avancos"].update_one(
-        _operacao(avanco_id, token), {"$set": {"exclusao.ate": ate}}
-    ).matched_count == 1
+    return db.banco_dados["tbl_avancos"].update_one(_operacao(avanco_id, token), {"$set": {"exclusao.ate": ate}}).matched_count == 1
 
 
 def concluir_arquivo(avanco_id, token, chave):
-    return db.banco_dados["tbl_avancos"].update_one(
-        _operacao(avanco_id, token), {"$pull": {"exclusao.pendentes": {"chave": chave}}}
-    ).matched_count == 1
+    return db.banco_dados["tbl_avancos"].update_one(_operacao(avanco_id, token), {"$pull": {"exclusao.pendentes": {"chave": chave}}}).matched_count == 1
 
 
 def liberar_exclusao(avanco_id, token):
-    db.banco_dados["tbl_avancos"].update_one(
-        _operacao(avanco_id, token),
-        {"$set": {"exclusao.token": None, "exclusao.ate": None}},
-    )
+    db.banco_dados["tbl_avancos"].update_one(_operacao(avanco_id, token), {"$set": {"exclusao.token": None, "exclusao.ate": None}})
 
 
 def registrar_falha_limpeza(avanco_id, token, agora):
     db.banco_dados["tbl_avancos"].update_one(
         _operacao(avanco_id, token),
-        {"$set": {"exclusao.ultima_falha_em": agora,
-                  "exclusao.ultimo_erro": "Não foi possível remover um arquivo no provedor"}},
+        {"$set": {"exclusao.ultima_falha_em": agora, "exclusao.ultimo_erro": "Não foi possível remover um arquivo no provedor"}},
     )
+
+
+
+def consultar_midias_para_limpeza(avanco_id):
+    """Inclui arquivos removidos por edições cuja limpeza ainda não terminou."""
+    atuais = consultar_midias(avanco_id)
+    anteriores = [
+        tarefa["midia"]
+        for tarefa in db.banco_dados["tbl_limpezas_midias"].find(
+            {"avanco_id": avanco_id}
+        )
+    ]
+    return atuais + anteriores
 
 
 def acrescentar_pendencias(avanco_id, token, arquivos):
-    db.banco_dados["tbl_avancos"].update_one(
+    return db.banco_dados["tbl_avancos"].update_one(
         _operacao(avanco_id, token),
         {"$push": {"exclusao.arquivos": {"$each": arquivos},
                    "exclusao.pendentes": {"$each": arquivos}}},
-    )
+    ).matched_count == 1
 
 
 def finalizar_exclusao(avanco_id, token):
     filtro = {**_operacao(avanco_id, token), "exclusao.pendentes": {"$size": 0}}
     if db.banco_dados["tbl_avancos"].find_one(filtro, {"_id": 1}) is None:
         return False
-    # Se uma etapa do banco falhar, o diário permanece para repetir a operação.
+    validar_referencias_das_midias(avanco_id, consultar_midias(avanco_id))
+    # O diário permanece até concluir todas as etapas e permite retentativa
+    # se alguma escrita falhar, inclusive depois de remover os metadados.
     db.banco_dados["tbl_midias"].delete_many({"avanco_id": avanco_id})
+    db.banco_dados["tbl_limpezas_midias"].delete_many({"avanco_id": avanco_id})
     return db.banco_dados["tbl_avancos"].delete_one(filtro).deleted_count == 1
 
 
+def _outros_documentos(avanco_id):
+    """Tarefas de limpeza não são consumidores dos arquivos."""
+    banco = db.banco_dados
+    for nome in banco.list_collection_names():
+        if nome == "tbl_limpezas_midias":
+            continue
+        for documento in banco[nome].find():
+            if nome == "tbl_avancos":
+                if documento["_id"] == avanco_id or documento.get("estado") == ESTADO_EXCLUSAO:
+                    continue
+            if nome == "tbl_midias":
+                dono = documento.get("avanco_id")
+                if dono == avanco_id:
+                    continue
+                pai = buscar_avanco(dono) if dono is not None else None
+                if pai is not None and pai.get("estado") == ESTADO_EXCLUSAO:
+                    continue
+            yield documento
+
+
+def _contem_id(valor, ids, textos):
+    if isinstance(valor, dict):
+        return any(_contem_id(item, ids, textos) for item in valor.values())
+    if isinstance(valor, list):
+        return any(_contem_id(item, ids, textos) for item in valor)
+    if isinstance(valor, str):
+        return valor in textos
+    return isinstance(valor, ObjectId) and valor in ids
+
+
+def validar_referencias_das_midias(avanco_id, midias):
+    """Não remove metadados cujo ID ainda é usado fora do rascunho."""
+    ids = {midia["_id"] for midia in midias}
+    if not ids:
+        return
+    textos = {str(valor) for valor in ids}
+    if any(_contem_id(doc, ids, textos) for doc in _outros_documentos(avanco_id)):
+        raise ConflitoRascunho(
+            "Uma mídia está referenciada por outro registro"
+        )
+
+
 def arquivo_tem_outras_referencias(avanco_id, arquivo):
-    """Conservador: preserva referências atuais, históricas e de registros órfãos.
-
-    Rascunhos já marcados para exclusão não são leitores ativos. Isso permite
-    excluir simultaneamente dois rascunhos que compartilham o mesmo objeto.
-    """
+    """Preserva arquivos usados por outras mídias ou snapshots históricos."""
     from .midias import chave_arquivo, ErroMidia
-
     identidade = chave_arquivo(arquivo["referencia"])
     ids = set(arquivo["midia_ids"])
     textos = {str(valor) for valor in ids}
@@ -137,24 +203,27 @@ def arquivo_tem_outras_referencias(avanco_id, arquivo):
             return any(contem(item) for item in valor.values())
         if isinstance(valor, list):
             return any(contem(item) for item in valor)
-        if isinstance(valor, str):
-            return valor in textos
-        from bson import ObjectId
-        return isinstance(valor, ObjectId) and valor in ids
+        return _contem_id(valor, ids, textos)
 
-    banco = db.banco_dados
-    for nome in banco.list_collection_names():
-        for documento in banco[nome].find():
-            if nome == "tbl_avancos":
-                if documento["_id"] == avanco_id or documento.get("estado") == ESTADO_EXCLUSAO:
-                    continue
-            if nome == "tbl_midias":
-                dono = documento.get("avanco_id")
-                if dono == avanco_id:
-                    continue
-                pai = buscar_avanco(dono) if dono is not None else None
-                if pai is not None and pai.get("estado") == ESTADO_EXCLUSAO:
-                    continue
-            if contem(documento):
-                return True
-    return False
+    return any(contem(doc) for doc in _outros_documentos(avanco_id))
+
+
+# Fachada da persistência orientada a objetos, preservada após integrar a main.
+
+
+def salvar_edicao(documento, alteracoes, midias_anteriores, ids_manter, novas_midias):
+    return RepositorioRascunhos().salvar_edicao(documento, alteracoes, midias_anteriores, ids_manter, novas_midias)
+
+
+def referencia_em_uso(referencia, *, ids_midias=()):
+    return RepositorioRascunhos().referencia_em_uso(referencia, ids_midias)
+
+
+def concluir_limpeza(midia_id):
+    return RepositorioRascunhos().concluir_limpeza(midia_id)
+
+
+def listar_avancos(marco_id):
+    return list(db.banco_dados["tbl_avancos"].find(
+        {"marco_id": marco_id, "estado": {"$ne": ESTADO_EXCLUSAO}}
+    ).sort([("data", 1), ("_id", 1)]))

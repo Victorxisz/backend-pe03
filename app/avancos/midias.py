@@ -168,7 +168,7 @@ class ServicoMidias:
 
             raise
 
-    def limpar_sem_referencias(self, midias, referencia_em_uso, ):
+    def limpar_sem_referencias(self, midias, referencia_em_uso):
         pendentes = []
 
         for midia in midias:

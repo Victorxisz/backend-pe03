@@ -13,6 +13,21 @@ class RepositorioRascunhos:
         self.banco = banco if banco is not None else db.banco_dados
         self.cliente = cliente if cliente is not None else db.cliente_mongo
 
+    def inserir_com_midias(self, documento, midias):
+        if not midias:
+            raise ValueError("O avanço precisa de pelo menos uma mídia")
+        novo = {**deepcopy(documento), "_id": ObjectId()}
+        evidencias = [{**deepcopy(midia), "_id": ObjectId(), "avanco_id": novo["_id"],
+                       "data_envio": novo["data_registro"]} for midia in midias]
+
+        def gravar(sessao):
+            self.banco["tbl_avancos"].insert_one(deepcopy(novo), session=sessao)
+            self.banco["tbl_midias"].insert_many(deepcopy(evidencias), session=sessao)
+            return novo["_id"]
+
+        with self.cliente.start_session() as sessao:
+            return sessao.with_transaction(gravar)
+
     def _contem(self, valor, *, ids=(), referencia=None):
         from .midias import ErroMidia, chave_arquivo
 
@@ -58,7 +73,9 @@ class RepositorioRascunhos:
                 if self._referenciada_por_id(midia["_id"], sessao):
                     raise ConflitoRascunho("A mídia é referenciada por uma publicação ou histórico")
                 self.banco["tbl_limpezas_midias"].update_one(
-                    {"_id": midia["_id"]}, {"$setOnInsert": {"midia": deepcopy(midia)}},
+                    {"_id": midia["_id"]}, {"$setOnInsert": {
+                        "avanco_id": documento["_id"], "midia": deepcopy(midia),
+                    }},
                     upsert=True, session=sessao,
                 )
             for midia in mantidas:
@@ -69,9 +86,11 @@ class RepositorioRascunhos:
                 if resultado.matched_count != 1:
                     raise ConflitoRascunho("Uma mídia foi alterada")
             if removidas:
-                self.banco["tbl_midias"].delete_many(
-                    {"_id": {"$in": [midia["_id"] for midia in removidas]}}, session=sessao,
+                resultado = self.banco["tbl_midias"].delete_many(
+                    {"avanco_id": documento["_id"], "_id": {"$in": [midia["_id"] for midia in removidas]}}, session=sessao,
                 )
+                if resultado.deleted_count != len(removidas):
+                    raise ConflitoRascunho("Uma mídia foi alterada durante a edição")
             if novas_midias:
                 novas = [{**deepcopy(midia), "_id": ObjectId(), "avanco_id": documento["_id"]}
                          for midia in novas_midias]

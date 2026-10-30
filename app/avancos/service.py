@@ -13,9 +13,10 @@ from app.dominio.avancos import Avanco
 from app.dominio.comum import ErroDominio, Relogio
 from app.publicacoes.validacoes import validar_midias
 from . import midias, repository
-from .midias import ServicoMidias
+from .midias import ErroMidia, ServicoMidias
 from .revisoes import ConflitoRascunho
-from .validacoes import normalizar_edicao, validar_edicao
+from .validacoes import normalizar_edicao, validar_avanco, validar_edicao
+from app.serializacao import serializar
 
 TEMPO_BLOQUEIO = timedelta(minutes=5)
 logger = logging.getLogger(__name__)
@@ -38,42 +39,74 @@ class ServicoAvancos:
                           409, ["avanco_id"], codigo="CONFLITO_EXCLUSAO")
 
     def excluir_rascunho(self, avanco_id):
-        try:
-            if not isinstance(avanco_id, (str, ObjectId)):
-                raise TypeError
-            identificador = ObjectId(avanco_id)
-        except (InvalidId, TypeError):
-            raise ErroAvanco("ID do avanço inválido", 400, ["avanco_id"], codigo="ID_INVALIDO") from None
+        identificador = self._identificar_avanco(avanco_id)
         documento = self.repositorio.buscar_avanco(identificador)
         if documento is None:
-            raise ErroAvanco("Avanço não encontrado", 404, ["avanco_id"], codigo="AVANCO_NAO_ENCONTRADO")
-        if "publicacao" in documento or documento.get("estado") not in {"rascunho", self.repositorio.ESTADO_EXCLUSAO}:
-            raise ErroAvanco("Somente rascunhos podem ser excluídos por esta rota", 409,
-                             ["estado"], codigo="AVANCO_NAO_E_RASCUNHO")
-        token, agora = uuid4().hex, self.relogio.agora()
-        if documento["estado"] == "rascunho":
-            arquivos = midias.preparar_limpeza(self.repositorio.consultar_midias(identificador))
-            try:
-                operacao = self.repositorio.iniciar_exclusao(documento, arquivos, token, agora, agora + TEMPO_BLOQUEIO)
-            except ConflitoRascunho:
-                raise self._conflito() from None
-        else:
-            operacao = self.repositorio.retomar_exclusao(identificador, token, agora, agora + TEMPO_BLOQUEIO)
+            raise ErroAvanco(
+                "Avanço não encontrado", 404, ["avanco_id"],
+                codigo="AVANCO_NAO_ENCONTRADO",
+            )
+        if "publicacao" in documento or documento.get("estado") not in {
+            "rascunho", self.repositorio.ESTADO_EXCLUSAO,
+        }:
+            raise ErroAvanco(
+                "Somente rascunhos podem ser excluídos por esta rota", 409,
+                ["estado"], codigo="AVANCO_NAO_E_RASCUNHO",
+            )
+
+        token = uuid4().hex
+        agora = self.relogio.agora()
+        try:
+            if documento["estado"] == "rascunho":
+                arquivos = midias.preparar_limpeza(
+                    self.repositorio.consultar_midias_para_limpeza(identificador)
+                )
+                operacao = self.repositorio.iniciar_exclusao(
+                    documento, arquivos, token, agora, agora + TEMPO_BLOQUEIO
+                )
+            else:
+                operacao = self.repositorio.retomar_exclusao(
+                    identificador, token, agora, agora + TEMPO_BLOQUEIO
+                )
+        except ConflitoRascunho:
+            raise self._conflito() from None
         if operacao is None:
             raise self._conflito()
 
         concluido = False
         try:
-            for arquivo in operacao["exclusao"]["pendentes"]:
-                if not self.repositorio.renovar_exclusao(identificador, token, self.relogio.agora() + TEMPO_BLOQUEIO):
+            # Incorpora tarefas antigas também ao retomar diários criados antes
+            # desta correção. O diário só é reduzido após confirmação do provedor.
+            conhecidas = {item["chave"] for item in operacao["exclusao"]["arquivos"]}
+            extras = [
+                item for item in midias.preparar_limpeza(
+                    self.repositorio.consultar_midias_para_limpeza(identificador)
+                ) if item["chave"] not in conhecidas
+            ]
+            if extras:
+                if not self.repositorio.acrescentar_pendencias(identificador, token, extras):
+                    raise self._conflito()
+            pendentes = operacao["exclusao"]["pendentes"] + extras
+
+            self.repositorio.validar_referencias_das_midias(
+                identificador, self.repositorio.consultar_midias(identificador)
+            )
+            for arquivo in pendentes:
+                if not self.repositorio.renovar_exclusao(
+                    identificador, token, self.relogio.agora() + TEMPO_BLOQUEIO
+                ):
                     raise self._conflito()
                 if not self.repositorio.arquivo_tem_outras_referencias(identificador, arquivo):
-                    if not self.repositorio.renovar_exclusao(identificador, token, self.relogio.agora() + TEMPO_BLOQUEIO):
+                    if not self.repositorio.renovar_exclusao(
+                        identificador, token, self.relogio.agora() + TEMPO_BLOQUEIO
+                    ):
                         raise self._conflito()
                     try:
                         midias.remover_arquivo(arquivo["referencia"])
                     except (ErroArmazenamento, ValueError):
-                        self.repositorio.registrar_falha_limpeza(identificador, token, self.relogio.agora())
+                        self.repositorio.registrar_falha_limpeza(
+                            identificador, token, self.relogio.agora()
+                        )
                         continue
                 if not self.repositorio.concluir_arquivo(identificador, token, arquivo["chave"]):
                     raise self._conflito()
@@ -81,22 +114,30 @@ class ServicoAvancos:
             atual = self.repositorio.buscar_avanco(identificador)
             if atual is None or atual.get("exclusao", {}).get("token") != token:
                 raise self._conflito()
-            # Escritores de rascunho devem usar revisoes.registrar_alteracao. Além
-            # disso, não descartamos mídias novas que apareceram durante a limpeza.
             conhecidas = {item["chave"] for item in atual["exclusao"]["arquivos"]}
-            novas = [item for item in midias.preparar_limpeza(self.repositorio.consultar_midias(identificador))
-                     if item["chave"] not in conhecidas]
+            novas = [
+                item for item in midias.preparar_limpeza(
+                    self.repositorio.consultar_midias_para_limpeza(identificador)
+                ) if item["chave"] not in conhecidas
+            ]
             if novas:
-                self.repositorio.acrescentar_pendencias(identificador, token, novas)
+                if not self.repositorio.acrescentar_pendencias(identificador, token, novas):
+                    raise self._conflito()
             quantidade = len(atual["exclusao"]["pendentes"]) + len(novas)
             if quantidade:
-                raise ErroAvanco("Exclusão ainda não concluída. Repita a requisição para retomar a limpeza",
-                                 503, ["midias"], codigo="LIMPEZA_PENDENTE", pendentes=quantidade)
-            if not self.repositorio.renovar_exclusao(identificador, token, self.relogio.agora() + TEMPO_BLOQUEIO):
+                raise ErroAvanco(
+                    "Exclusão ainda não concluída. Repita a requisição para retomar a limpeza",
+                    503, ["midias"], codigo="LIMPEZA_PENDENTE", pendentes=quantidade,
+                )
+            if not self.repositorio.renovar_exclusao(
+                identificador, token, self.relogio.agora() + TEMPO_BLOQUEIO
+            ):
                 raise self._conflito()
             if not self.repositorio.finalizar_exclusao(identificador, token):
                 raise self._conflito()
             concluido = True
+        except ConflitoRascunho:
+            raise self._conflito() from None
         finally:
             if not concluido:
                 self.repositorio.liberar_exclusao(identificador, token)
@@ -350,6 +391,59 @@ class ServicoAvancos:
                 )
 
 
+    def _id(self, valor, campo):
+        try:
+            return ObjectId(valor)
+        except (InvalidId, TypeError):
+            raise ErroAvanco("Identificador inválido", 400, [campo]) from None
+
+    def _representar(self, documento):
+        midias = documento.get("midias")
+        if midias is None:
+            midias = self.repositorio.consultar_midias(documento["_id"])
+        return {
+            "id": str(documento["_id"]), "marco_id": str(documento["marco_id"]),
+            "data": documento["data"], "descricao": documento["descricao"],
+            "estado": documento["estado"], "autor": documento["autor"],
+            "data_registro": serializar(documento["data_registro"]).replace("+00:00", "Z"),
+            "midias": [{k: m[k] for k in ("tipo", "nome", "tamanho", "mime")} for m in midias],
+        }
+
+    def criar_avanco(self, marco_id, dados, arquivos, autor, servico_midias=None):
+        marco_oid = self._id(marco_id, "marco_id")
+        campos = validar_avanco(dados)
+        if campos:
+            raise ErroAvanco("Informe uma data válida e uma descrição", 422, campos)
+        if not self.repositorio.marco_existe(marco_oid):
+            raise ErroAvanco("Marco não encontrado", 404, ["marco_id"])
+        arquivos = list(arquivos)
+        if not arquivos:
+            raise ErroMidia("Envie ao menos uma foto, vídeo ou documento")
+        servico = servico_midias if servico_midias is not None else ServicoMidias()
+        documento_base = {
+            "marco_id": marco_oid, "data": dados["data"], "descricao": dados["descricao"].strip(),
+            "estado": "rascunho", "autor": autor, "data_registro": self.relogio.agora(),
+        }
+        def salvar(midias):
+            documento = dict(documento_base)
+            return self.repositorio.inserir_avanco_com_midias(documento, midias), documento
+        identifier, documento = servico.executar_com_midias(arquivos, salvar)
+        documento["_id"] = identifier
+        return self._representar(documento)
+
+    def consultar_avanco(self, avanco_id):
+        oid = self._id(avanco_id, "avanco_id")
+        documento = self.repositorio.buscar_avanco(oid)
+        if documento is None:
+            raise ErroAvanco("Avanço não encontrado", 404, ["avanco_id"])
+        return self._representar(documento)
+
+    def consultar_avancos(self, marco_id):
+        oid = self._id(marco_id, "marco_id")
+        if not self.repositorio.marco_existe(oid):
+            raise ErroAvanco("Marco não encontrado", 404, ["marco_id"])
+        return [self._representar(item) for item in self.repositorio.listar_avancos(oid)]
+
 _servico = ServicoAvancos()
 
 # Fachada para consumidores anteriores à refatoração.
@@ -359,3 +453,7 @@ _identificar_avanco = _servico._identificar_avanco
 _preparar_edicao = _servico._preparar_edicao
 editar_rascunho = _servico.editar_rascunho
 _limpar_apos_edicao = _servico._limpar_apos_edicao
+
+criar_avanco = _servico.criar_avanco
+consultar_avanco = _servico.consultar_avanco
+consultar_avancos = _servico.consultar_avancos

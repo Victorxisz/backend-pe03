@@ -83,6 +83,14 @@ mantêm uma tarefa em `tbl_limpezas_midias`; isso permite retomada.
 A edição está disponível no serviço; a rota HTTP PATCH de rascunho ainda não está
 registrada neste checkout.
 
+Após integrar a `main`, cadastro e consultas de avanços também passam pelo
+`ServicoAvancos`. Cadastro e metadados em `tbl_midias` são persistidos na mesma
+transação, para que a publicação encontre as mesmas evidências do cadastro.
+O JSON mantém o contrato recebido da `main`; referências do provedor permanecem
+privadas. Os testes locais simulam rollback e não comprovam uma transação real
+do Atlas. A exclusão considera também tarefas de limpeza de edições anteriores
+e preserva metadados referenciados por publicações ou outros registros.
+
 `ServicoPublicacoes` fica em `app/publicacoes/`, separado de ocorrências. Os
 imports antigos em `app/mudanças/ocorrencias/historico/` permanecem como aliases.
 A publicação preserva verificação de mídia recuperável, snapshot e idempotência.
