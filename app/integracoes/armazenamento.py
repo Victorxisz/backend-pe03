@@ -43,15 +43,34 @@ class ArmazenamentoCloudinary:
 
     def _referencia(self, referencia):
         if not isinstance(referencia, dict):
-            raise ErroArmazenamento("Referência de mídia inválida", 422)
-        public_id = referencia.get("public_id", "")
-        if (not isinstance(public_id, str)
-                or not re.fullmatch(re.escape(self.config.pasta) + r"/[0-9a-f]{32}(?:\.pdf)?", public_id)
-                or referencia.get("resource_type") not in {"image", "video", "raw"}
-                or referencia.get("delivery_type") != "authenticated"):
-            raise ErroArmazenamento("Referência de mídia inválida", 422)
-        return dict(public_id=public_id, resource_type=referencia["resource_type"],
-                    type="authenticated")
+            raise ErroArmazenamento(
+                "Referência de mídia inválida", 422
+            )
+
+        public_id = referencia.get("public_id")
+        resource_type = referencia.get("resource_type")
+
+        if (
+            referencia.get("provedor") != "cloudinary"
+            or not isinstance(public_id, str)
+            or not re.fullmatch(
+                re.escape(self.config.pasta)
+                + r"/[0-9a-f]{32}(?:\.pdf)?",
+                public_id,
+            )
+            or not isinstance(resource_type, str)
+            or resource_type not in {"image", "video", "raw"}
+            or referencia.get("delivery_type") != "authenticated"
+        ):
+            raise ErroArmazenamento(
+                "Referência de mídia inválida", 422
+            )
+
+        return {
+            "public_id": public_id,
+            "resource_type": resource_type,
+            "type": "authenticated",
+        }
 
     def enviar(self, arquivo):
         """Recebe somente um ArquivoValidado produzido pelo validador de mídia."""

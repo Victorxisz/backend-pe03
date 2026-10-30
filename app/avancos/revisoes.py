@@ -24,7 +24,7 @@ def registrar_alteracao (documento, sessao):
         **filtro_revisao(documento)
     }
 
-    resultado = db.banco_dados["tbl_avanco"].update_one(
+    resultado = db.banco_dados["tbl_avancos"].update_one(
         filtro,
         {"$inc": {"revisao":1}},
         session=sessao,

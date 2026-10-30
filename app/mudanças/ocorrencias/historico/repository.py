@@ -101,7 +101,20 @@ def publicar(documento, publicacao, marco, midias):
 
 
 def consultar_publicados(obra_id):
-    marcos = [item["_id"] for item in db.colecao_marcos.find({"obra_id": obra_id}, {"_id": 1})]
+    marcos = [
+        item["_id"] for item in db.colecao_marcos.find(
+            {"obra_id": obra_id},
+            {"_id": 1},
+        )
+    ]
     return list(db.banco_dados["tbl_avancos"].find(
-        {"marco_id": {"$in": marcos}, "estado": "publicado", "publicacao": {"$type": "object"}}
-    ).sort([("publicacao.data", 1), ("publicacao.instante", 1), ("_id", 1)]))
+            {"marco_id": {"$in": marcos},
+            "estado": "publicado",
+            "publicacao": {"$type": "object"}
+        },
+    ).sort(
+        [
+            ("publicacao.data", 1),
+            ("publicacao.instante", 1),
+            ("_id", 1),
+        ]))
