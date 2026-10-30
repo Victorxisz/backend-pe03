@@ -5,6 +5,7 @@ from io import BytesIO
 import hashlib
 import json
 import warnings
+from pymongo.errors import PyMongoError
 
 import av
 from PIL import Image
@@ -100,31 +101,71 @@ class ServicoMidias:
         self.config = config or (armazenamento.config if armazenamento else ConfiguracaoArmazenamento.do_ambiente())
         self.armazenamento = armazenamento or ArmazenamentoCloudinary(self.config)
 
-    def executar_com_midias(self, arquivos, salvar):
-        """salvar(metadados) deve gravar o negócio atomicamente e retornar o resultado.
+    def executar_com_midias(
+        self,
+        arquivos,
+        salvar,
+        *,
+        permitir_sem_novos=False,
+    ):
+        """
+        Valida os arquivos, envia e chama salvar(metadados).
 
-        Exceção desfaz somente os novos uploads. Mídias de versões anteriores
-        não são removidas: podem continuar referenciadas pelo histórico.
+        salvar deve retornar após a confirmação da transação.
+        A limpeza dos arquivos antigos acontece fora deste método.
         """
         arquivos = list(arquivos)
-        if not arquivos:
-            raise ErroMidia("Envie ao menos uma foto, vídeo ou documento")
-        # Valida todo o lote antes de enviar o primeiro arquivo ao provedor.
-        validados = [validar_arquivo(arquivo, self.config) for arquivo in arquivos]
+
+        if not arquivos and not permitir_sem_novos:
+            raise ErroMidia(
+                "Envie ao menos uma foto, vídeo ou documento"
+            )
+
+        # Valida todo o lote antes de começar os uploads.
+        validados = [
+            validar_arquivo(arquivo, self.config)
+            for arquivo in arquivos
+        ]
+
         enviados = []
+
         try:
             for arquivo in validados:
-                enviados.append(self.armazenamento.enviar(arquivo))
+                enviados.append(
+                    self.armazenamento.enviar(arquivo)
+                )
+
             return salvar(enviados)
+
         except Exception as erro:
-            pendentes = list(erro.pendentes) if isinstance(erro, ErroLimpeza) else []
+            # O banco pode ter confirmado a transação sem que a
+            # confirmação tenha chegado à aplicação. Nesse caso,
+            # não podemos apagar arquivos possivelmente em uso.
+            if (
+                isinstance(erro, PyMongoError)
+                and erro.has_error_label(
+                    "UnknownTransactionCommitResult"
+                )
+            ):
+                raise
+
+            pendentes = (
+                list(erro.pendentes)
+                if isinstance(erro, ErroLimpeza)
+                else []
+            )
+
             for midia in reversed(enviados):
+                referencia = midia["referencia_externa"]
+
                 try:
-                    self.armazenamento.remover(midia["referencia_externa"])
+                    self.armazenamento.remover(referencia)
                 except ErroArmazenamento:
-                    pendentes.append(midia["referencia_externa"])
+                    pendentes.append(referencia)
+
             if pendentes:
                 raise ErroLimpeza(pendentes) from erro
+
             raise
 
 
@@ -159,3 +200,18 @@ def preparar_limpeza(midias):
 def remover_arquivo(referencia):
     # Não exige configurar o provedor para excluir rascunho sem arquivos exclusivos.
     ArmazenamentoCloudinary().remover(referencia)
+    def limpar_sem_referencias(self, midias, referencia_em_uso, ):
+        pendentes = []
+
+        for midia in midias:
+            referencia = midia["referencia_externa"]
+
+            try:
+                if referencia_em_uso(referencia):
+                    continue
+
+                self.armazenamento.remover(referencia)
+            except (ErroArmazenamento, PyMongoError):
+                pendentes.append(referencia)
+
+        return pendentes

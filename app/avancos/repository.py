@@ -6,6 +6,9 @@ from pymongo import ReturnDocument
 from .revisoes import filtro_revisao
 
 ESTADO_EXCLUSAO = "exclusao_pendente"
+from bson import ObjectId
+
+from .revisoes import ConflitoRascunho, registrar_alteracao
 
 
 def avanco_existe(avanco_id):
