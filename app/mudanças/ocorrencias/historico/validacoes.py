@@ -36,7 +36,7 @@ def validar_midias(midias):
 
     if not midias:
         return False
-    
+
     for midia in midias:
         if not isinstance(midia, dict):
             return False

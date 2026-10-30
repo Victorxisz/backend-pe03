@@ -80,7 +80,7 @@ def alterar_estado_marco(marco_id, dados, autor):
             409,
             detalhes={"codigo": "DEPENDENCIA_INCONSISTENTE"},
         ) from erro
-    
+
     if pendentes and dados.get("confirmar_dependencias") is not True:
         raise ErroMarco("Há dependências pendentes", 409, [], {
             "codigo": "DEPENDENCIAS_PENDENTES", "dependencias": pendentes

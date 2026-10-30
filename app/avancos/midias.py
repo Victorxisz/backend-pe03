@@ -2,9 +2,9 @@
 
 from dataclasses import dataclass
 from io import BytesIO
+import warnings
 import hashlib
 import json
-import warnings
 from pymongo.errors import PyMongoError
 
 import av
@@ -22,6 +22,14 @@ class ErroMidia(ValueError):
         self.status = status
         self.codigo = codigo
         self.campos = ["midias"] if campos is None else list(campos)
+
+
+class ResultadoPersistenciaIndeterminado(Exception):
+    """Commit pode ter ocorrido; nunca apague arquivos potencialmente referenciados."""
+
+    def __init__(self, referencias):
+        super().__init__("Não foi possível confirmar a gravação; a operação precisa de verificação")
+        self.referencias = referencias
 
 
 @dataclass(frozen=True)
@@ -101,85 +109,55 @@ class ServicoMidias:
         self.config = config or (armazenamento.config if armazenamento else ConfiguracaoArmazenamento.do_ambiente())
         self.armazenamento = armazenamento or ArmazenamentoCloudinary(self.config)
 
-    def executar_com_midias(
-        self,
-        arquivos,
-        salvar,
-        *,
-        permitir_sem_novos=False,
-    ):
-        """
-        Valida os arquivos, envia e chama salvar(metadados).
+    def executar_com_midias(self, arquivos, salvar, antes_envio=None, registrar_referencia=None, permitir_sem_novos=False):
+        """salvar(metadados) deve gravar o negócio atomicamente e retornar o resultado.
 
-        salvar deve retornar após a confirmação da transação.
-        A limpeza dos arquivos antigos acontece fora deste método.
+        Exceção desfaz somente os novos uploads. Mídias de versões anteriores
+        não são removidas: podem continuar referenciadas pelo histórico.
         """
         arquivos = list(arquivos)
-
         if not arquivos and not permitir_sem_novos:
-            raise ErroMidia(
-                "Envie ao menos uma foto, vídeo ou documento"
-            )
-
-        # Valida todo o lote antes de começar os uploads.
-        validados = [
-            validar_arquivo(arquivo, self.config)
-            for arquivo in arquivos
-        ]
-
+            raise ErroMidia("Envie ao menos uma foto, vídeo ou documento")
+        # Valida todo o lote antes de enviar o primeiro arquivo ao provedor.
+        validados = [validar_arquivo(arquivo, self.config) for arquivo in arquivos]
+        if antes_envio is not None:
+            antes_envio(validados)
         enviados = []
-
         try:
             for arquivo in validados:
-                enviados.append(
-                    self.armazenamento.enviar(arquivo)
-                )
-
+                if registrar_referencia is None:
+                    enviados.append(self.armazenamento.enviar(arquivo))
+                else:
+                    enviados.append(self.armazenamento.enviar(arquivo, registrar_referencia))
             return salvar(enviados)
-
         except Exception as erro:
-            # O banco pode ter confirmado a transação sem que a
-            # confirmação tenha chegado à aplicação. Nesse caso,
-            # não podemos apagar arquivos possivelmente em uso.
-            if (
-                isinstance(erro, PyMongoError)
-                and erro.has_error_label(
-                    "UnknownTransactionCommitResult"
-                )
-            ):
+            if isinstance(erro, ResultadoPersistenciaIndeterminado) or (isinstance(erro, PyMongoError) and erro.has_error_label("UnknownTransactionCommitResult")):
                 raise
-
-            pendentes = (
-                list(erro.pendentes)
-                if isinstance(erro, ErroLimpeza)
-                else []
-            )
-
+            pendentes = list(erro.pendentes) if isinstance(erro, ErroLimpeza) else []
             for midia in reversed(enviados):
-                referencia = midia["referencia_externa"]
-
                 try:
-                    self.armazenamento.remover(referencia)
+                    self.armazenamento.remover(midia["referencia_externa"])
                 except ErroArmazenamento:
-                    pendentes.append(referencia)
-
+                    pendentes.append(midia["referencia_externa"])
             if pendentes:
                 raise ErroLimpeza(pendentes) from erro
-
             raise
 
-    def limpar_sem_referencias(self, midias, referencia_em_uso):
+    def limpar_sem_referencias(self, midias, referencia_em_uso, ):
         pendentes = []
+
         for midia in midias:
             referencia = midia["referencia_externa"]
+
             try:
                 if referencia_em_uso(referencia):
                     continue
+
                 self.armazenamento.remover(referencia)
             except (ErroArmazenamento, PyMongoError):
                 pendentes.append(referencia)
-        return pendentes
 
+        return pendentes
 
 def chave_arquivo(referencia):
     """A identidade do objeto não depende da ordem dos campos nem do formato."""

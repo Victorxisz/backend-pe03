@@ -66,7 +66,7 @@ def consultar_obras():
         situacao = "sem_resultados"
     else:
         situacao = "lista_vazia"
-    
+
     return jsonify(
             obras=obras,
             situacao=situacao,

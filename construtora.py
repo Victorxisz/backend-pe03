@@ -43,53 +43,8 @@ def gerar_tokens_construtora(id_construtora):
 
 @construtora_bp.route("/", methods=["POST"])
 def cadastrar_construtora ():
-    dados_recebidos = request.get_json(silent=True)
-
-    erro_validacao = validar_dados_construtora(dados_recebidos)
-
-    if erro_validacao:
-        mensagem, status_mensagem = erro_validacao
-        return jsonify(mensagem), status_mensagem
-
-    nova_construtora = normalizar_dados_construtora(dados_recebidos)
-
-    senha_hash = bcrypt.generate_password_hash(dados_recebidos["senha"]).decode("utf-8")
-
-    nova_construtora.update({
-        "senha_hash":senha_hash,
-        "ativo":True,
-        "data_cadastro":datetime.now(timezone.utc)
-    })
-
-    try:
-        resultado = colecao_construtora.insert_one(
-            nova_construtora
-        )
-
-    except DuplicateKeyError:
-        return jsonify({
-            "erro":"Já existe uma conta com este email"
-        }), 409
-
-    except PyMongoError:
-        current_app.logger.exception("Erro ao cadastrar a construtora")
-        return jsonify({"erro":"Houve um erro ao cadastrar a construtora"}), 500
-
-    id_construtora = str(resultado.inserted_id)
-
-    token_acesso, token_renovacao = gerar_tokens_construtora(id_construtora)
-
-    return jsonify({
-        "mensagem":"Construtora criada com sucesso",
-        "construtora": {
-            "id": id_construtora,
-            "nome": nova_construtora["nome"],
-            "email": nova_construtora["email"],
-            "telefone": nova_construtora.get("telefone")
-        },
-        "access_token":token_acesso,
-        "refresh_token": token_renovacao
-    }), 201
+    # O MVP usa exclusivamente a conta provisionada pelo administrador.
+    return jsonify({"erro": "Cadastro público de construtora indisponível"}), 403
 
 @construtora_bp.route("/<string:construtora_id>", methods = ["DELETE"])
 @jwt_required()
@@ -202,10 +157,13 @@ def login_construtora ():
 
     email = dados["email"].strip().lower()
     senha = dados["senha"]
+    conta_id = current_app.config.get("CONSTRUTORA_ID", "")
+    if not ObjectId.is_valid(conta_id):
+        return jsonify({"erro": "Conta da construtora não configurada"}), 503
 
     try:
         construtora = colecao_construtora.find_one(
-            {"email":email}
+            {"_id": ObjectId(conta_id), "email":email}
         )
 
     except (PyMongoError):
@@ -324,7 +282,7 @@ def logout_construtora ():
             {"_id":sessao_id},
             {
                 "$setOnInsert": {
-                    "construtora_id": sessao_id,
+                    "construtora_id": get_jwt_identity(),
                     "encerrada_em": datetime.now(timezone.utc)
                 }
             },

@@ -523,6 +523,127 @@ recuperam os bytes pelas rotas protegidas e removem os arquivos ao terminar.
 Sem essa execução, o provedor externo continua não validado de ponta a ponta.
 
 
+## UC-01 — sessão da construtora
+
+Configure no `.env` do servidor `CONSTRUTORA_ID` com o ObjectId da única conta
+previamente provisionada em `tbl_construtora`, com `ativo: true` e `senha_hash`
+gerado com Bcrypt. Configure também `JWT_SECRET_KEY`; não versione credenciais.
+O ID deve corresponder à conta já cadastrada pela administração. O projeto não
+cria nem modifica a conta automaticamente. Sem ID válido, o login retorna `503`.
+A troca do ID exige reiniciar o servidor e invalida tokens da conta anterior.
+
+`POST /sessoes` recebe JSON com `email` e `senha` e retorna access e refresh
+JWT. `GET /sessoes/atual` exige access token e informa os dados não sensíveis
+da conta ativa; `DELETE /sessoes/atual` encerra a sessão. As rotas antigas
+`/construtora/login/` e `/construtora/logout/` seguem a mesma regra; a rota de
+cadastro público `/construtora/` retorna `403`. A renovação usa o mesmo ID de
+sessão e o logout revoga ambos os tokens. A revogação é persistida no banco.
+
+```powershell
+.\.venv\Scripts\python -m pytest tests/autenticacao -q
+```
+
+A execução padrão usa `mongomock`; não configura nem conecta ao banco da
+demonstração. O teste não comprova persistência real da revogação no Atlas.
+
+
+## UC-09 — avanços em rascunho
+
+A construtora autenticada pode registrar um avanço em um marco existente com
+`POST /marcos/{marcoId}/avancos`, usando `multipart/form-data`: campos de texto
+`data` (`AAAA-MM-DD`) e `descricao`, e um ou mais arquivos no campo `midias`.
+A resposta `201` devolve o recurso e `Location: /avancos/{id}`. Os recursos
+`GET /marcos/{marcoId}/avancos` e `GET /avancos/{id}` retornam seus metadados;
+cada mídia inclui um caminho autenticado para ler seu conteúdo. O servidor gera
+autoria, instante e estado `rascunho`. Não há exigência de registros diários.
+
+O serviço valida todos os arquivos antes do upload. Aceita no máximo cinco mídias
+e 110 MiB por requisição multipart, incluindo campos e cabeçalhos. É necessário
+informar `Content-Length`; o servidor responde `411` se estiver ausente e `413`
+quando os limites forem excedidos.
+
+Para repetição segura, o cliente deve enviar um `Idempotency-Key` único para cada
+cadastro e reutilizar essa mesma chave e os mesmos dados em uma tentativa após
+perda de resposta. A chave aceita letras, números, ponto, hífen e sublinhado, com
+até 128 caracteres. Repetir uma operação concluída retorna o mesmo avanço; usar
+a chave para dados diferentes ou uma operação ainda pendente retorna `409`. Sem
+essa chave opcional, tentativas repetidas são tratadas como cadastros distintos.
+
+Antes de cada upload é gravada em `tbl_uploads_pendentes` uma referência de
+operação com o ID de cada arquivo planejado. Avanço, mídias, vínculo com marco e
+marcação da operação como concluída são gravados na mesma transação MongoDB. Se o
+processo for interrompido, a operação pendente permite localizar possíveis órfãos.
+Falhas de remoção preservam a operação para reconciliação; um resultado de commit
+incerto mantém os arquivos até que a gravação seja conferida. A implantação precisa
+de um MongoDB que ofereça transações e do registro de operações persistente.
+
+Para reconciliar, um responsável deve primeiro **parar a aplicação e aguardar
+todos os uploads em andamento**, inclusive em outras instâncias. Com o mesmo
+ambiente de banco e armazenamento configurado, liste as operações pendentes:
+
+```powershell
+.\.venv\Scripts\python -m app.avancos.reconciliacao --listar
+```
+
+Depois de conferir a operação, execute, substituindo o identificador listado:
+
+```powershell
+.\.venv\Scripts\python -m app.avancos.reconciliacao --operacao IDENTIFICADOR --servico-parado
+```
+
+A rotina preserva mídias de operações concluídas ou com avanço existente. Para
+uma operação pendente sem avanço, tenta remover todas as referências e só marca
+como limpa depois da confirmação do provedor. Se a remoção falhar, a operação
+permanece pendente para nova tentativa. Após uma operação marcada como limpa, o
+cliente deve usar uma nova chave para criar um novo avanço. `--servico-parado` é
+uma confirmação operacional: ele não desliga servidores automaticamente.
+
+Para executar CT-31 a CT-36 localmente, sem Atlas nem Cloudinary reais:
+
+```powershell
+.\.venv\Scripts\python -m pytest tests/test_avancos.py tests/test_avancos_atlas.py tests/test_avancos_integracao.py tests/test_armazenamento.py -m "not cloudinary" -q -ra
+```
+
+O teste local simula a transação e a fronteira do Cloudinary; isso não comprova
+rollback nem persistência no MongoDB real. O cenário em `test_avancos_atlas.py`
+é ignorado por padrão. Para executá-lo, use um **cluster Atlas exclusivo de
+teste**, com conta própria e permissão para criar e remover bancos descartáveis;
+a URI deve ser fornecida exclusivamente na variável `TEST_UC09_MONGO_URI`, com
+nome de banco começando por `tests_uc09_`. Não use a base da demonstração. A
+execução cria um banco com nome aleatório `tests_uc09_<uuid>`, remove somente
+esse banco ao final e usa upload simulado. Uma nova aplicação em processo
+separado consulta o avanço com uma nova conexão.
+
+```powershell
+# Após definir TEST_UC09_MONGO_URI para o cluster exclusivo de teste:
+.\.venv\Scripts\python -m pytest tests/test_avancos_atlas.py --uc09-atlas -v
+```
+
+A execução em Atlas não valida o Cloudinary real. Os testes reais do Cloudinary
+existentes exigem configuração e credenciais exclusivas de teste separadas.
+
+
+### Integração real do UC-09
+
+O teste conjunto em `tests/test_avancos_integracao.py` exige **cluster Atlas e
+conta Cloudinary exclusivos de teste**. Ele só executa com `--uc09-atlas` e
+`--uc09-cloudinary`, `TEST_UC09_MONGO_URI` apontando para o cluster de teste e
+as variáveis `TEST_UC09_CLOUDINARY_CLOUD_NAME`, `TEST_UC09_CLOUDINARY_API_KEY`
+e `TEST_UC09_CLOUDINARY_API_SECRET` da conta Cloudinary de teste. Ele não usa as
+credenciais `CLOUDINARY_*` como fallback. O MongoDB usa bancos `tests_uc09_<uuid>`
+e as mídias usam uma pasta `tests_uc09/<uuid>`. São testados PNG, MP4 e PDF,
+com leitura do conteúdo em outro processo. Há ainda um teste de rollback com
+transação real do Atlas e falha injetada na gravação de metadados.
+
+```powershell
+# Somente após configurar os serviços exclusivos de teste:
+.\.venv\Scripts\python -m pytest tests/test_avancos_atlas.py tests/test_avancos_integracao.py --uc09-atlas --uc09-cloudinary -v
+```
+
+Ao fim, os arquivos e bancos temporários são removidos. Se a limpeza de arquivo
+falhar, o banco de teste é preservado para permitir a reconciliação. Nenhum desses
+serviços reais foi acessado na execução local desta tarefa.
+
 ## UC-09 — excluir avanço em rascunho (CT-39)
 
 `DELETE /avancos/{avancoId}` exige a sessão de uma construtora ativa. O backend

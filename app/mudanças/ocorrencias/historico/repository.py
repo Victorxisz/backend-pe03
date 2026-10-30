@@ -30,7 +30,7 @@ def publicar(documento, publicacao, marco, midias):
         revisao_esperada = filtro_revisao(documento)
     except ConflitoRascunho:
         raise VinculoAlterado() from None
-    
+
     def gravar(sessao):
         publicado = db.banco_dados["tbl_avancos"].find_one_and_update(
             {
@@ -67,7 +67,7 @@ def publicar(documento, publicacao, marco, midias):
 
         if midias_atuais != midias:
             raise VinculoAlterado()
-        
+
         vinculos = [
                 (db.colecao_obras, {"_id": marco["obra_id"]}),
                 (db.colecao_marcos, marco)
@@ -76,7 +76,7 @@ def publicar(documento, publicacao, marco, midias):
             (db.banco_dados["tbl_midias"], midia)
               for midia in midias
             )
-        
+
         for colecao, revisado in vinculos:
             # A escrita real faz exclusões concorrentes conflitarem até o commit.
             filtro = {
@@ -93,7 +93,7 @@ def publicar(documento, publicacao, marco, midias):
 
             if resultado.matched_count != 1:
                 raise VinculoAlterado()
-            
+
         return publicado
 
     with db.cliente_mongo.start_session() as sessao:

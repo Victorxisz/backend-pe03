@@ -12,12 +12,12 @@ from flask_jwt_extended import JWTManager
 
 from trabalhadores import trabalhadores_bp
 from construtora import bcrypt, construtora_bp
+from app.auth.routes import sessoes_bp
 from app.obras.routes import obras_bp
 from app.marcos.routes import estado_marcos_bp, marcos_bp
 from app.avancos.midias_routes import midias_bp
 from app.avancos.routes import avancos_bp
 from app.mudanças.ocorrencias.historico.routes import publicacoes_bp
-from app.avancos.routes import avancos_bp
 from db import colecao_sessoes_revogadas
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
@@ -28,6 +28,7 @@ chave_jwt = os.getenv("JWT_SECRET_KEY")
 if not chave_jwt:
     raise RuntimeError("Configure a JWT_SECRET_KEY no arquivo .env")
 app.config["JWT_SECRET_KEY"] = chave_jwt
+app.config["CONSTRUTORA_ID"] = os.getenv("CONSTRUTORA_ID", "").strip()
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=2)
 app.config["JWT_REFRESH_TOKEN_EXPIRES"] = timedelta(days=7)
 
@@ -35,6 +36,8 @@ jwt = JWTManager(app)
 
 @jwt.token_in_blocklist_loader
 def verificar_sessao_encerrada(cabecalho, dados_token):
+    if not app.config.get("CONSTRUTORA_ID") or dados_token.get("sub") != app.config["CONSTRUTORA_ID"]:
+        return True
     sessao_id = dados_token.get("sessao_id")
 
     if not isinstance(sessao_id, str) or not sessao_id:
@@ -65,13 +68,13 @@ bcrypt.init_app(app)
 
 app.register_blueprint(trabalhadores_bp)
 app.register_blueprint(construtora_bp)
+app.register_blueprint(sessoes_bp)
 app.register_blueprint(obras_bp)
 app.register_blueprint(marcos_bp)
 app.register_blueprint(estado_marcos_bp)
 app.register_blueprint(midias_bp)
 app.register_blueprint(avancos_bp)
 app.register_blueprint(publicacoes_bp)
-app.register_blueprint(avancos_bp)
 
 if __name__ == "__main__":
     app.run(debug=True)
