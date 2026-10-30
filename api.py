@@ -16,6 +16,7 @@ from app.obras.routes import obras_bp
 from app.marcos.routes import estado_marcos_bp, marcos_bp
 from app.avancos.midias_routes import midias_bp
 from app.mudanças.ocorrencias.historico.routes import publicacoes_bp
+from app.avancos.routes import avancos_bp
 from db import colecao_sessoes_revogadas
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
@@ -68,6 +69,7 @@ app.register_blueprint(marcos_bp)
 app.register_blueprint(estado_marcos_bp)
 app.register_blueprint(midias_bp)
 app.register_blueprint(publicacoes_bp)
+app.register_blueprint(avancos_bp)
 
 if __name__ == "__main__":
     app.run(debug=True)
