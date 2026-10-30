@@ -168,6 +168,22 @@ class ServicoMidias:
 
             raise
 
+    def limpar_sem_referencias(self, midias, referencia_em_uso):
+        pendentes = []
+
+        for midia in midias:
+            referencia = midia["referencia_externa"]
+
+            try:
+                if referencia_em_uso(referencia):
+                    continue
+
+                self.armazenamento.remover(referencia)
+            except (ErroArmazenamento, PyMongoError):
+                pendentes.append(referencia)
+
+        return pendentes
+
 
 def chave_arquivo(referencia):
     """A identidade do objeto não depende da ordem dos campos nem do formato."""
@@ -200,18 +216,3 @@ def preparar_limpeza(midias):
 def remover_arquivo(referencia):
     # Não exige configurar o provedor para excluir rascunho sem arquivos exclusivos.
     ArmazenamentoCloudinary().remover(referencia)
-    def limpar_sem_referencias(self, midias, referencia_em_uso, ):
-        pendentes = []
-
-        for midia in midias:
-            referencia = midia["referencia_externa"]
-
-            try:
-                if referencia_em_uso(referencia):
-                    continue
-
-                self.armazenamento.remover(referencia)
-            except (ErroArmazenamento, PyMongoError):
-                pendentes.append(referencia)
-
-        return pendentes
