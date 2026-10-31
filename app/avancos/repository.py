@@ -227,3 +227,13 @@ def listar_avancos(marco_id):
     return list(db.banco_dados["tbl_avancos"].find(
         {"marco_id": marco_id, "estado": {"$ne": ESTADO_EXCLUSAO}}
     ).sort([("data", 1), ("_id", 1)]))
+
+def buscar_obra(obra_id):
+    return db.colecao_obras.find_one({"_id": obra_id}, {"_id": 1})
+
+
+def consultar_publicados(obra_id):
+    marcos = [item["_id"] for item in db.colecao_marcos.find({"obra_id": obra_id}, {"_id": 1})]
+    return list(db.banco_dados["tbl_avancos"].find(
+        {"marco_id": {"$in": marcos}, "estado": "publicado", "publicacao": {"$type": "object"}}
+    ).sort([("publicacao.instante", -1), ("_id", 1)]))

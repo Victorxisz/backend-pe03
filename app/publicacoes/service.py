@@ -44,13 +44,24 @@ class ServicoPublicacoes:
         instante = fato["instante"]
         if instante.tzinfo is None:
             instante = instante.replace(tzinfo=timezone.utc)
-        return {
+        descricao = documento.get("descricao", fato["descricao"])
+        data = documento.get("data", fato["data"])
+        midias = []
+        for original in fato.get("midias", []):
+            item = dict(original)
+            if "conteudo" not in item and item.get("id"):
+                item["conteudo"] = f"/midias/{item['id']}/conteudo"
+            midias.append(item)
+        representacao = {
             "id": str(documento["_id"]), "avanco_id": str(documento["_id"]),
             "estado": "publicado", "autor": fato["autor"], "instante": instante.isoformat(),
-            "data": fato["data"], "descricao": fato["descricao"],
+            "data": data, "descricao": descricao,
             "marco": {"id": str(fato["marco"]["id"]), "nome": fato["marco"]["nome"]},
-            "midias": fato["midias"],
+            "midias": midias,
         }
+        if descricao != fato["descricao"] or data != fato["data"]:
+            representacao["editado"] = True
+        return representacao
 
     def publicar_avanco(self, avanco_id, autor):
         documento = self._avanco(avanco_id)

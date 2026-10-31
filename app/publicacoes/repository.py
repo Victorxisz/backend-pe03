@@ -114,7 +114,6 @@ def consultar_publicados(obra_id):
         },
     ).sort(
         [
-            ("publicacao.data", 1),
-            ("publicacao.instante", 1),
+            ("publicacao.instante", -1),
             ("_id", 1),
         ]))
