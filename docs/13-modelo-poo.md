@@ -103,6 +103,11 @@ regras entre classes.
   descrição, obra, marco opcional, autoria, data, estado e mídias opcionais.
 - Ocorrência admite várias aceitações sem solução. Mudanças posteriores de estado
   não apagam aceitações ou transições anteriores.
+- Reenvios de `POST /ocorrencias/{id}/aceitacoes` devem carregar a mesma chave
+  `Idempotency-Key`; a repetição retorna a aceitação original (HTTP 200) sem
+  duplicá-la. Uma nova decisão usa nova chave. Sem cabeçalho, cada POST é uma
+  decisão nova. A aceitação é anexada atomicamente somente enquanto o estado é
+  `sem solução`; a rota GET devolve o histórico mesmo após mudança de estado.
 - Excluir um marco apaga suas ocorrências e os registros dependentes delas.
 - Uma obra tem um cliente de referência, inclusive quando representa apartamentos.
 
