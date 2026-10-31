@@ -35,12 +35,13 @@ def _indisponivel():
                      ["versoes"], codigo="HISTORICO_INDISPONIVEL")
 
 
-def consultar_versoes(avanco_id):
+def consultar_versoes(avanco_id, *, documento=None):
     try:
         identificador = ObjectId(avanco_id)
     except (InvalidId, TypeError):
         raise ErroAvanco("Identificador inválido", 400, ["avanco_id"]) from None
-    documento = repository.buscar_avanco(identificador)
+    if documento is None:
+        documento = repository.buscar_avanco(identificador)
     if documento is None or documento.get("estado") == "exclusao_pendente":
         raise ErroAvanco("Avanço não encontrado", 404, ["avanco_id"])
     if documento.get("estado") != "publicado" or not documento.get("publicacao"):
@@ -62,6 +63,8 @@ def consultar_versoes(avanco_id):
                 _indisponivel()
             campos = [campo for campo in ("data", "descricao", "midias") if antes[campo] != depois[campo]]
             if not campos:
+                _indisponivel()
+            if "campos" in correcao and correcao["campos"] != campos:
                 _indisponivel()
             versoes.append({"numero": indice, "atual": False, "conteudo": depois,
                             "autor_original": documento.get("autor"), "origem_simulada": documento.get("origem_simulada"),

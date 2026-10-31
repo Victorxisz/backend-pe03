@@ -111,8 +111,11 @@ def cenario(transacao_local, camadas, database, config, conteudos):
         database.tbl_midias.insert_one(midia)
         fotos.append(midia)
 
-    def enviar(validado):
-        return metadados(validado.conteudo, validado.nome, validado.tipo, validado.mime)
+    def enviar(validado, registrar_referencia=None):
+        resultado = metadados(validado.conteudo, validado.nome, validado.tipo, validado.mime)
+        if registrar_referencia:
+            registrar_referencia(resultado["referencia_externa"])
+        return resultado
 
     def recuperar(referencia, tamanho):
         conteudo = arquivos_remotos.get(referencia["public_id"])
@@ -354,6 +357,9 @@ def test_mudanca_entre_leitura_e_gravacao_rejeita_edicao(camadas, cenario, datab
         else:
             database.tbl_midias.update_one({"_id": cenario.fotos[0]["_id"]}, {"$set": {"nome": "Alterada por outra operação"}})
         esperado.update(snapshot(database))
+        # A intenção de upload é transitória: após compensação confirmada,
+        # apenas a alteração concorrente deve permanecer no banco.
+        esperado.pop("tbl_uploads_pendentes", None)
         return original(**kwargs)
 
     monkeypatch.setattr(camadas.repo, "salvar_edicao", mudar_e_salvar)
@@ -446,7 +452,11 @@ def test_falha_compensacao_informa_uploads_pendentes(camadas, cenario, database,
         cenario.editar({"descricao": "Correção"}, [arquivo(conteudos["png"])])
     assert len(erro.value.pendentes) == 1
     assert erro.value.pendentes[0]["public_id"] in cenario.remotos
-    assert snapshot(database) == antes
+    depois = snapshot(database)
+    diario = depois.pop("tbl_uploads_pendentes")[0]
+    assert diario["tipo"] == "edicao" and diario["estado"] == "pendente"
+    assert diario["referencias"] == erro.value.pendentes
+    assert depois == antes
 
 
 def test_repositorio_recusa_atualizacao_de_campo_protegido(camadas, cenario, database):
@@ -488,8 +498,8 @@ def test_repositorio_defende_invariantes_sem_depender_do_service(camadas, cenari
 def test_metadados_novos_invalidos_compensam_upload(camadas, cenario, database, conteudos):
     enviar = cenario.storage.enviar.side_effect
 
-    def enviar_com_metadados_invalidos(validado):
-        metadados = enviar(validado)
+    def enviar_com_metadados_invalidos(validado, registrar_referencia=None):
+        metadados = enviar(validado, registrar_referencia)
         metadados["mime"] = "text/html"
         return metadados
 
@@ -618,3 +628,45 @@ def test_patch_rejeita_lista_multipart_invalida(client, headers, cenario, databa
                             data={"midias_manter": valor}, content_type="multipart/form-data")
     assert resposta.status_code == 422
     assert snapshot(database) == antes
+
+def test_edicao_com_upload_confirma_diario_na_mesma_transacao(camadas, cenario, database, conteudos):
+    resposta = cenario.editar({'descricao': 'Nova descrição'}, [arquivo(conteudos['png'])])
+    diario = database.tbl_uploads_pendentes.find_one()
+    assert diario['tipo'] == 'edicao' and diario['estado'] == 'concluida'
+    assert diario['avanco_id'] == cenario.avanco
+    assert len(diario['referencias']) == 1
+    assert database.tbl_avancos.find_one({'_id': cenario.avanco})['revisao'] == resposta['revisao']
+
+
+def test_edicao_falha_compensacao_retoma_em_outro_servico(camadas, cenario, database, conteudos, monkeypatch):
+    from app.avancos.reconciliacao import ServicoReconciliacao
+    antes = database.tbl_avancos.find_one({'_id': cenario.avanco})
+    monkeypatch.setattr(camadas.repo, 'salvar_edicao', Mock(side_effect=PyMongoError('falha')))
+    remover = cenario.storage.remover.side_effect
+    cenario.storage.remover.side_effect = camadas.ErroArmazenamento('fora do ar')
+    with pytest.raises(camadas.ErroLimpeza):
+        cenario.editar({'descricao': 'Não persistir'}, [arquivo(conteudos['png'])])
+    diario = database.tbl_uploads_pendentes.find_one()
+    cenario.storage.remover.side_effect = remover
+    assert ServicoReconciliacao(cenario.storage).reconciliar(diario['_id'], aplicacao_parada=True) == 'limpa'
+    assert database.tbl_avancos.find_one({'_id': cenario.avanco}) == antes
+    assert len(cenario.remotos) == 2
+
+def test_erro_ao_fechar_sessao_apos_edicao_confirmada_preserva_upload(
+    camadas, cenario, database, conteudos, monkeypatch,
+):
+    import db
+    iniciar = db.cliente_mongo.start_session
+    class Contexto:
+        def __enter__(self):
+            self.original = iniciar()
+            return self.original.__enter__()
+        def __exit__(self, *args):
+            self.original.__exit__(*args)
+            raise PyMongoError('Erro ao encerrar sessão depois do commit')
+    monkeypatch.setattr(db.cliente_mongo, 'start_session', Contexto)
+    r = cenario.editar({'descricao':'Confirmada'}, [arquivo(conteudos['png'])])
+    assert r['descricao'] == 'Confirmada'
+    assert database.tbl_uploads_pendentes.find_one()['estado'] == 'concluida'
+    cenario.storage.remover.assert_not_called()
+    assert len(cenario.remotos) == 3

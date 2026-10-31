@@ -52,7 +52,7 @@ class RepositorioRascunhos:
                     return True
         return False
 
-    def salvar_edicao(self, documento, alteracoes, midias_anteriores, ids_manter, novas_midias):
+    def salvar_edicao(self, documento, alteracoes, midias_anteriores, ids_manter, novas_midias, operacao_id=None):
         if set(alteracoes) - {"data", "descricao"}:
             raise ValueError("A edição não pode alterar campos protegidos")
         ids_anteriores = {midia["_id"] for midia in midias_anteriores}
@@ -99,12 +99,28 @@ class RepositorioRascunhos:
                 self.banco["tbl_avancos"].update_one(
                     {"_id": documento["_id"]}, {"$set": alteracoes}, session=sessao,
                 )
+            if operacao_id is not None:
+                resultado = self.banco["tbl_uploads_pendentes"].update_one(
+                    {"_id": operacao_id, "estado": "pendente"},
+                    {"$set": {"estado": "concluida"}}, session=sessao,
+                )
+                if resultado.matched_count != 1:
+                    raise ConflitoRascunho("Operação de upload indisponível")
             return self.banco["tbl_avancos"].find_one({"_id": documento["_id"]}, session=sessao), removidas
 
-        with self.cliente.start_session() as sessao:
-            return sessao.with_transaction(gravar)
+        confirmado = False
+        try:
+            with self.cliente.start_session() as sessao:
+                resultado = sessao.with_transaction(gravar)
+                confirmado = True
+                return resultado
+        except Exception:
+            if not confirmado:
+                raise
+            # Um erro ao encerrar a sessão não desfaz um commit confirmado.
+            return resultado
 
-    def referencia_em_uso(self, referencia, ids_midias=()):
+    def referencia_em_uso(self, referencia, ids_midias=(), operacao_ignorada=None):
         campos = ("provedor", "public_id", "resource_type", "delivery_type")
         if not isinstance(referencia, dict) or any(
             not isinstance(referencia.get(campo), str) or not referencia[campo] for campo in campos
@@ -116,6 +132,8 @@ class RepositorioRascunhos:
             if nome == "tbl_limpezas_midias":
                 continue
             for documento in self.banco[nome].find():
+                if nome == "tbl_uploads_pendentes" and documento["_id"] == operacao_ignorada:
+                    continue
                 if nome == "tbl_uploads_pendentes" and documento.get("estado") in {"concluida", "limpa"}:
                     continue
                 if self._contem(documento, ids=ids, referencia=identidade):
