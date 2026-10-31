@@ -24,6 +24,14 @@ class ErroMidia(ValueError):
         self.campos = ["midias"] if campos is None else list(campos)
 
 
+class ResultadoPersistenciaIndeterminado(Exception):
+    """Commit pode ter ocorrido; nunca apague arquivos potencialmente referenciados."""
+
+    def __init__(self, referencias):
+        super().__init__("Não foi possível confirmar a gravação; a operação precisa de verificação")
+        self.referencias = referencias
+
+
 @dataclass(frozen=True)
 class ArquivoValidado:
     conteudo: bytes
@@ -107,6 +115,8 @@ class ServicoMidias:
         salvar,
         *,
         permitir_sem_novos=False,
+        antes_envio=None,
+        registrar_referencia=None,
     ):
         """
         Valida os arquivos, envia e chama salvar(metadados).
@@ -127,12 +137,14 @@ class ServicoMidias:
             for arquivo in arquivos
         ]
 
+        if antes_envio is not None:
+            antes_envio(validados)
         enviados = []
 
         try:
             for arquivo in validados:
                 enviados.append(
-                    self.armazenamento.enviar(arquivo)
+                    self.armazenamento.enviar(arquivo) if registrar_referencia is None else self.armazenamento.enviar(arquivo, registrar_referencia)
                 )
 
             return salvar(enviados)
@@ -142,7 +154,7 @@ class ServicoMidias:
             # confirmação tenha chegado à aplicação. Nesse caso,
             # não podemos apagar arquivos possivelmente em uso.
             if (
-                isinstance(erro, PyMongoError)
+                isinstance(erro, ResultadoPersistenciaIndeterminado) or isinstance(erro, PyMongoError)
                 and erro.has_error_label(
                     "UnknownTransactionCommitResult"
                 )

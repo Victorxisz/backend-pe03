@@ -1,4 +1,4 @@
-"""UC-09: serviço, persistência e limpeza; a rota PATCH ainda não existe.
+"""UC-09: serviço, persistência, limpeza e contrato HTTP de edição.
 
 Sem --atlas, rollback é simulado: estes testes não comprovam isolamento nem
 concorrência real do MongoDB. O provedor de arquivos é sempre simulado.
@@ -556,4 +556,65 @@ def test_falha_na_midia_mantida_desfaz_revisao(camadas, cenario, database, monke
     monkeypatch.setattr(database.tbl_midias, "update_one", Mock(side_effect=PyMongoError("Falha")))
     with pytest.raises(PyMongoError):
         cenario.editar({"descricao": "Não deve persistir"})
+    assert snapshot(database) == antes
+
+
+def test_patch_edita_parcial_preserva_autoria_vinculo_e_previa(
+    client, headers, camadas, cenario, database, monkeypatch
+):
+    monkeypatch.setattr(camadas.service, "ServicoMidias", lambda: cenario.midias)
+    antes = database.tbl_avancos.find_one({"_id": cenario.avanco})
+    resposta = client.patch(f"/avancos/{cenario.avanco}", headers=headers,
+                            json={"descricao": "Texto revisado"})
+    assert resposta.status_code == 200
+    salvo = database.tbl_avancos.find_one({"_id": cenario.avanco})
+    assert salvo["descricao"] == "Texto revisado"
+    assert salvo["revisao"] == antes["revisao"] + 1
+    for campo in ("data", "autor", "marco_id", "estado"):
+        assert salvo[campo] == antes[campo]
+    assert client.get(f"/obras/{cenario.obra}/previa", headers=headers).json == {"atualizacoes": []}
+    assert resposta.headers["Cache-Control"] == "private, no-store"
+
+
+def test_patch_substitui_midias_com_multipart(
+    client, headers, camadas, cenario, database, conteudos, monkeypatch
+):
+    from io import BytesIO
+
+    monkeypatch.setattr(camadas.service, "ServicoMidias", lambda: cenario.midias)
+    resposta = client.patch(f"/avancos/{cenario.avanco}", headers=headers, data={
+        "midias_manter": "[]", "midias": (BytesIO(conteudos["png"]), "nova.png"),
+    })
+    assert resposta.status_code == 200
+    atuais = list(database.tbl_midias.find({"avanco_id": cenario.avanco}))
+    assert len(atuais) == 1 and atuais[0]["nome"] == "nova.png"
+    assert atuais[0]["_id"] not in {m["_id"] for m in cenario.fotos}
+    assert set(cenario.remotos) == {atuais[0]["referencia_externa"]["public_id"]}
+
+
+@pytest.mark.parametrize("dados", [{"midias_manter": []}, {"autor": "outro"}, {"estado": "publicado"}])
+def test_patch_rejeita_ultima_midia_e_campos_protegidos(
+    client, headers, cenario, database, dados
+):
+    antes = snapshot(database)
+    resposta = client.patch(f"/avancos/{cenario.avanco}", headers=headers, json=dados)
+    assert resposta.status_code == 422
+    assert snapshot(database) == antes
+    cenario.storage.enviar.assert_not_called()
+
+
+def test_patch_nao_edita_publicacao(client, headers, cenario, database):
+    database.tbl_avancos.update_one({"_id": cenario.avanco}, {"$set": {"estado": "publicado", "publicacao": {}}})
+    antes = snapshot(database)
+    resposta = client.patch(f"/avancos/{cenario.avanco}", headers=headers, json={"descricao": "Correção"})
+    assert resposta.status_code == 409
+    assert snapshot(database) == antes
+
+
+@pytest.mark.parametrize("valor", ["nao-e-json", '"id"', "null"])
+def test_patch_rejeita_lista_multipart_invalida(client, headers, cenario, database, valor):
+    antes = snapshot(database)
+    resposta = client.patch(f"/avancos/{cenario.avanco}", headers=headers,
+                            data={"midias_manter": valor}, content_type="multipart/form-data")
+    assert resposta.status_code == 422
     assert snapshot(database) == antes

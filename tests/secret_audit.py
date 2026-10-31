@@ -56,12 +56,34 @@ def audit_git(root):
                 )
             )
     # Todos os blobs alcançáveis pelas referências locais, inclusive versões removidas.
-    for entry in git("rev-list", "--objects", "--all").decode("utf-8").splitlines():
-        oid, _, name = entry.partition(" ")
-        if git("cat-file", "-t", oid).strip() != b"blob":
-            continue
-        if name.rsplit("/", 1)[-1] in forbidden:
-            findings.append((oid, name, "arquivo de credenciais no histórico"))
-        content = git("cat-file", "blob", oid).decode("utf-8", errors="replace")
-        findings.extend((oid, name, rule, line) for rule, line in find_secrets(content))
+    entries = git("rev-list", "--objects", "--all").decode("utf-8").splitlines()
+    # Uma única instância de git, sem deixar de examinar os blobs do histórico.
+    process = subprocess.Popen(["git", "cat-file", "--batch"], cwd=root,
+                               stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    try:
+        for entry in entries:
+            oid, _, name = entry.partition(" ")
+            process.stdin.write((oid + "\n").encode("ascii"))
+            process.stdin.flush()
+            header = process.stdout.readline().split()
+            if len(header) != 3:
+                raise RuntimeError("Não foi possível ler os objetos do histórico Git")
+            kind, size = header[1], int(header[2])
+            raw = process.stdout.read(size)
+            if len(raw) != size or process.stdout.read(1) != b"\n":
+                raise RuntimeError("Leitura incompleta do histórico Git")
+            if kind != b"blob":
+                continue
+            if name.rsplit("/", 1)[-1] in forbidden:
+                findings.append((oid, name, "arquivo de credenciais no histórico"))
+            content = raw.decode("utf-8", errors="replace")
+            findings.extend((oid, name, rule, line) for rule, line in find_secrets(content))
+        process.stdin.close()
+        if process.wait() != 0:
+            raise RuntimeError("Falha ao examinar o histórico Git")
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+        process.stdout.close()
     return findings

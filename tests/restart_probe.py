@@ -20,6 +20,7 @@ def main():
                 from construtora import gerar_tokens_construtora
 
                 account = database.tbl_construtora.find_one({"email": "construtora@example.com"})
+                app.config["CONSTRUTORA_ID"] = str(account["_id"])
                 token, _ = gerar_tokens_construtora(account["_id"])
             response = app.test_client().get(
                 os.environ["TEST_RESOURCE_PATH"],

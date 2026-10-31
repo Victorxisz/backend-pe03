@@ -57,7 +57,7 @@ def test_todas_as_rotas_de_marcos_exigem_construtora_ativa(client, database, acc
 
 
 def test_rotas_protegidas_rejeitam_chamada_sem_token(client, database):
-    publicas = {"construtora.cadastrar_construtora", "construtora.login_construtora"}
+    publicas = {"construtora.cadastrar_construtora", "construtora.login_construtora", "sessoes.criar_sessao"}
     antes = snapshot(database)
     for regra in rotas_registradas(client.application):
         if regra.endpoint in publicas:
