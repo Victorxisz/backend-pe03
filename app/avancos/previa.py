@@ -36,7 +36,9 @@ def _representar(documento):
     descricao = documento.get("descricao", fato["descricao"])
     data = documento.get("data", fato["data"])
     midias = []
-    for original in fato.get("midias", []):
+    # A composição atual, quando persistida por uma correção, prevalece sobre
+    # o snapshot original. Publicações anteriores continuam usando o snapshot.
+    for original in documento.get("midias", fato.get("midias", [])):
         item = dict(original)
         if "conteudo" not in item and item.get("id"):
             item["conteudo"] = f"/midias/{item['id']}/conteudo"
@@ -52,7 +54,9 @@ def _representar(documento):
         "marco": {"id": str(fato["marco"]["id"]), "nome": fato["marco"]["nome"]},
         "midias": midias,
     }
-    if descricao != fato["descricao"] or data != fato["data"]:
+    if (descricao != fato["descricao"] or data != fato["data"]
+            or documento.get("midias", fato.get("midias", [])) != fato.get("midias", [])
+            or documento.get("editado") is True):
         representacao["editado"] = True
     return representacao
 
