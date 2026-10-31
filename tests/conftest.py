@@ -15,6 +15,8 @@ from support import TEST_INSTANT, isolated_app
 
 
 def pytest_addoption(parser):
+    parser.addoption("--uc09-atlas", action="store_true", help="UC-09 em TEST_UC09_MONGO_URI")
+    parser.addoption("--uc09-cloudinary", action="store_true", help="Cloudinary exclusivo de teste")
     parser.addoption("--atlas", action="store_true", help="Usar MONGO_URI do ambiente ou .env")
     parser.addoption(
         "--require-routes",

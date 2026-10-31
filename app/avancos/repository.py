@@ -4,6 +4,9 @@ from bson import ObjectId
 from pymongo import ReturnDocument
 
 import db
+import logging
+
+logger = logging.getLogger(__name__)
 
 from .revisoes import ConflitoRascunho, filtro_revisao, registrar_alteracao
 from .rascunhos_repository import RepositorioRascunhos
@@ -151,6 +154,8 @@ def _outros_documentos(avanco_id):
         if nome == "tbl_limpezas_midias":
             continue
         for documento in banco[nome].find():
+            if nome == "tbl_uploads_pendentes" and documento.get("estado") in {"concluida", "limpa"}:
+                continue
             if nome == "tbl_avancos":
                 if documento["_id"] == avanco_id or documento.get("estado") == ESTADO_EXCLUSAO:
                     continue
@@ -237,3 +242,65 @@ def consultar_publicados(obra_id):
     return list(db.banco_dados["tbl_avancos"].find(
         {"marco_id": {"$in": marcos}, "estado": "publicado", "publicacao": {"$type": "object"}}
     ).sort([("publicacao.instante", -1), ("_id", 1)]))
+
+
+class MarcoRemovido(Exception):
+    pass
+
+
+def salvar_com_midias(documento, midias, operacao_id):
+    """Salva documentos e verifica vínculo em transação MongoDB."""
+
+    def gravar(sessao):
+        # A escrita no marco detecta exclusão concorrente antes do commit.
+        atualizado = db.colecao_marcos.update_one(
+            {"_id": documento["marco_id"]},
+            {"$inc": {"_versao_avancos": 1}},
+            session=sessao,
+        )
+        if atualizado.matched_count != 1:
+            raise MarcoRemovido()
+        db.banco_dados["tbl_avancos"].insert_one(documento, session=sessao)
+        db.banco_dados["tbl_midias"].insert_many(midias, session=sessao)
+        operacao = db.banco_dados["tbl_uploads_pendentes"].update_one(
+            {"_id": operacao_id, "estado": "pendente"},
+            {"$set": {"estado": "concluida"}},
+            session=sessao,
+        )
+        if operacao.matched_count != 1:
+            raise RuntimeError("Operação de upload indisponível")
+
+    confirmado = False
+    try:
+        with db.cliente_mongo.start_session() as sessao:
+            sessao.with_transaction(gravar)
+            confirmado = True
+    except Exception:
+        if not confirmado:
+            raise
+        # A transação já confirmou: um erro no encerramento da sessão não deve
+        # acionar a compensação e apagar mídias efetivamente referenciadas.
+        logger.warning("Transação confirmada; falha ao encerrar sessão do MongoDB")
+
+
+def criar_operacao(documento):
+    db.banco_dados["tbl_uploads_pendentes"].insert_one(documento)
+
+
+def buscar_operacao(operacao_id):
+    return db.banco_dados["tbl_uploads_pendentes"].find_one({"_id": operacao_id})
+
+
+def registrar_referencia(operacao_id, referencia):
+    resultado = db.banco_dados["tbl_uploads_pendentes"].update_one(
+        {"_id": operacao_id, "estado": "pendente"},
+        {"$push": {"referencias": referencia}},
+    )
+    if resultado.matched_count != 1:
+        raise RuntimeError("Operação de upload indisponível")
+
+
+def remover_operacao_pendente(operacao_id):
+    db.banco_dados["tbl_uploads_pendentes"].delete_one(
+        {"_id": operacao_id, "estado": "pendente"}
+    )

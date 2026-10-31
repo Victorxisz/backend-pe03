@@ -38,6 +38,8 @@ def responder_falha_banco(erro):
 
 @construtora_bp.post("/")
 def cadastrar_construtora():
+    if current_app.config.get("CONSTRUTORA_ID"):
+        return jsonify(erro="Cadastro público de construtora indisponível"), 403
     return jsonify(servico.cadastrar(request.get_json(silent=True))), 201
 
 
@@ -56,7 +58,17 @@ def atualizar_construtora(construtora_id):
 
 @construtora_bp.post("/login/")
 def login_construtora():
-    return jsonify(servico.entrar(request.get_json(silent=True)))
+    dados = request.get_json(silent=True)
+    configurada = current_app.config.get("CONSTRUTORA_ID")
+    if configurada:
+        from bson import ObjectId
+        if not ObjectId.is_valid(configurada):
+            raise ErroConstrutora("Conta da construtora não configurada", 503)
+        if isinstance(dados, dict) and isinstance(dados.get("email"), str):
+            conta = colecao_construtora.find_one({"_id": ObjectId(configurada)}, {"email": 1})
+            if conta is None or dados["email"].strip().lower() != conta.get("email"):
+                raise ErroConstrutora("Email ou senha incorretos", 401)
+    return jsonify(servico.entrar(dados))
 
 
 @construtora_bp.post("/refresh/")

@@ -116,6 +116,8 @@ class RepositorioRascunhos:
             if nome == "tbl_limpezas_midias":
                 continue
             for documento in self.banco[nome].find():
+                if nome == "tbl_uploads_pendentes" and documento.get("estado") in {"concluida", "limpa"}:
+                    continue
                 if self._contem(documento, ids=ids, referencia=identidade):
                     return True
         return False

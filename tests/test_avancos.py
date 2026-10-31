@@ -6,6 +6,7 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from functools import wraps
 from unittest.mock import patch
+from types import SimpleNamespace
 
 import pytest
 from bson import ObjectId
@@ -49,15 +50,20 @@ def transacao_local(app, database, monkeypatch, request):
 
 
 class ServicoMidiasFalso:
-    def executar_com_midias(self, arquivos, salvar):
+    def executar_com_midias(self, arquivos, salvar, *, antes_envio=None, registrar_referencia=None):
         assert arquivos
-        return salvar([{
+        if antes_envio:
+            antes_envio([SimpleNamespace(nome="evidencia.png", tipo="foto", conteudo=b"test")])
+        metadados = {
             "tipo": "foto", "nome": "evidencia.png", "tamanho": 4,
             "mime": "image/png", "referencia_externa": {
                 "provedor": "cloudinary", "public_id": "privado",
                 "resource_type": "image", "delivery_type": "authenticated",
             },
-        }])
+        }
+        if registrar_referencia:
+            registrar_referencia(metadados["referencia_externa"])
+        return salvar([metadados])
 
 
 @pytest.fixture
@@ -85,8 +91,12 @@ def test_ct31_registra_rascunho_com_midia_sem_expor_referencia(
     body = response.get_json()
     assert body["estado"] == "rascunho"
     assert body["data"] == "2030-02-01"
-    assert body["midias"] == [{"tipo": "foto", "nome": "evidencia.png",
-                               "tamanho": 4, "mime": "image/png"}]
+    assert len(body["midias"]) == 1
+    midia_http = body["midias"][0]
+    assert {k: midia_http[k] for k in ("tipo", "nome", "tamanho", "mime")} == {
+        "tipo": "foto", "nome": "evidencia.png", "tamanho": 4, "mime": "image/png",
+    }
+    assert midia_http["conteudo"] == f"/midias/{midia_http['id']}/conteudo"
     assert "referencia_externa" not in response.get_data(as_text=True)
     salvo = database.tbl_avancos.find_one({"_id": ObjectId(body["id"])})
     assert salvo["marco_id"] == ObjectId(marco)
@@ -141,11 +151,18 @@ def test_cadastro_e_publicacao_compartilham_as_mesmas_midias(client, headers, da
     assert database.tbl_midias.count_documents({}) == 1
 
 
-def test_falha_nas_midias_nao_deixa_avanco_sem_evidencias(client, headers, database, marco):
+def test_falha_nas_midias_nao_deixa_avanco_sem_evidencias(client, headers, database, marco, monkeypatch):
     antes = snapshot(database)
-    with patch("app.avancos.service.ServicoMidias", return_value=ServicoMidiasFalso()), patch.object(
-        database.tbl_midias, "insert_many", side_effect=PyMongoError("falha simulada")
-    ):
+    classe = type(database.tbl_midias)
+    inserir = classe.insert_many
+
+    def falhar_midias(colecao, documentos, *args, **kwargs):
+        if colecao.name.endswith("tbl_midias"):
+            raise PyMongoError("falha simulada")
+        return inserir(colecao, documentos, *args, **kwargs)
+
+    monkeypatch.setattr(classe, "insert_many", falhar_midias)
+    with patch("app.avancos.service.ServicoMidias", return_value=ServicoMidiasFalso()):
         resposta = enviar(client, headers, marco)
     assert resposta.status_code == 503
     assert snapshot(database) == antes

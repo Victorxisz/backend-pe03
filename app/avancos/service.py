@@ -3,20 +3,24 @@
 from datetime import timedelta
 from uuid import uuid4
 import logging
+import hashlib
+import json
+import re
 
 from bson import ObjectId
 from bson.errors import InvalidId
-from pymongo.errors import PyMongoError
+from pymongo.errors import DuplicateKeyError, PyMongoError
 
-from app.integracoes.armazenamento import ErroArmazenamento
+from app.integracoes.armazenamento import ErroArmazenamento, ErroLimpeza
 from app.dominio.avancos import Avanco
 from app.dominio.comum import ErroDominio, Relogio
 from app.publicacoes.validacoes import validar_midias
 from . import midias, repository
-from .midias import ErroMidia, ServicoMidias
+from .midias import ErroMidia, ServicoMidias, ResultadoPersistenciaIndeterminado
 from .revisoes import ConflitoRascunho
-from .validacoes import normalizar_edicao, validar_avanco, validar_edicao
+from .validacoes import validar_campos, normalizar_edicao, validar_avanco, validar_edicao
 from app.serializacao import serializar
+from .acesso_midias import midia_para_dict
 
 TEMPO_BLOQUEIO = timedelta(minutes=5)
 logger = logging.getLogger(__name__)
@@ -27,6 +31,11 @@ class ErroAvanco(Exception):
         super().__init__(mensagem)
         self.status, self.codigo = status, codigo
         self.campos, self.pendentes = list(campos), pendentes
+
+
+class AvancoReutilizado(Exception):
+    def __init__(self, avanco_id):
+        self.avanco_id = avanco_id
 
 
 class ServicoAvancos:
@@ -393,48 +402,161 @@ class ServicoAvancos:
 
     def _id(self, valor, campo):
         try:
+            if not isinstance(valor, (str, ObjectId)):
+                raise TypeError
             return ObjectId(valor)
         except (InvalidId, TypeError):
             raise ErroAvanco("Identificador inválido", 400, [campo]) from None
 
-    def _representar(self, documento):
-        midias = documento.get("midias")
+    def _representar(self, documento, documentos_midias=None):
+        midias = documentos_midias if documentos_midias is not None else documento.get("midias")
         if midias is None:
             midias = self.repositorio.consultar_midias(documento["_id"])
+        representacoes = []
+        for midia in midias:
+            if "_id" in midia:
+                item = midia_para_dict(midia)
+            else:
+                # A prévia também aceita a composição atual como snapshot de
+                # metadados públicos, que usa id em vez do _id do MongoDB.
+                item = {k: midia[k] for k in (
+                    "id", "avanco_id", "tipo", "nome", "tamanho", "mime",
+                    "formato", "visibilidade", "data_envio",
+                ) if k in midia}
+            if item.get("id"):
+                item["conteudo"] = f"/midias/{item['id']}/conteudo"
+            representacoes.append(item)
         return {
             "id": str(documento["_id"]), "marco_id": str(documento["marco_id"]),
             "data": documento["data"], "descricao": documento["descricao"],
             "estado": documento["estado"], "autor": documento["autor"],
-            "data_registro": serializar(documento["data_registro"]).replace("+00:00", "Z"),
-            "midias": [{k: m[k] for k in ("tipo", "nome", "tamanho", "mime")} for m in midias],
+            "data_registro": serializar(documento.get("data_registro", documento.get("instante_registro"))).replace("+00:00", "Z"),
+            "instante_registro": serializar(documento.get("data_registro", documento.get("instante_registro"))),
+            "midias": representacoes,
         }
 
-    def criar_avanco(self, marco_id, dados, arquivos, autor, servico_midias=None):
-        marco_oid = self._id(marco_id, "marco_id")
-        campos = validar_avanco(dados)
-        if campos:
-            raise ErroAvanco("Informe uma data válida e uma descrição", 422, campos)
-        if not self.repositorio.marco_existe(marco_oid):
+    def criar_avanco(self, marco_id, formulario, arquivos, autor, servico_midias=None, *, chave=None):
+        if chave is not None and not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", chave):
+            raise ErroAvanco("Idempotency-Key inválida", 422, ["Idempotency-Key"])
+        marco = self._id(marco_id, "marco_id")
+        if not self.repositorio.marco_existe(marco):
             raise ErroAvanco("Marco não encontrado", 404, ["marco_id"])
         arquivos = list(arquivos)
-        if not arquivos:
-            raise ErroMidia("Envie ao menos uma foto, vídeo ou documento")
-        servico = servico_midias if servico_midias is not None else ServicoMidias()
-        documento_base = {
-            "marco_id": marco_oid, "data": dados["data"], "descricao": dados["descricao"].strip(),
-            "estado": "rascunho", "autor": autor, "data_registro": self.relogio.agora(),
+        campos = validar_campos(formulario, arquivos)
+        instante = self.relogio.agora()
+        instante = instante.replace(microsecond=instante.microsecond // 1000 * 1000)
+        documento = {
+            "_id": ObjectId(),
+            "marco_id": marco,
+            **campos,
+            "estado": "rascunho",
+            "autor": autor,
+            "data_registro": instante,
         }
-        def salvar(midias):
-            documento = dict(documento_base)
-            return self.repositorio.inserir_avanco_com_midias(documento, midias), documento
-        identifier, documento = servico.executar_com_midias(arquivos, salvar)
-        documento["_id"] = identifier
-        return self._representar(documento)
+        operacao_id = hashlib.sha256(f"{autor}:{chave or uuid4().hex}".encode()).hexdigest()
+        operacao_criada = False
+
+        def reservar(validados):
+            nonlocal operacao_criada
+            assinatura = {
+                "marco": str(marco),
+                **campos,
+                "arquivos": [
+                    {
+                        "nome": item.nome,
+                        "tipo": item.tipo,
+                        "conteudo": hashlib.sha256(item.conteudo).hexdigest(),
+                    }
+                    for item in validados
+                ],
+            }
+            impressao = hashlib.sha256(
+                json.dumps(assinatura, sort_keys=True, ensure_ascii=False).encode()
+            ).hexdigest()
+            try:
+                self.repositorio.criar_operacao(
+                    {
+                        "_id": operacao_id,
+                        "avanco_id": documento["_id"],
+                        "estado": "pendente",
+                        "referencias": [],
+                        "impressao": impressao,
+                        "iniciado_em": instante,
+                    }
+                )
+                operacao_criada = True
+            except DuplicateKeyError:
+                anterior = self.repositorio.buscar_operacao(operacao_id)
+                if anterior is None or anterior.get("impressao") != impressao:
+                    raise ErroAvanco(
+                        "Chave já usada com outros dados", 409, ["Idempotency-Key"]
+                    ) from None
+                if anterior.get("estado") == "concluida":
+                    raise AvancoReutilizado(anterior["avanco_id"]) from None
+                raise ErroAvanco(
+                    "Operação pendente de verificação; não repita com outra chave",
+                    409,
+                    ["Idempotency-Key"],
+                ) from None
+
+        def salvar(enviados):
+            midias = [
+                {
+                    **item,
+                    "_id": ObjectId(),
+                    "avanco_id": documento["_id"],
+                    "data_envio": instante,
+                }
+                for item in enviados
+            ]
+            try:
+                self.repositorio.salvar_com_midias(documento, midias, operacao_id)
+            except self.repositorio.MarcoRemovido:
+                raise ErroAvanco("Marco não encontrado", 404, ["marco_id"]) from None
+            except PyMongoError as erro:
+                if erro.has_error_label("UnknownTransactionCommitResult"):
+                    referencias = [item["referencia_externa"] for item in midias]
+                    logger.error(
+                        "Commit indeterminado para avanço %s; referências para reconciliação: %s",
+                        documento["_id"],
+                        referencias,
+                    )
+                    raise ResultadoPersistenciaIndeterminado(referencias) from None
+                raise
+            return documento, midias
+
+        try:
+            servico_midias = servico_midias if servico_midias is not None else ServicoMidias()
+        except ValueError:
+            raise ErroArmazenamento(
+                "O armazenamento não está configurado corretamente"
+            ) from None
+        try:
+            resultado, midias = servico_midias.executar_com_midias(
+                arquivos,
+                salvar,
+                antes_envio=reservar,
+                registrar_referencia=lambda referencia: self.repositorio.registrar_referencia(
+                    operacao_id, referencia
+                ),
+            )
+        except AvancoReutilizado as anterior:
+            return self.consultar_avanco(str(anterior.avanco_id))
+        except (ResultadoPersistenciaIndeterminado, ErroLimpeza):
+            raise
+        except Exception:
+            if operacao_criada:
+                try:
+                    self.repositorio.remover_operacao_pendente(operacao_id)
+                except PyMongoError:
+                    logger.error("Operação pendente de reconciliação: %s", operacao_id)
+            raise
+        return self._representar(resultado, midias)
 
     def consultar_avanco(self, avanco_id):
         oid = self._id(avanco_id, "avanco_id")
         documento = self.repositorio.buscar_avanco(oid)
-        if documento is None:
+        if documento is None or documento.get("estado") == self.repositorio.ESTADO_EXCLUSAO:
             raise ErroAvanco("Avanço não encontrado", 404, ["avanco_id"])
         return self._representar(documento)
 

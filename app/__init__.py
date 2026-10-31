@@ -15,6 +15,7 @@ def create_app(config=None):
     application = Flask(__name__)
     application.config.update(
         JWT_SECRET_KEY=os.getenv("JWT_SECRET_KEY"),
+        CONSTRUTORA_ID=os.getenv("CONSTRUTORA_ID", "").strip(),
         JWT_ACCESS_TOKEN_EXPIRES=timedelta(hours=2),
         JWT_REFRESH_TOKEN_EXPIRES=timedelta(days=7),
     )
@@ -27,6 +28,7 @@ def create_app(config=None):
 
     from db import colecao_sessoes_revogadas
     from construtora import bcrypt, construtora_bp
+    from app.auth.routes import sessoes_bp
     from trabalhadores import trabalhadores_bp
     from app.obras.routes import obras_bp
     from app.marcos.routes import estado_marcos_bp, marcos_bp
@@ -37,6 +39,9 @@ def create_app(config=None):
 
     @jwt.token_in_blocklist_loader
     def verificar_sessao_encerrada(cabecalho, dados_token):
+        configurada = application.config.get("CONSTRUTORA_ID")
+        if configurada and dados_token.get("sub") != configurada:
+            return True
         sessao_id = dados_token.get("sessao_id")
         if not isinstance(sessao_id, str) or not sessao_id:
             return True
@@ -52,7 +57,7 @@ def create_app(config=None):
         return jsonify(erro="Não foi possível concluir a solicitação. Tente novamente"), 503
 
     bcrypt.init_app(application)
-    for blueprint in (trabalhadores_bp, construtora_bp, obras_bp, marcos_bp,
+    for blueprint in (trabalhadores_bp, construtora_bp, sessoes_bp, obras_bp, marcos_bp,
                       estado_marcos_bp, midias_bp, avancos_bp, publicacoes_bp, mudancas_bp):
         application.register_blueprint(blueprint)
     return application
