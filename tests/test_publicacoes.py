@@ -208,6 +208,40 @@ def test_ct45_nova_instancia_mantem_previa_e_midia(client, headers, database, ce
         assert midia.status_code == 200 and midia.data == b"png"
 
 
+def test_previa_midia_corrigida_recuperavel_apos_nova_instancia(client, headers, database, cenario):
+    """Prepara a correção persistida; a escrita de UC-11 é outro contrato."""
+    publicado = client.post(cenario["publicar"], headers=headers)
+    assert publicado.status_code == 201
+    original = database.tbl_avancos.find_one({"_id": cenario["avanco"]})["publicacao"]
+    nova_midia = database.tbl_midias.find_one({"_id": cenario["midia"]})
+    nova_midia["_id"] = ObjectId()
+    nova_midia["nome"] = "corrigida.png"
+    database.tbl_midias.insert_one(nova_midia)
+    from app.avancos.acesso_midias import midia_para_dict
+
+    atual = midia_para_dict(nova_midia)
+    database.tbl_avancos.update_one(
+        {"_id": cenario["avanco"]}, {"$set": {"midias": [atual]}}
+    )
+    antes = snapshot(database)
+
+    with isolated_app(database) as nova_app:
+        novo_client = nova_app.test_client()
+        resposta = novo_client.get(cenario["previa"], headers=headers)
+        assert resposta.status_code == 200
+        item = resposta.json["atualizacoes"][0]
+        assert item["editado"] is True
+        assert item["autor"] == publicado.json["autor"]
+        assert item["instante"] == publicado.json["instante"]
+        assert [m["id"] for m in item["midias"]] == [str(nova_midia["_id"])]
+        conteudo = novo_client.get(item["midias"][0]["conteudo"], headers=headers)
+        assert conteudo.status_code == 200 and conteudo.data == b"png"
+        consulta = novo_client.get(cenario["publicar"], headers=headers)
+        assert consulta.json == {"publicacoes": [item]}
+    assert database.tbl_avancos.find_one({"_id": cenario["avanco"]})["publicacao"] == original
+    assert snapshot(database) == antes
+
+
 @pytest.mark.parametrize("campo,valor", [
     ("resource_type", []), ("resource_type", {}),
     ("resource_type", None), ("resource_type", "desconhecido"),

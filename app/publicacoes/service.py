@@ -1,11 +1,10 @@
 """Publica somente conteúdo válido com evidências recuperáveis."""
 
-from datetime import timezone
-
 from bson import ObjectId
 from bson.errors import InvalidId
 
 from app.avancos.acesso_midias import midia_para_dict
+from app.avancos.previa import _representar as representar_publicacao
 from app.integracoes.armazenamento import ArmazenamentoCloudinary, ErroArmazenamento
 from app.dominio.comum import Relogio
 from app.dominio.avancos import Avanco
@@ -40,28 +39,7 @@ class ServicoPublicacoes:
         return documento
 
     def _representar(self, documento):
-        fato = documento["publicacao"]
-        instante = fato["instante"]
-        if instante.tzinfo is None:
-            instante = instante.replace(tzinfo=timezone.utc)
-        descricao = documento.get("descricao", fato["descricao"])
-        data = documento.get("data", fato["data"])
-        midias = []
-        for original in fato.get("midias", []):
-            item = dict(original)
-            if "conteudo" not in item and item.get("id"):
-                item["conteudo"] = f"/midias/{item['id']}/conteudo"
-            midias.append(item)
-        representacao = {
-            "id": str(documento["_id"]), "avanco_id": str(documento["_id"]),
-            "estado": "publicado", "autor": fato["autor"], "instante": instante.isoformat(),
-            "data": data, "descricao": descricao,
-            "marco": {"id": str(fato["marco"]["id"]), "nome": fato["marco"]["nome"]},
-            "midias": midias,
-        }
-        if descricao != fato["descricao"] or data != fato["data"]:
-            representacao["editado"] = True
-        return representacao
+        return representar_publicacao(documento)
 
     def publicar_avanco(self, avanco_id, autor):
         documento = self._avanco(avanco_id)

@@ -54,6 +54,29 @@ rota existente nem substituído por endpoints que simulem sucesso.
 rejeição de chamadas sem token, conta inativa/perfil incorreto e IDs inválidos.
 Os testes específicos de cada módulo continuam cobrindo suas regras de negócio.
 
+## Linha do tempo publicada — UC-10
+
+`GET /obras/{obraId}/previa` exige sessão de construtora ativa e retorna
+`{"atualizacoes": [...]}`. Inclui somente avanços publicados dos marcos da obra,
+ordenados pelo instante original da publicação decrescente e pelo ID crescente
+em caso de empate. Obra sem publicações retorna 200 com lista vazia; obra
+inexistente retorna 404 e identificador inválido retorna 400.
+
+A representação compartilhada em `app/avancos/previa.py` apresenta descrição e
+data atuais, contexto do marco, autor e instante da publicação e caminhos de mídia
+protegidos por sessão. Uma composição atual persistida em `avanco.midias` usa o
+mesmo formato de metadados públicos de `publicacao.midias` e prevalece sobre esse
+snapshot original; sem o campo atual, permanece a composição original.
+`editado: true` indica diferença de texto, data ou mídia, ou uma marca persistida
+`avanco.editado: true` para correções que tenham restaurado o conteúdo original.
+A leitura não altera o snapshot nem o banco. O fluxo de escrita e o histórico de
+correções da UC-11 continuam pendentes.
+
+Os testes de prévia, publicação e acesso à mídia cobrem filtros, ordenação,
+autenticação, composição atual e releitura em nova instância. A comprovação em
+processo independente e MongoDB real usa `tests/test_publicacoes.py::test_ct45_previa_persistida_apos_novo_processo`
+com `--atlas`; os testes locais em memória não comprovam durabilidade no MongoDB.
+
 ## Replanejamento e situação — UC-12
 
 `POST /obras/{obraId}/mudancas` exige sessão da construtora. O corpo contém
