@@ -12,10 +12,10 @@ from . import repository
 from .acesso_midias import midia_para_dict
 from .midias import ServicoMidias, ResultadoPersistenciaIndeterminado
 from .operacoes import OperacaoUpload
-from .revisoes import ConflitoRascunho
+from .revisoes import ConflitoRascunho, filtro_revisao
 from .service import ErroAvanco
 from .validacoes import validar_correcao
-from .versoes import consultar_versoes
+from .versoes import consultar_versoes, reconstruir_versoes
 
 
 class ServicoCorrecoes:
@@ -47,8 +47,12 @@ class ServicoCorrecoes:
             raise ErroAvanco('Avanço não encontrado', 404, ['avanco_id'])
         if documento.get('estado') != 'publicado' or not documento.get('publicacao'):
             raise ErroAvanco('Somente publicações podem ser corrigidas', 409, ['estado'])
+        try:
+            filtro_revisao(documento)
+        except ConflitoRascunho:
+            raise ErroAvanco('A revisão da publicação é inválida', 409, ['avanco_id']) from None
         # A versão lida e o filtro de concorrência usam o mesmo documento.
-        cadeia = consultar_versoes(avanco_id, documento=documento)['versoes']
+        cadeia = reconstruir_versoes(documento)['versoes']
         antes = deepcopy(cadeia[-1]['conteudo'])
         depois = deepcopy(antes)
         for campo in ('descricao', 'data'):

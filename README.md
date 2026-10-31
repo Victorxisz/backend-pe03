@@ -5,7 +5,7 @@ A organização atual com POO e as decisões de 30/10 estão em
 
 ## Rotas existentes
 
-Inventário conferido no `url_map` da aplicação: **40 operações de negócio**.
+Inventário conferido no `url_map` da aplicação: **44 operações de negócio**.
 As barras finais abaixo fazem parte dos caminhos atuais. `HEAD` nas consultas,
 `OPTIONS` automático e a rota técnica `/static/{filename}` não entram na contagem.
 
@@ -21,7 +21,9 @@ As barras finais abaixo fazem parte dos caminhos atuais. `HEAD` nas consultas,
 | PATCH | `/obras/{obra_id}/estado` | Alterar estado com motivo e histórico |
 | GET, POST | `/obras/{obra_id}/marcos` | Listar ou cadastrar marcos |
 | GET | `/obras/{obra_id}/marcos/{marco_id}` | Consultar marco da obra |
-| POST | `/obras/{obra_id}/mudancas` | Aplicar replanejamento ou mudança de estado |
+| GET, POST | `/obras/{obra_id}/mudancas` | Consultar histórico ou aplicar replanejamento/mudança de estado |
+| GET | `/mudancas/{mudanca_id}` | Consultar o detalhe de uma mudança |
+| GET, POST | `/ocorrencias/{ocorrenciaId}/aceitacoes` | Consultar ou registrar aceitações |
 | GET | `/obras/{obra_id}/previa` | Consultar avanços publicados |
 | PATCH | `/marcos/{marco_id}` | Alterar estado do marco com motivo |
 | GET, POST | `/marcos/{marco_id}/dependencias` | Listar ou criar dependência |
@@ -48,7 +50,7 @@ O preflight `OPTIONS` negocia CORS sem autenticação e não executa a operaçã
 
 Os caminhos propostos em `docs/05-arquitetura-e-contratos.md` não são todos rotas
 implementadas. Ainda não existem, por exemplo, `DELETE /obras/{id}`,
-`DELETE /marcos/{id}`, consultas unificadas de mudanças, ocorrências e aceitações.
+`DELETE /marcos/{id}` e o cadastro/CRUD completo de ocorrências.
 Isso não foi tratado como defeito de uma
 rota existente nem substituído por endpoints que simulem sucesso.
 
@@ -896,7 +898,24 @@ Não comprovam persistência no Atlas nem remoção no Cloudinary real.
 `GET /avancos/{id}/versoes` exige sessão e retorna versões em ordem, com a
 atual identificada e os trechos de texto antes/depois para cada correção. A
 versão inicial vem do snapshot da publicação. A consulta não expõe referências
-privadas do provedor; as mídias usam os metadados e caminhos autenticados salvos.
+privadas do provedor. Cada mídia inclui `retida`, indicando se o registro ainda
+pertence ao acervo desse avanço. O caminho `conteudo` é reconstruído para a rota
+autenticada; se o registro foi removido ou pertence a outro avanço, retorna
+`retida: false` e `conteudo: null`, preservando os metadados históricos. Essa
+checagem é local, sem chamadas ao provedor; `retida` não verifica a disponibilidade
+do arquivo remoto. A informação de retenção é somente de consulta e não é
+gravada nos snapshots nem considerada uma correção de conteúdo.
+
+Cada versão contém `numero`, `atual`, `conteudo`, `autor_original`,
+`origem_simulada` e `correcao`. A correção separa autor, motivo e instante de
+quem criou o avanço. `campos` identifica alterações de data, descrição e mídias;
+`diferencas_texto` contém trechos `igual`, `inserido`, `removido` ou `substituido`,
+com `antes` e `depois`. Concatenar cada lado reconstrói integralmente o texto.
+Datas de auditoria usam ISO 8601 e IDs BSON são serializados como texto.
+
+Avanço inexistente retorna 404, rascunho retorna uma lista vazia, e publicação
+sem correções retorna uma versão atual. Publicação declarada sem snapshot ou
+cadeia inconsistente retorna 409 `HISTORICO_INDISPONIVEL`, sem fabricar versões.
 
 `PATCH /avancos/{id}` com JSON ou `multipart/form-data` e `motivo` corrige uma
 publicação. Aceita `descricao`, `data`, `midias_manter` (lista JSON de IDs de
@@ -922,3 +941,28 @@ Testes da escrita (CT-46 a CT-51):
 `python -m pytest tests/test_correcao_publicada.py -q`.
 Testes da consulta e comparação: `python -m pytest tests/test_versoes.py -q`.
 Por padrão, usam MongoDB em memória com rollback simulado e Cloudinary simulado.
+
+Rollback após a escrita e conflito concorrente são verificados em MongoDB real
+com `python -m pytest tests/test_versoes.py -m atlas --atlas -q`, em coleções
+temporárias. A rede de armazenamento dos demais testes é simulada.
+
+### Histórico de mudanças
+
+`GET /obras/{id}/mudancas` devolve `{ "mudancas": [...] }` em ordem de instante.
+A lista **inclui** decisões sobre obra e marco e cada correção de publicação.
+Cada item possui `consulta` para `GET /mudancas/{id}`; correções também possuem
+`comparacao` apontando para `GET /avancos/{id}/versoes`. Os campos `antes` e
+`depois` vêm dos registros originais, sem alterar a trilha. Uma obra existente
+sem eventos devolve lista vazia; não há PATCH ou DELETE de mudança isolada.
+
+O desempate usa a posição numérica da decisão/correção, mantendo a sequência
+mesmo com mais de dez entradas no mesmo instante. Instantes são normalizados
+em UTC antes da ordenação. As correções reutilizam o leitor de versões de
+UC-11: snapshot ausente, cadeia divergente ou dados obrigatórios incompletos
+retornam `409 HISTORICO_INDISPONIVEL`, tanto na lista quanto no detalhe, sem
+regravar registros nem transformar inconsistências em histórico vazio.
+
+Execute com banco em memória e armazenamento simulado:
+`python -m pytest tests/test_historico.py tests/test_historico_integracao.py -q`.
+O teste de integração produz decisões e correções pelas rotas reais, confere a
+sequência após reiniciar a aplicação e não usa a base de demonstração.
