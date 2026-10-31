@@ -58,6 +58,8 @@ def _representar(documento):
             or documento.get("midias", fato.get("midias", [])) != fato.get("midias", [])
             or documento.get("editado") is True):
         representacao["editado"] = True
+    if "origem_simulada" in documento:
+        representacao["origem_simulada"] = documento["origem_simulada"]
     return representacao
 
 

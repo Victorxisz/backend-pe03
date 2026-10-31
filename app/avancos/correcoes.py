@@ -1,140 +1,124 @@
-"""Correção versionada de publicações com compensação de uploads."""
-
-from datetime import date
+"""Correção de publicações: validação, histórico e compensação de uploads."""
+from copy import deepcopy
 
 from bson import ObjectId
 from bson.errors import InvalidId
 from pymongo.errors import PyMongoError
-from uuid import uuid4
 
+from app.dominio.comum import Relogio
+from app.integracoes.armazenamento import ErroArmazenamento
+from app.publicacoes.validacoes import validar_midias
 from . import repository
 from .acesso_midias import midia_para_dict
-from .service import ErroAvanco
-from .versoes import _conteudo, consultar_versoes, reconstruir_versoes
-from .revisoes import ConflitoRascunho
 from .midias import ServicoMidias, ResultadoPersistenciaIndeterminado
-from app.integracoes.armazenamento import ErroArmazenamento, ErroLimpeza
-from app.publicacoes.validacoes import validar_midias
-from app.dominio.comum import Relogio
+from .operacoes import OperacaoUpload
+from .revisoes import ConflitoRascunho, filtro_revisao
+from .service import ErroAvanco
+from .validacoes import validar_correcao
+from .versoes import consultar_versoes, reconstruir_versoes
 
 
-def corrigir_publicacao(avanco_id, dados, autor, arquivos=(), *, servico_midias=None):
-    arquivos = list(arquivos)
-    try:
-        identificador = ObjectId(avanco_id)
-    except (InvalidId, TypeError):
-        raise ErroAvanco("Identificador inválido", 400, ["avanco_id"]) from None
-    if not isinstance(dados, dict):
-        raise ErroAvanco("Envie um objeto JSON", 422, ["corpo"])
-    extras = set(dados) - {"motivo", "descricao", "data", "midias_manter"}
-    if extras:
-        raise ErroAvanco("Campos não permitidos", 422, sorted(extras))
-    motivo = dados.get("motivo")
-    if not isinstance(motivo, str) or not motivo.strip():
-        raise ErroAvanco("Informe o motivo", 422, ["motivo"])
-    if not arquivos and not any(campo in dados for campo in ("descricao", "data", "midias_manter")):
-        raise ErroAvanco("Informe uma alteração", 422, ["corpo"])
-    for campo in ("descricao", "data"):
-        if campo in dados and (not isinstance(dados[campo], str) or not dados[campo].strip()):
-            raise ErroAvanco("Informe um texto válido", 422, [campo])
-    if "data" in dados:
+class ServicoCorrecoes:
+    def __init__(self, repositorio=None, relogio=None):
+        self.repositorio = repositorio if repositorio is not None else repository
+        self.relogio = relogio if relogio is not None else Relogio()
+
+    def _verificar_acesso(self, servico, midias):
         try:
-            data = date.fromisoformat(dados["data"])
-        except ValueError:
-            raise ErroAvanco("Informe uma data válida no formato AAAA-MM-DD", 422, ["data"]) from None
-        if data.isoformat() != dados["data"]:
-            raise ErroAvanco("Informe uma data válida no formato AAAA-MM-DD", 422, ["data"])
-    documento = repository.buscar_avanco(identificador)
-    if documento is None:
-        raise ErroAvanco("Avanço não encontrado", 404, ["avanco_id"])
-    if documento.get("estado") != "publicado" or not documento.get("publicacao"):
-        raise ErroAvanco("Somente publicações podem ser corrigidas", 409, ["estado"])
-    # Usa o mesmo documento cuja revisão será comparada na escrita. A resposta
-    # de GET inclui retenção dinâmica e não deve ser persistida como conteúdo.
-    cadeia = reconstruir_versoes(documento)["versoes"]
-    antes = cadeia[-1]["conteudo"]
-    depois = {**antes, "midias": list(antes["midias"])}
-    for campo in ("descricao", "data"):
-        if campo in dados:
-            depois[campo] = dados[campo].strip()
-    if "midias_manter" in dados:
-        ids = dados["midias_manter"]
-        if (not isinstance(ids, list) or (not ids and not arquivos) or
-                any(not isinstance(item, str) for item in ids) or len(set(ids)) != len(ids)):
-            raise ErroAvanco("Informe uma lista não vazia de mídias", 422, ["midias_manter"])
-        disponiveis = {str(item["_id"]): item for item in repository.consultar_midias(identificador)}
+            for midia in midias:
+                servico.armazenamento.obter_conteudo(midia['referencia_externa'], midia['tamanho'])
+        except ErroArmazenamento as erro:
+            status = 422 if erro.status in (404, 422) else 503
+            raise ErroAvanco('Uma mídia da correção não está disponível', status, ['midias_manter']) from None
+
+    def corrigir_publicacao(self, avanco_id, dados, autor, arquivos=(), *, servico_midias=None):
+        arquivos = list(arquivos)
+        try:
+            if not isinstance(avanco_id, (str, ObjectId)):
+                raise TypeError
+            identificador = ObjectId(avanco_id)
+        except (InvalidId, TypeError):
+            raise ErroAvanco('Identificador inválido', 400, ['avanco_id']) from None
+        erro = validar_correcao(dados, possui_novas_midias=bool(arquivos))
+        if erro:
+            raise ErroAvanco(erro[0], 422, erro[1])
+        documento = self.repositorio.buscar_avanco(identificador)
+        if documento is None:
+            raise ErroAvanco('Avanço não encontrado', 404, ['avanco_id'])
+        if documento.get('estado') != 'publicado' or not documento.get('publicacao'):
+            raise ErroAvanco('Somente publicações podem ser corrigidas', 409, ['estado'])
+        try:
+            filtro_revisao(documento)
+        except ConflitoRascunho:
+            raise ErroAvanco('A revisão da publicação é inválida', 409, ['avanco_id']) from None
+        # A versão lida e o filtro de concorrência usam o mesmo documento.
+        cadeia = reconstruir_versoes(documento)['versoes']
+        antes = deepcopy(cadeia[-1]['conteudo'])
+        depois = deepcopy(antes)
+        for campo in ('descricao', 'data'):
+            if campo in dados:
+                depois[campo] = dados[campo].strip()
+        atuais = {str(m.get('id')): m for m in antes['midias']}
+        ids = dados.get('midias_manter', list(atuais))
+        disponiveis = {str(m['_id']): m for m in self.repositorio.consultar_midias(identificador)}
         if any(item not in disponiveis for item in ids):
-            raise ErroAvanco("A mídia não pertence ao avanço", 422, ["midias_manter"])
-        selecionadas = [disponiveis[item] for item in ids]
-        if selecionadas:
-            if not validar_midias(selecionadas):
-                raise ErroAvanco("Uma mídia selecionada é inválida", 422, ["midias_manter"])
-            try:
-                servico_midias = servico_midias or ServicoMidias()
-                for midia in selecionadas:
-                    servico_midias.armazenamento.obter_conteudo(
-                        midia["referencia_externa"], midia["tamanho"]
-                    )
-            except ErroArmazenamento as erro:
-                status = 422 if erro.status in (404, 422) else 503
-                raise ErroAvanco("Mídia selecionada indisponível", status, ["midias_manter"]) from None
-            except ValueError:
-                raise ErroAvanco("Armazenamento indisponível", 503, ["midias_manter"]) from None
-        depois["midias"] = [_conteudo({"data": antes["data"], "descricao": antes["descricao"],
-                            "midias": [midia_para_dict(disponiveis[item])]})["midias"][0]
-                            for item in ids]
-        for item in depois["midias"]:
-            item["conteudo"] = f"/midias/{item['id']}/conteudo"
-    if not depois["midias"] and not arquivos and (antes["midias"] or "midias_manter" in dados):
-        raise ErroAvanco("Mantenha ao menos uma mídia", 422, ["midias_manter"])
-    instante = Relogio().agora()
-    operacao_id = uuid4().hex if arquivos else None
-
-    def salvar(enviadas):
-        novas = [{**item, "_id": ObjectId(), "avanco_id": identificador,
-                  "data_envio": instante} for item in enviadas]
-        for midia in novas:
-            item = midia_para_dict(midia)
-            item["conteudo"] = f"/midias/{item['id']}/conteudo"
-            depois["midias"].append(item)
-        if depois == antes:
-            raise ErroAvanco("A correção precisa modificar a publicação", 422, ["corpo"])
-        correcao = {"antes": antes, "depois": depois, "motivo": motivo.strip(),
-                    "autor": autor, "instante": instante}
+            raise ErroAvanco('Uma mídia não está vinculada ao avanço', 422, ['midias_manter'])
+        # A ordem enviada não cria uma versão artificial do mesmo conjunto.
+        ordem = [item for item in atuais if item in ids] + [item for item in ids if item not in atuais]
+        selecionadas = [disponiveis[item] for item in ordem]
+        if not selecionadas and not arquivos:
+            raise ErroAvanco('Mantenha ao menos uma mídia válida', 422, ['midias_manter'])
+        depois['midias'] = []
+        for item in ordem:
+            publica = deepcopy(atuais[item]) if item in atuais else midia_para_dict(disponiveis[item])
+            if item not in atuais:
+                publica['conteudo'] = f'/midias/{item}/conteudo'
+            depois['midias'].append(publica)
+        if depois == antes and not arquivos:
+            raise ErroAvanco('A correção precisa modificar a publicação', 422, ['corpo'])
+        if selecionadas and not validar_midias(selecionadas):
+            raise ErroAvanco('Uma mídia selecionada é inválida', 422, ['midias_manter'])
         try:
-            repository.salvar_correcao_publicada(documento, correcao, depois, novas, operacao_id)
-        except PyMongoError as erro:
-            if erro.has_error_label("UnknownTransactionCommitResult"):
-                raise ResultadoPersistenciaIndeterminado(
-                    [item["referencia_externa"] for item in novas]
-                ) from None
-            raise
+            servico = servico_midias if servico_midias is not None else ServicoMidias()
+        except (ErroArmazenamento, ValueError):
+            raise ErroAvanco('Armazenamento indisponível', 503, ['midias']) from None
+        self._verificar_acesso(servico, selecionadas)
+        instante = self.relogio.agora()
+        operacao = OperacaoUpload(self.repositorio, identificador, 'correcao') if arquivos else None
 
-    try:
-        if arquivos:
-            servico_midias = servico_midias or ServicoMidias()
-
-            def reservar(_validados):
-                repository.criar_operacao({"_id": operacao_id, "avanco_id": identificador,
-                                           "estado": "pendente", "referencias": [],
-                                           "iniciado_em": instante})
-
+        def salvar(enviadas):
+            novas = [{**item, '_id': ObjectId(), 'avanco_id': identificador,
+                      'data_envio': instante} for item in enviadas]
+            if not validar_midias(selecionadas + novas):
+                raise ErroAvanco('Mantenha ao menos uma mídia válida', 422, ['midias'])
+            self._verificar_acesso(servico, novas)
+            for midia in novas:
+                publica = midia_para_dict(midia)
+                publica['conteudo'] = f"/midias/{publica['id']}/conteudo"
+                depois['midias'].append(publica)
+            campos = [campo for campo in ('data', 'descricao', 'midias') if antes[campo] != depois[campo]]
+            if not campos:
+                raise ErroAvanco('A correção precisa modificar a publicação', 422, ['corpo'])
+            correcao = {'antes': antes, 'depois': depois, 'campos': campos,
+                        'motivo': dados['motivo'].strip(), 'autor': autor, 'instante': instante}
             try:
-                servico_midias.executar_com_midias(
-                    arquivos, salvar, antes_envio=reservar,
-                    registrar_referencia=lambda referencia: repository.registrar_referencia(
-                        operacao_id, referencia),
+                self.repositorio.salvar_correcao_publicada(
+                    documento, correcao, depois, novas, operacao.id if operacao else None, selecionadas,
                 )
-            except (ResultadoPersistenciaIndeterminado,):
+            except PyMongoError as erro:
+                if erro.has_error_label('UnknownTransactionCommitResult'):
+                    raise ResultadoPersistenciaIndeterminado([m['referencia_externa'] for m in novas]) from None
                 raise
-            except ErroLimpeza:
-                # O diário guarda as referências cuja remoção não foi confirmada.
-                raise
-            except Exception:
-                repository.remover_operacao_pendente(operacao_id)
-                raise
-        else:
-            salvar([])
-    except ConflitoRascunho:
-        raise ErroAvanco("A publicação foi alterada; consulte novamente", 409, ["avanco_id"]) from None
-    return consultar_versoes(avanco_id)
+
+        try:
+            if operacao:
+                operacao.executar(servico, arquivos, salvar)
+            else:
+                salvar([])
+        except ConflitoRascunho:
+            raise ErroAvanco('A publicação ou suas mídias foram alteradas; consulte novamente', 409, ['avanco_id']) from None
+        return consultar_versoes(avanco_id)
+
+
+_servico = ServicoCorrecoes()
+corrigir_publicacao = _servico.corrigir_publicacao

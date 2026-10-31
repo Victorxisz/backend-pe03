@@ -21,6 +21,7 @@ from .revisoes import ConflitoRascunho
 from .validacoes import validar_campos, normalizar_edicao, validar_avanco, validar_edicao
 from app.serializacao import serializar
 from .acesso_midias import midia_para_dict
+from .operacoes import OperacaoUpload
 
 TEMPO_BLOQUEIO = timedelta(minutes=5)
 logger = logging.getLogger(__name__)
@@ -304,6 +305,9 @@ class ServicoAvancos:
                     ["midias"],
                 ) from None
 
+        operacao = (OperacaoUpload(self.repositorio, preparacao["documento"]["_id"], "edicao")
+                    if preparacao["arquivos"] else None)
+
         def salvar(novas_midias):
             midias_finais = mantidas + novas_midias
 
@@ -321,14 +325,16 @@ class ServicoAvancos:
                 midias_anteriores=preparacao["midias_anteriores"],
                 ids_manter=preparacao["ids_manter"],
                 novas_midias=novas_midias,
+                **({"operacao_id": operacao.id} if operacao else {}),
             )
 
         try:
-            salvo, removidas = servico_midias.executar_com_midias(
-                preparacao["arquivos"],
-                salvar,
-                permitir_sem_novos=True,
-            )
+            if operacao:
+                salvo, removidas = operacao.executar(servico_midias, preparacao["arquivos"], salvar)
+            else:
+                salvo, removidas = servico_midias.executar_com_midias(
+                    [], salvar, permitir_sem_novos=True,
+                )
         except ConflitoRascunho:
             raise ErroAvanco(
                 "O avanço foi alterado ou publicado durante a edição; "
@@ -426,7 +432,7 @@ class ServicoAvancos:
             if item.get("id"):
                 item["conteudo"] = f"/midias/{item['id']}/conteudo"
             representacoes.append(item)
-        return {
+        resposta = {
             "id": str(documento["_id"]), "marco_id": str(documento["marco_id"]),
             "data": documento["data"], "descricao": documento["descricao"],
             "estado": documento["estado"], "autor": documento["autor"],
@@ -434,6 +440,11 @@ class ServicoAvancos:
             "instante_registro": serializar(documento.get("data_registro", documento.get("instante_registro"))),
             "midias": representacoes,
         }
+        if "origem_simulada" in documento:
+            resposta["origem_simulada"] = documento["origem_simulada"]
+        if documento.get("editado") is True:
+            resposta["editado"] = True
+        return resposta
 
     def criar_avanco(self, marco_id, formulario, arquivos, autor, servico_midias=None, *, chave=None):
         if chave is not None and not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", chave):

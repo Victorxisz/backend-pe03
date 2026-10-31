@@ -1,12 +1,13 @@
-"""Correções e versões por HTTP; banco em memória e armazenamento simulado."""
+"""Consulta de versões publicadas por HTTP; banco em memória."""
 from datetime import datetime
 
 from bson import ObjectId
 import pytest
 
 from support import snapshot
-from support_midias import config, conteudos
-from test_avancos_uc09 import backend, transacao_local
+from support_midias import arquivo, config, conteudos
+from test_avancos_uc09 import backend
+from test_edicao_rascunhos import camadas, transacao_local
 
 
 def semear_publicacao(database, **campos):
@@ -17,6 +18,25 @@ def semear_publicacao(database, **campos):
                  "publicacao": {**conteudo, "autor": "publicador", "instante": datetime(2030, 1, 2)},
                  **campos}
     database.tbl_avancos.insert_one(documento)
+    return documento
+
+
+def semear_publicacao_com_midia(database, config, conteudos):
+    """A escrita da UC-11 exige evidência válida mesmo em correções de texto."""
+    from app.avancos.midias import validar_arquivo
+    from app.avancos.acesso_midias import midia_para_dict
+    from app.integracoes.armazenamento import ArmazenamentoCloudinary
+    documento = semear_publicacao(database)
+    midia = dict(ArmazenamentoCloudinary().enviar(validar_arquivo(arquivo(conteudos['png']), config)),
+                 _id=ObjectId(), avanco_id=documento['_id'])
+    database.tbl_midias.insert_one(midia)
+    publica = midia_para_dict(midia)
+    publica['conteudo'] = f"/midias/{midia['_id']}/conteudo"
+    documento['midias'] = [publica]
+    documento['publicacao']['midias'] = [publica]
+    database.tbl_avancos.update_one({'_id':documento['_id']}, {'$set': {
+        'midias':documento['midias'], 'publicacao':documento['publicacao'],
+    }})
     return documento
 
 
@@ -137,10 +157,10 @@ def test_correcao_com_midia_preserva_consultas_publicacao_e_autoria(
 
 
 @pytest.mark.atlas
-def test_correcao_real_preserva_cadeia_e_reverte_falha_no_banco(client, headers, database, monkeypatch):
+def test_correcao_real_preserva_cadeia_e_reverte_falha_no_banco(client, headers, database, monkeypatch, backend, config, conteudos):
     """A falha é injetada após o UPDATE, ainda dentro da transação real."""
     from pymongo.errors import PyMongoError
-    documento = semear_publicacao(database)
+    documento = semear_publicacao_com_midia(database, config, conteudos)
     rota = f"/avancos/{documento['_id']}"
     for descricao in ("Primeira correção", "Segunda correção"):
         resposta = client.patch(rota, headers=headers, json={"motivo": "Revisão", "descricao": descricao})
@@ -171,9 +191,9 @@ def test_correcao_real_preserva_cadeia_e_reverte_falha_no_banco(client, headers,
 
 
 @pytest.mark.atlas
-def test_correcao_concorrente_nao_sobrescreve_historico(client, headers, database, monkeypatch):
+def test_correcao_concorrente_nao_sobrescreve_historico(client, headers, database, monkeypatch, backend, config, conteudos):
     from app.avancos import repository
-    documento = semear_publicacao(database)
+    documento = semear_publicacao_com_midia(database, config, conteudos)
     salvar = repository.salvar_correcao_publicada
 
     def gravar_apos_concorrencia(*args, **kwargs):
@@ -190,12 +210,13 @@ def test_correcao_concorrente_nao_sobrescreve_historico(client, headers, databas
 
 @pytest.mark.atlas
 def test_rollback_real_tambem_remove_novas_midias_e_compensa_upload(
-    client, headers, database, monkeypatch, backend, conteudos
+    client, headers, database, monkeypatch, backend, conteudos, config
 ):
     from io import BytesIO
     from pymongo.collection import Collection
     from pymongo.errors import PyMongoError
-    documento = semear_publicacao(database)
+    documento = semear_publicacao_com_midia(database, config, conteudos)
+    remotos = dict(backend[0])
     antes = snapshot(database)
     atualizar = Collection.update_one
     chamadas = []
@@ -205,7 +226,7 @@ def test_rollback_real_tambem_remove_novas_midias_e_compensa_upload(
         if colecao.name != database.tbl_avancos.name:
             return resultado
         sessao = kwargs["session"]
-        assert database.tbl_midias.count_documents({"avanco_id": documento["_id"]}, session=sessao) == 1
+        assert database.tbl_midias.count_documents({"avanco_id": documento["_id"]}, session=sessao) == 2
         salvo = database.tbl_avancos.find_one({"_id": documento["_id"]}, session=sessao)
         assert len(salvo["correcoes"]) == 1 and salvo["descricao"] == "Texto corrigido"
         chamadas.append(True)
@@ -219,7 +240,7 @@ def test_rollback_real_tambem_remove_novas_midias_e_compensa_upload(
                              })
     assert resposta.status_code == 503 and chamadas == [True]
     assert snapshot(database) == antes
-    assert backend[0] == {}
+    assert backend[0] == remotos
 
 
 def test_publicacao_sem_correcoes_retorna_snapshot_original(client, headers, database):
@@ -316,160 +337,4 @@ def test_ct46_ct47_ct50_ct51_cadeia_preexistente_continua_consultavel(client, he
     trechos = versoes[1]["correcao"]["diferencas_texto"]
     assert "".join(t["antes"] for t in trechos) == primeira["descricao"]
     assert "".join(t["depois"] for t in trechos) == segunda["descricao"]
-    assert snapshot(database) == antes
-
-
-def test_duas_correcoes_http_persistem_e_mantem_cadeia(client, headers, database, monkeypatch):
-    # Preparação: sessão do mongomock não implementa transações reais.
-    from contextlib import nullcontext
-    from mongomock.collection import Collection
-    import db
-
-    class Sessao:
-        def with_transaction(self, callback):
-            return callback(self)
-
-    monkeypatch.setattr(db.cliente_mongo, "start_session", lambda: nullcontext(Sessao()))
-    original = Collection.update_one
-
-    def sem_sessao(self, *args, **kwargs):
-        kwargs.pop("session", None)
-        return original(self, *args, **kwargs)
-
-    monkeypatch.setattr(Collection, "update_one", sem_sessao)
-    avanco = database.tbl_avancos.insert_one({
-        "estado": "publicado", "autor": "autor original", "origem_simulada": True,
-        "data": "2030-01-01", "descricao": "Parede branca", "revisao": 1,
-        "publicacao": {"autor": "publicador", "instante": datetime(2030, 1, 1),
-                       "data": "2030-01-01", "descricao": "Parede branca", "midias": []},
-    }).inserted_id
-
-    # Execução
-    primeira = client.patch(f"/avancos/{avanco}", json={"descricao": "Parede azul", "motivo": "Cor corrigida"}, headers=headers)
-    segunda = client.patch(f"/avancos/{avanco}", json={"data": "2030-01-02", "motivo": "Data corrigida"}, headers=headers)
-    consulta = client.get(f"/avancos/{avanco}/versoes", headers=headers)
-
-    # Verificação
-    assert primeira.status_code == segunda.status_code == consulta.status_code == 200
-    versoes = consulta.json["versoes"]
-    assert [v["conteudo"]["descricao"] for v in versoes] == ["Parede branca", "Parede azul", "Parede azul"]
-    assert [v["atual"] for v in versoes] == [False, False, True]
-    assert database.tbl_avancos.find_one({"_id": avanco})["revisao"] == 3
-    assert len(database.tbl_avancos.find_one({"_id": avanco})["correcoes"]) == 2
-
-
-def test_correcao_http_com_nova_midia_e_conteudo_recuperavel(
-    client, headers, database, monkeypatch, backend, transacao_local, conteudos
-):
-    # Preparação
-    from io import BytesIO
-    avanco = database.tbl_avancos.insert_one({
-        "estado": "publicado", "autor": "original", "data": "2030-01-01",
-        "descricao": "Antes", "revisao": 1,
-        "publicacao": {"autor": "original", "instante": datetime(2030, 1, 1),
-                       "data": "2030-01-01", "descricao": "Antes", "midias": []},
-    }).inserted_id
-
-    # Execução
-    resposta = client.patch(f"/avancos/{avanco}", headers=headers,
-        data={"motivo": "Foto corrigida", "midias": (BytesIO(conteudos["png"]), "foto.png")},
-        content_type="multipart/form-data")
-
-    # Verificação
-    assert resposta.status_code == 200, resposta.get_data(as_text=True)
-    versoes = resposta.json["versoes"]
-    assert len(versoes) == 2
-    assert versoes[0]["conteudo"]["midias"] == []
-    midia = versoes[1]["conteudo"]["midias"][0]
-    assert client.get(midia["conteudo"], headers=headers).data == conteudos["png"]
-    assert database.tbl_midias.count_documents({"avanco_id": avanco}) == 1
-
-
-def test_falha_ao_gravar_correcao_remove_upload_e_nao_altera_publicacao(
-    client, headers, database, monkeypatch, backend, transacao_local, conteudos
-):
-    # Preparação
-    from io import BytesIO
-    from pymongo.errors import PyMongoError
-    from app.avancos import repository
-    avanco = database.tbl_avancos.insert_one({
-        "estado": "publicado", "autor": "original", "data": "2030-01-01",
-        "descricao": "Antes", "revisao": 1,
-        "publicacao": {"autor": "original", "instante": datetime(2030, 1, 1),
-                       "data": "2030-01-01", "descricao": "Antes", "midias": []},
-    }).inserted_id
-    antes = snapshot(database)
-    monkeypatch.setattr(repository, "salvar_correcao_publicada", lambda *args: (_ for _ in ()).throw(PyMongoError("falha")))
-
-    # Execução
-    resposta = client.patch(f"/avancos/{avanco}", headers=headers,
-        data={"motivo": "Foto corrigida", "midias": (BytesIO(conteudos["png"]), "foto.png")},
-        content_type="multipart/form-data")
-
-    # Verificação
-    assert resposta.status_code == 503
-    assert snapshot(database) == antes
-    assert backend[0] == {}
-
-
-def test_falha_na_compensacao_preserva_diario_para_reconciliacao(
-    client, headers, database, monkeypatch, backend, transacao_local, conteudos
-):
-    # Preparação
-    from io import BytesIO
-    from pymongo.errors import PyMongoError
-    from app.avancos import repository
-    avanco = database.tbl_avancos.insert_one({
-        "estado": "publicado", "autor": "original", "data": "2030-01-01",
-        "descricao": "Antes", "revisao": 1,
-        "publicacao": {"autor": "original", "instante": datetime(2030, 1, 1),
-                       "data": "2030-01-01", "descricao": "Antes", "midias": []},
-    }).inserted_id
-    antes = database.tbl_avancos.find_one({"_id": avanco})
-    monkeypatch.setattr(repository, "salvar_correcao_publicada", lambda *args: (_ for _ in ()).throw(PyMongoError("falha")))
-    backend[2].side_effect = RuntimeError("remoção indisponível")
-
-    # Execução
-    resposta = client.patch(f"/avancos/{avanco}", headers=headers,
-        data={"motivo": "Foto corrigida", "midias": (BytesIO(conteudos["png"]), "foto.png")},
-        content_type="multipart/form-data")
-
-    # Verificação
-    assert resposta.status_code == 503
-    assert database.tbl_avancos.find_one({"_id": avanco}) == antes
-    diario = database.tbl_uploads_pendentes.find_one({"avanco_id": avanco})
-    assert diario["estado"] == "pendente" and diario["referencias"]
-    assert diario["referencias"][0]["public_id"] in backend[0]
-
-
-def test_midia_selecionada_indisponivel_recusa_correcao(
-    client, headers, database, monkeypatch, backend, transacao_local
-):
-    # Preparação
-    avanco = ObjectId()
-    midia_id = ObjectId()
-    referencia = {"provedor": "cloudinary", "public_id": "pe03/evidencias/" + "a" * 32,
-                  "resource_type": "image", "delivery_type": "authenticated", "formato": "png"}
-    midia = {"_id": midia_id, "avanco_id": avanco, "tipo": "foto", "nome": "ausente.png",
-             "tamanho": 100, "mime": "image/png", "referencia_externa": referencia}
-    database.tbl_midias.insert_one(midia)
-    from app.avancos.acesso_midias import midia_para_dict
-    publica = {"data": "2030-01-01", "descricao": "Antes", "midias": [midia_para_dict(midia)]}
-    database.tbl_avancos.insert_one({"_id": avanco, "estado": "publicado", "autor": "original",
-        "data": "2030-01-01", "descricao": "Antes", "revisao": 1,
-        "publicacao": {**publica, "autor": "original", "instante": datetime(2030, 1, 1)}})
-    from unittest.mock import Mock
-    from app.integracoes.armazenamento import ArmazenamentoCloudinary, ErroArmazenamento
-    obter = Mock(side_effect=ErroArmazenamento("Arquivo ausente", 404))
-    monkeypatch.setattr(ArmazenamentoCloudinary, "obter_conteudo", obter)
-    antes = snapshot(database)
-
-    # Execução
-    resposta = client.patch(f"/avancos/{avanco}", headers=headers,
-        json={"motivo": "Troca", "midias_manter": [str(midia_id)], "descricao": "Depois"})
-
-    # Verificação
-    assert resposta.status_code == 422
-    assert "midias_manter" in resposta.json["campos"]
-    obter.assert_called_once_with(referencia, 100)
     assert snapshot(database) == antes

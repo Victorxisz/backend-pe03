@@ -74,6 +74,8 @@ def reconstruir_versoes(documento):
             campos = [campo for campo in ("data", "descricao", "midias") if antes[campo] != depois[campo]]
             if not campos:
                 _indisponivel()
+            if "campos" in correcao and correcao["campos"] != campos:
+                _indisponivel()
             versoes.append({"numero": indice, "atual": False, "conteudo": depois,
                             "autor_original": documento.get("autor"), "origem_simulada": documento.get("origem_simulada"),
                             "correcao": {"antes": antes, "depois": depois, "campos": campos,

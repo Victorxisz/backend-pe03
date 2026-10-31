@@ -5,7 +5,7 @@ A organização atual com POO e as decisões de 30/10 estão em
 
 ## Rotas existentes
 
-Inventário conferido no `url_map` da aplicação: **40 operações de negócio**.
+Inventário conferido no `url_map` da aplicação: **44 operações de negócio**.
 As barras finais abaixo fazem parte dos caminhos atuais. `HEAD` nas consultas,
 `OPTIONS` automático e a rota técnica `/static/{filename}` não entram na contagem.
 
@@ -21,14 +21,16 @@ As barras finais abaixo fazem parte dos caminhos atuais. `HEAD` nas consultas,
 | PATCH | `/obras/{obra_id}/estado` | Alterar estado com motivo e histórico |
 | GET, POST | `/obras/{obra_id}/marcos` | Listar ou cadastrar marcos |
 | GET | `/obras/{obra_id}/marcos/{marco_id}` | Consultar marco da obra |
-| POST | `/obras/{obra_id}/mudancas` | Aplicar replanejamento ou mudança de estado |
+| GET, POST | `/obras/{obra_id}/mudancas` | Consultar histórico ou aplicar replanejamento/mudança de estado |
+| GET | `/mudancas/{mudanca_id}` | Consultar o detalhe de uma mudança |
+| GET, POST | `/ocorrencias/{ocorrenciaId}/aceitacoes` | Consultar ou registrar aceitações |
 | GET | `/obras/{obra_id}/previa` | Consultar avanços publicados |
 | PATCH | `/marcos/{marco_id}` | Alterar estado do marco com motivo |
 | GET, POST | `/marcos/{marco_id}/dependencias` | Listar ou criar dependência |
 | DELETE | `/marcos/{marco_id}/dependencias/{dependencia_id}` | Retirar dependência |
 | GET, POST | `/marcos/{marco_id}/avancos` | Listar ou cadastrar avanços com mídias |
-| GET, PATCH, DELETE | `/avancos/{avanco_id}` | Consultar, editar rascunho/corrigir publicação ou excluir rascunho |
-| GET | `/avancos/{avanco_id}/versoes` | Consultar versões e comparar alterações |
+| GET, PATCH, DELETE | `/avancos/{avanco_id}` | Consultar, editar rascunho/corrigir publicado ou excluir rascunho |
+| GET | `/avancos/{avanco_id}/versoes` | Consultar versões e diferenças das correções |
 | GET | `/avancos/{avanco_id}/midias` | Listar mídias |
 | GET, POST | `/avancos/{avanco_id}/publicacoes` | Consultar publicação ou publicar rascunho |
 | GET | `/midias/{midia_id}` | Consultar metadados da mídia |
@@ -48,7 +50,7 @@ O preflight `OPTIONS` negocia CORS sem autenticação e não executa a operaçã
 
 Os caminhos propostos em `docs/05-arquitetura-e-contratos.md` não são todos rotas
 implementadas. Ainda não existem, por exemplo, `DELETE /obras/{id}`,
-`DELETE /marcos/{id}`, consultas unificadas de mudanças, ocorrências e aceitações.
+`DELETE /marcos/{id}` e o cadastro/CRUD completo de ocorrências.
 Isso não foi tratado como defeito de uma
 rota existente nem substituído por endpoints que simulem sucesso.
 
@@ -71,8 +73,8 @@ mesmo formato de metadados públicos de `publicacao.midias` e prevalece sobre es
 snapshot original; sem o campo atual, permanece a composição original.
 `editado: true` indica diferença de texto, data ou mídia, ou uma marca persistida
 `avanco.editado: true` para correções que tenham restaurado o conteúdo original.
-A leitura não altera o snapshot nem o banco. O fluxo de escrita e o histórico de
-correções da UC-11 são descritos na seção de consulta de versões abaixo.
+A leitura não altera o snapshot nem o banco. A escrita e o histórico de correções
+da UC-11 estão implementados pelo PATCH de avanços e pela consulta de versões.
 
 Os testes de prévia, publicação e acesso à mídia cobrem filtros, ordenação,
 autenticação, composição atual e releitura em nova instância. A comprovação em
@@ -749,12 +751,39 @@ Depois de conferir a operação, execute, substituindo o identificador listado:
 .\.venv\Scripts\python -m app.avancos.reconciliacao --operacao IDENTIFICADOR --servico-parado
 ```
 
-A rotina preserva mídias de operações concluídas ou com avanço existente. Para
-uma operação pendente sem avanço, tenta remover todas as referências e só marca
-como limpa depois da confirmação do provedor. Se a remoção falhar, a operação
+A rotina preserva mídias de operações concluídas. Cadastros pendentes com avanço
+existente exigem revisão manual. Edições e correções podem ser reconciliadas com
+o avanço existente: somente os arquivos sem referências em mídias, histórico ou
+outras operações pendentes são removidos. Os arquivos preservados ficam
+registrados no diário. IDs antigos de correção com 32 caracteres continuam
+aceitos; novas operações usam 64 caracteres. Se a remoção falhar, a operação
 permanece pendente para nova tentativa. Após uma operação marcada como limpa, o
 cliente deve usar uma nova chave para criar um novo avanço. `--servico-parado` é
 uma confirmação operacional: ele não desliga servidores automaticamente.
+
+Cadastro, edição e correção registram as referências antes do envio. Na edição,
+o diário é confirmado na mesma transação que atualiza o avanço e suas mídias.
+Um commit de resultado desconhecido preserva os arquivos e o diário; uma falha
+confirmada tenta compensar os uploads. A rotina não anuncia sucesso de negócio
+quando a persistência falha. Não há transação distribuída com o Cloudinary.
+
+Para retomar tarefas de arquivos removidos de rascunhos por edições anteriores,
+também com a aplicação parada, use:
+
+```powershell
+.\.venv\Scripts\python -m app.avancos.reconciliacao --limpezas --servico-parado
+```
+
+Referências compartilhadas permanecem na fila até deixarem de ser usadas.
+As rotinas são operacionais; não há um worker automático de limpeza.
+
+`tests/test_reconciliacao_midias.py` cobre falhas, retomada e retenção de arquivos
+compartilhados com banco e provedor simulados. O teste opt-in
+`tests/test_fluxo_midias_real.py` exige `--atlas`, `RUN_CLOUDINARY_TESTS=1` e
+`TEST_CLOUDINARY_CLOUD_NAME`, `TEST_CLOUDINARY_API_KEY`, `TEST_CLOUDINARY_API_SECRET`.
+Ele usa coleções temporárias, pasta exclusiva de arquivos e remove seus dados
+ao final; cobre cadastro, repetição idempotente, edição, reinicialização da
+aplicação, publicação, correção, acesso autenticado e exclusão de outro rascunho.
 
 Para executar CT-31 a CT-36 localmente, sem Atlas nem Cloudinary reais:
 
@@ -891,16 +920,28 @@ cadeia inconsistente retorna 409 `HISTORICO_INDISPONIVEL`, sem fabricar versões
 `PATCH /avancos/{id}` com JSON ou `multipart/form-data` e `motivo` corrige uma
 publicação. Aceita `descricao`, `data`, `midias_manter` (lista JSON de IDs de
 mídias já vinculadas no multipart) e até cinco arquivos em `midias`. Cada correção
-grava `antes`, `depois`, motivo, autor e instante no avanço, junto com o conteúdo
+grava `antes`, `depois`, campos alterados, motivo, autor e instante no avanço, junto com o conteúdo
 atual em uma transação MongoDB. Mídias de versões anteriores permanecem
 armazenadas. Novos uploads são compensados se a gravação falhar; uma cadeia
-inconsistente retorna 409.
+inconsistente retorna 409. A classe `ServicoCorrecoes` valida o motivo e rejeita
+pedidos sem alteração efetiva; reordenar os mesmos IDs não cria uma versão.
+Toda correção exige pelo menos uma mídia válida e recuperável: as mídias
+mantidas são verificadas mesmo quando o PATCH só muda texto. Novas mídias são
+validadas por conteúdo e recuperadas antes da confirmação. Falhas de mídia
+retornam 422/503; a versão anterior permanece intacta.
 
-A revisão usa a mesma validação de concorrência da edição de rascunhos e da
-publicação. Revisões inválidas são rejeitadas, e o conteúdo usado para compor
-o próximo evento vem da mesma leitura cuja revisão será comparada na gravação.
+A gravação verifica a revisão, o snapshot lido e as mídias validadas na mesma
+transação, retornando 409 quando há alteração concorrente. A autoria e a origem
+simulada originais permanecem no registro; a construtora autenticada é a autora
+da correção. A consulta e a prévia indicam `editado` e preservam `origem_simulada`
+quando esse campo está presente. As mídias anteriores ficam retidas para o
+histórico, sem exclusão automática por uma correção.
 
-Execute sem a base de demonstração: `python -m pytest tests/test_versoes.py -q`.
+Testes da escrita (CT-46 a CT-51):
+`python -m pytest tests/test_correcao_publicada.py -q`.
+Testes da consulta e comparação: `python -m pytest tests/test_versoes.py -q`.
+Por padrão, usam MongoDB em memória com rollback simulado e Cloudinary simulado.
+
 Rollback após a escrita e conflito concorrente são verificados em MongoDB real
 com `python -m pytest tests/test_versoes.py -m atlas --atlas -q`, em coleções
 temporárias. A rede de armazenamento dos demais testes é simulada.

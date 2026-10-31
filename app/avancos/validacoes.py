@@ -9,6 +9,18 @@ from bson.errors import InvalidId
 CAMPOS_EDITAVEIS = {"data", "descricao", "midias_manter"}
 
 
+def validar_correcao(dados, *, possui_novas_midias=False):
+    if not isinstance(dados, dict):
+        return "Envie um objeto com os dados da correção", ["corpo"]
+    extras = set(dados) - (CAMPOS_EDITAVEIS | {"motivo"})
+    if extras:
+        return "Campos não permitidos", sorted(extras)
+    if not isinstance(dados.get("motivo"), str) or not dados["motivo"].strip():
+        return "Informe o motivo da correção", ["motivo"]
+    return validar_edicao({k: v for k, v in dados.items() if k != "motivo"},
+                          possui_novas_midias=possui_novas_midias)
+
+
 def validar_avanco(dados):
     campos = []
     if not isinstance(dados, dict):

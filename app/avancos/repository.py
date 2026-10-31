@@ -37,15 +37,26 @@ def buscar_avanco(avanco_id):
     return db.banco_dados["tbl_avancos"].find_one({"_id": avanco_id})
 
 
-def salvar_correcao_publicada(documento, correcao, conteudo, novas_midias=(), operacao_id=None):
+def salvar_correcao_publicada(documento, correcao, conteudo, novas_midias=(), operacao_id=None, midias_validadas=()):
     """Aplica conteúdo e snapshot juntos; revisão impede duas correções concorrentes."""
-    revisao_esperada = filtro_revisao(documento)
+    revisao = filtro_revisao(documento)
 
     def gravar(sessao):
+        # A leitura e a validação do provedor ocorrem antes da transação. Esta
+        # escrita detecta remoções/alterações dos metadados nesse intervalo.
+        for midia in midias_validadas:
+            resultado = db.banco_dados["tbl_midias"].update_one(
+                midia, {"$inc": {"_versao_correcao": 1}}, session=sessao,
+            )
+            if resultado.matched_count != 1:
+                raise ConflitoRascunho("Uma mídia foi alterada durante a correção")
         if novas_midias:
             db.banco_dados["tbl_midias"].insert_many(list(novas_midias), session=sessao)
         resultado = db.banco_dados["tbl_avancos"].update_one(
-            {"_id": documento["_id"], "estado": "publicado", **revisao_esperada},
+            {"_id": documento["_id"], "estado": "publicado", **revisao,
+             **{campo: documento[campo] if campo in documento else {"$exists": False}
+                for campo in ("publicacao", "correcoes", "data", "descricao", "midias",
+                              "autor", "origem_simulada")}},
             {"$set": {"data": conteudo["data"], "descricao": conteudo["descricao"],
                       "midias": conteudo["midias"], "editado": True},
              "$push": {"correcoes": correcao}, "$inc": {"revisao": 1}},
@@ -258,12 +269,12 @@ def arquivo_tem_outras_referencias(avanco_id, arquivo):
 # Fachada da persistência orientada a objetos, preservada após integrar a main.
 
 
-def salvar_edicao(documento, alteracoes, midias_anteriores, ids_manter, novas_midias):
-    return RepositorioRascunhos().salvar_edicao(documento, alteracoes, midias_anteriores, ids_manter, novas_midias)
+def salvar_edicao(documento, alteracoes, midias_anteriores, ids_manter, novas_midias, operacao_id=None):
+    return RepositorioRascunhos().salvar_edicao(documento, alteracoes, midias_anteriores, ids_manter, novas_midias, operacao_id)
 
 
-def referencia_em_uso(referencia, *, ids_midias=()):
-    return RepositorioRascunhos().referencia_em_uso(referencia, ids_midias)
+def referencia_em_uso(referencia, *, ids_midias=(), operacao_ignorada=None):
+    return RepositorioRascunhos().referencia_em_uso(referencia, ids_midias, operacao_ignorada)
 
 
 def concluir_limpeza(midia_id):
