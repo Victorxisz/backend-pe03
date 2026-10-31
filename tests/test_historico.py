@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 
 from bson import ObjectId
+import pytest
 
 from support import snapshot
 from support_obras import ID, seed
@@ -174,3 +175,117 @@ def test_evento_de_marco_alheio_nao_pertence_ao_historico(client, headers, datab
     assert nossa.json == {"mudancas": []}
     assert len(outra.json["mudancas"]) == 1
     assert detalhe.json["obra_id"] == str(alheia)
+
+
+def test_empate_preserva_ordem_numerica_de_doze_decisoes(client, headers, database, obra):
+    seed(database, obra)
+    oid = ObjectId(ID)
+    eventos = [_evento("obra", oid, "entrega", str(i), str(i + 1),
+                        datetime(2030, 10, 20), f"Decisão {i}") for i in range(12)]
+    database.tbl_obras.update_one({"_id": oid}, {"$set": {"historico_mudancas": eventos}})
+    antes = snapshot(database)
+
+    lista = client.get(f"/obras/{ID}/mudancas", headers=headers)
+
+    assert lista.status_code == 200
+    assert [item["motivo"] for item in lista.json["mudancas"]] == [e["motivo"] for e in eventos]
+    for evento in lista.json["mudancas"]:
+        assert client.get(evento["consulta"], headers=headers).json == evento
+    assert snapshot(database) == antes
+
+
+def _publicacao_com_correcoes(database, obra, quantidade=11):
+    seed(database, obra)
+    marco = database.tbl_marcos.insert_one({"obra_id": ObjectId(ID)}).inserted_id
+    original = {"data": "2030-10-01", "descricao": "Original", "midias": []}
+    anterior = original
+    correcoes = []
+    for numero in range(2, quantidade + 2):
+        depois = {**original, "descricao": f"Versão {numero}"}
+        correcoes.append({"antes": anterior, "depois": depois, "motivo": f"Correção {numero}",
+                          "autor": "corretor", "instante": datetime(2030, 10, 20)})
+        anterior = depois
+    return database.tbl_avancos.insert_one({
+        "marco_id": marco, "estado": "publicado", **anterior,
+        "publicacao": {**original, "autor": "original", "instante": datetime(2030, 10, 1)},
+        "correcoes": correcoes,
+    }).inserted_id
+
+
+def test_empate_das_correcoes_segue_a_cadeia_das_versoes(client, headers, database, obra):
+    avanco = _publicacao_com_correcoes(database, obra)
+    antes = snapshot(database)
+
+    lista = client.get(f"/obras/{ID}/mudancas", headers=headers)
+    versoes = client.get(f"/avancos/{avanco}/versoes", headers=headers)
+
+    assert lista.status_code == versoes.status_code == 200
+    eventos = lista.json["mudancas"]
+    assert len(eventos) == 11
+    assert [e["motivo"] for e in eventos] == [f"Correção {n}" for n in range(2, 13)]
+    for evento, versao in zip(eventos, versoes.json["versoes"][1:]):
+        for campo in ("antes", "depois", "motivo", "autor", "instante", "campos"):
+            assert evento[campo] == versao["correcao"][campo]
+        assert client.get(evento["consulta"], headers=headers).json == evento
+        assert evento["comparacao"] == f"/avancos/{avanco}/versoes"
+    assert snapshot(database) == antes
+
+
+@pytest.mark.parametrize("operacao,campo,valor", [
+    ("$set", "correcoes.0.antes.descricao", "Cadeia divergente"),
+    ("$set", "descricao", "Atual divergente"),
+    ("$unset", "correcoes.0.motivo", ""),
+    ("$set", "correcoes.0.autor", None),
+    ("$set", "correcoes", [False]),
+    ("$set", "publicacao", None),
+    ("$set", "publicacao", {}),
+])
+def test_historia_inconsistente_retorna_conflito_na_lista_e_detalhe(
+    client, headers, database, obra, operacao, campo, valor
+):
+    avanco = _publicacao_com_correcoes(database, obra, quantidade=1)
+    consulta = f"/mudancas/publicacao:{avanco}:2"
+    database.tbl_avancos.update_one({"_id": avanco}, {operacao: {campo: valor}})
+    antes = snapshot(database)
+
+    for caminho in (f"/obras/{ID}/mudancas", consulta, f"/avancos/{avanco}/versoes"):
+        resposta = client.get(caminho, headers=headers)
+        assert resposta.status_code == 409
+        assert resposta.json["codigo"] == "HISTORICO_INDISPONIVEL"
+    assert snapshot(database) == antes
+
+
+def test_ordena_instantes_pelo_tempo_real_com_fusos_diferentes(client, headers, database, obra):
+    seed(database, obra)
+    oid = ObjectId(ID)
+    eventos = [
+        _evento("obra", oid, "entrega", "1", "2", "2030-10-20T10:00:00-03:00", "Segunda"),
+        _evento("obra", oid, "entrega", "0", "1", "2030-10-20T12:00:00Z", "Primeira"),
+    ]
+    database.tbl_obras.update_one({"_id": oid}, {"$set": {"historico_mudancas": eventos}})
+    antes = snapshot(database)
+
+    lista = client.get(f"/obras/{ID}/mudancas", headers=headers)
+
+    assert lista.status_code == 200
+    assert [e["motivo"] for e in lista.json["mudancas"]] == ["Primeira", "Segunda"]
+    assert snapshot(database) == antes
+
+
+@pytest.mark.parametrize("campo,valor", [
+    ("tipo", None), ("motivo", None), ("autor", None), ("instante", "data inválida"),
+])
+def test_decisao_incompleta_retorna_conflito_sem_alterar_a_trilha(
+    client, headers, database, obra, campo, valor
+):
+    seed(database, obra)
+    evento = _evento("obra", ObjectId(ID), "entrega", "antes", "depois",
+                     datetime(2030, 10, 20), "Decisão")
+    evento[campo] = valor
+    database.tbl_obras.update_one({"_id": ObjectId(ID)}, {"$set": {"historico_mudancas": [evento]}})
+    antes = snapshot(database)
+    for caminho in (f"/obras/{ID}/mudancas", f"/mudancas/obra:{ID}:historico_mudancas:0"):
+        resposta = client.get(caminho, headers=headers)
+        assert resposta.status_code == 409
+        assert resposta.json["codigo"] == "HISTORICO_INDISPONIVEL"
+    assert snapshot(database) == antes

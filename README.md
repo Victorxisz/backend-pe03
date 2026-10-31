@@ -914,6 +914,13 @@ Cada item possui `consulta` para `GET /mudancas/{id}`; correções também possu
 `depois` vêm dos registros originais, sem alterar a trilha. Uma obra existente
 sem eventos devolve lista vazia; não há PATCH ou DELETE de mudança isolada.
 
+O desempate usa a posição numérica da decisão/correção, mantendo a sequência
+mesmo com mais de dez entradas no mesmo instante. Instantes são normalizados
+em UTC antes da ordenação. As correções reutilizam o leitor de versões de
+UC-11: snapshot ausente, cadeia divergente ou dados obrigatórios incompletos
+retornam `409 HISTORICO_INDISPONIVEL`, tanto na lista quanto no detalhe, sem
+regravar registros nem transformar inconsistências em histórico vazio.
+
 Execute com banco em memória e armazenamento simulado:
 `python -m pytest tests/test_historico.py tests/test_historico_integracao.py -q`.
 O teste de integração produz decisões e correções pelas rotas reais, confere a
