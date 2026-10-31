@@ -3,8 +3,23 @@
 import db
 
 
+# Uma mídia pertence a um único registro de negócio. O campo do vínculo diz qual
+# coleção a guarda: ocorrência não é avanço, e o acesso não confunde as duas.
+COLECAO_DO_VINCULO = {
+    "avanco_id": "tbl_avancos",
+    "ocorrencia_id": "tbl_ocorrencias",
+}
+
+
 def avanco_existe(avanco_id):
     return db.banco_dados["tbl_avancos"].find_one({"_id": avanco_id}, {"_id": 1}) is not None
+
+
+def vinculo_existe(campo, identificador):
+    colecao = COLECAO_DO_VINCULO.get(campo)
+    if colecao is None:
+        return False
+    return db.banco_dados[colecao].find_one({"_id": identificador}, {"_id": 1}) is not None
 
 
 def buscar_avanco(avanco_id):

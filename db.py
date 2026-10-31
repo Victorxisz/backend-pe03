@@ -25,6 +25,7 @@ colecao_construtora = banco_dados["tbl_construtora"]
 colecao_marcos = banco_dados["tbl_marcos"]
 colecao_historico = banco_dados["tbl_historico"]
 colecao_obras = banco_dados["tbl_obras"]
+colecao_ocorrencias = banco_dados["tbl_ocorrencias"]
 colecao_sessoes_revogadas = banco_dados["tbl_sessoes_revogadas"]
 
 colecao_construtora.create_index("email", unique=True) # Impede que uma construtora tenha mais de uma conta em um único email

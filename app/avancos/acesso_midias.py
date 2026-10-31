@@ -24,11 +24,23 @@ def _identificador(valor, campo):
         raise ErroMidia("ID inválido", 400, "ID_INVALIDO", [campo]) from None
 
 
+def vinculo_da_midia(documento):
+    """Qual registro de negócio guarda a mídia: avanço ou ocorrência, nunca ambos."""
+    for campo in repository.COLECAO_DO_VINCULO:
+        valor = documento.get(campo)
+        if isinstance(valor, ObjectId):
+            return campo, valor
+    return None, None
+
+
 def midia_para_dict(documento):
     # Lista fechada: nunca devolve referência externa, URL ou credenciais.
     midia = {campo: documento.get(campo) for campo in ("tipo", "nome", "tamanho")}
-    midia.update(id=str(documento["_id"]), avanco_id=str(documento["avanco_id"]),
+    campo_vinculo, vinculo = vinculo_da_midia(documento)
+    midia.update(id=str(documento["_id"]),
                  mime=documento.get("mime") or documento.get("formato"), visibilidade="privada")
+    if campo_vinculo is not None:
+        midia[campo_vinculo] = str(vinculo)
     # Compatibilidade com a representação MIME usada pelas rotas de acesso anteriores.
     midia["formato"] = midia["mime"]
     envio = documento.get("data_envio")
@@ -50,8 +62,8 @@ def _midia_vinculada(midia_id):
     identificador = _identificador(midia_id, "midia_id")
     documento = repository.buscar_midia_por_id(identificador)
     if documento is not None:
-        vinculo = documento.get("avanco_id")
-        if isinstance(vinculo, ObjectId) and repository.avanco_existe(vinculo):
+        campo_vinculo, vinculo = vinculo_da_midia(documento)
+        if campo_vinculo is not None and repository.vinculo_existe(campo_vinculo, vinculo):
             return documento
     raise ErroMidia("Mídia não encontrada", 404, "MIDIA_NAO_ENCONTRADA", ["midia_id"])
 
