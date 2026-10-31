@@ -32,7 +32,6 @@ class RepositorioHistorico:
     def listar_avancos_publicados(self, ids_marcos):
         return list(self.banco["tbl_avancos"].find({
             "marco_id": {"$in": ids_marcos}, "estado": "publicado",
-            "publicacao": {"$type": "object"},
         }))
 
 

@@ -23,7 +23,10 @@ def impedir_cache(resposta):
 
 @historico_bp.errorhandler(ErroHistorico)
 def responder_erro(erro):
-    return jsonify(mensagem=str(erro), campos=erro.campos), erro.status
+    corpo = {"mensagem": str(erro), "campos": erro.campos}
+    if erro.codigo:
+        corpo["codigo"] = erro.codigo
+    return jsonify(corpo), erro.status
 
 
 @historico_bp.errorhandler(PyMongoError)
