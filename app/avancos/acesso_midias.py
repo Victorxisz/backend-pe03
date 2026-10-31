@@ -24,8 +24,10 @@ def _identificador(valor, campo):
 def midia_para_dict(documento):
     # Lista fechada: nunca devolve referência externa, URL ou credenciais.
     midia = {campo: documento.get(campo) for campo in ("tipo", "nome", "tamanho")}
-    midia.update(id=str(documento["_id"]), avanco_id=str(documento["avanco_id"]),
+    midia.update(id=str(documento["_id"]),
                  mime=documento.get("mime") or documento.get("formato"), visibilidade="privada")
+    vinculo = "ocorrencia_id" if "ocorrencia_id" in documento else "avanco_id"
+    midia[vinculo] = str(documento[vinculo])
     # Compatibilidade com a representação MIME usada pelas rotas de acesso anteriores.
     midia["formato"] = midia["mime"]
     envio = documento.get("data_envio")
@@ -50,6 +52,21 @@ def _midia_vinculada(midia_id):
         vinculo = documento.get("avanco_id")
         if isinstance(vinculo, ObjectId) and repository.avanco_existe(vinculo):
             return documento
+    # Evidências de ocorrência vivem no mesmo documento do problema. Não são
+    # avanços e não participam de publicação, prévia ou revisão de rascunhos.
+    import db
+    from flask_jwt_extended import get_jwt_identity
+    ocorrencia = db.banco_dados["tbl_ocorrencias"].find_one({"midias._id": identificador})
+    if ocorrencia is not None:
+        obra = db.colecao_obras.find_one({"_id": ocorrencia.get("obra_id")})
+        marco_id = ocorrencia.get("marco_id")
+        marco_valido = marco_id is None or db.colecao_marcos.find_one(
+            {"_id": marco_id, "obra_id": ocorrencia.get("obra_id")}) is not None
+        if (obra is not None and marco_valido
+                and (not obra.get("autor") or str(obra["autor"]) == get_jwt_identity())):
+            for midia in ocorrencia["midias"]:
+                if midia["_id"] == identificador and midia.get("ocorrencia_id") == ocorrencia["_id"]:
+                    return midia
     raise ErroMidia("Mídia não encontrada", 404, "MIDIA_NAO_ENCONTRADA", ["midia_id"])
 
 

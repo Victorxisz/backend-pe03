@@ -5,7 +5,7 @@ A organização atual com POO e as decisões de 30/10 estão em
 
 ## Rotas existentes
 
-Inventário conferido no `url_map` da aplicação: **44 operações de negócio**.
+Inventário conferido no `url_map` da aplicação: **47 operações de negócio**.
 As barras finais abaixo fazem parte dos caminhos atuais. `HEAD` nas consultas,
 `OPTIONS` automático e a rota técnica `/static/{filename}` não entram na contagem.
 
@@ -24,6 +24,8 @@ As barras finais abaixo fazem parte dos caminhos atuais. `HEAD` nas consultas,
 | GET, POST | `/obras/{obra_id}/mudancas` | Consultar histórico ou aplicar replanejamento/mudança de estado |
 | GET | `/mudancas/{mudanca_id}` | Consultar o detalhe de uma mudança |
 | GET, POST | `/ocorrencias/{ocorrenciaId}/aceitacoes` | Consultar ou registrar aceitações |
+| GET, POST | `/obras/{obra_id}/ocorrencias` | Listar ou registrar problemas da obra |
+| GET | `/ocorrencias/{ocorrencia_id}` | Consultar ocorrência e evidências |
 | GET | `/obras/{obra_id}/previa` | Consultar avanços publicados |
 | PATCH | `/marcos/{marco_id}` | Alterar estado do marco com motivo |
 | GET, POST | `/marcos/{marco_id}/dependencias` | Listar ou criar dependência |
@@ -50,13 +52,78 @@ O preflight `OPTIONS` negocia CORS sem autenticação e não executa a operaçã
 
 Os caminhos propostos em `docs/05-arquitetura-e-contratos.md` não são todos rotas
 implementadas. Ainda não existem, por exemplo, `DELETE /obras/{id}`,
-`DELETE /marcos/{id}` e o cadastro/CRUD completo de ocorrências.
+`DELETE /marcos/{id}`, edição e exclusão individual de ocorrências.
 Isso não foi tratado como defeito de uma
 rota existente nem substituído por endpoints que simulem sucesso.
 
 `tests/infraestrutura/test_rotas_api.py` verifica CORS em todas as operações registradas,
 rejeição de chamadas sem token, conta inativa/perfil incorreto e IDs inválidos.
 Os testes específicos de cada módulo continuam cobrindo suas regras de negócio.
+
+## Registrar ocorrências — UC-14
+
+As três operações exigem sessão de construtora ativa:
+`POST /obras/{obra_id}/ocorrencias`, `GET /obras/{obra_id}/ocorrencias`
+e `GET /ocorrencias/{ocorrencia_id}`. O blueprint já é registrado por
+`app.create_app`, usada em `api.py`; não é necessário registrá-lo novamente.
+
+Sem arquivos, envie JSON. Com arquivos, use `multipart/form-data`, com os mesmos
+campos textuais e até cinco arquivos no campo repetido `midias`. Não se aceitam
+URLs externas nem IDs de evidências de outros registros no cadastro.
+
+```json
+{
+  "titulo": "Infiltração na parede",
+  "descricao": "Água após a chuva; causa ainda em investigação.",
+  "estado": "sem solução",
+  "marco_id": null,
+  "responsavel_id": null
+}
+```
+
+Título e descrição devem ser textos preenchidos. Estado inicial é obrigatório
+e aceita somente `aberta` ou `sem solução`. ID, autor e data UTC de registro vêm
+do servidor; tentativas de enviá-los no corpo são rejeitadas. `marco_id` e
+`responsavel_id` podem ser omitidos, `null` ou texto vazio. O marco informado
+deve pertencer à obra. O responsável é o `id` do cadastro de trabalhadores
+(`POST /trabalhadores/obra/{obra_id}/`), com essa obra em `obras` e a construtora
+compatível com a sessão. Não se cria usuário, senha ou novo perfil autenticável.
+
+O envio reutiliza o adaptador Cloudinary e a validação por conteúdo de JPEG,
+PNG, MP4 e PDF. Limites padrão: 10 MiB por foto/documento e 100 MiB por vídeo,
+configuráveis pelas variáveis `MIDIA_*` existentes. A resposta contém os
+metadados da mídia e caminhos `/midias/{id}` e `/midias/{id}/conteudo`, protegidos
+por sessão, sem URL do provedor ou referência externa. Ocorrência não é avanço:
+as evidências possuem `ocorrencia_id`, sem publicação nem entrada na prévia.
+
+Ocorrência, vínculos, evidências e aceitações ficam juntos em `tbl_ocorrencias`,
+numa única inserção atômica. `sem solução` começa com `aceitacoes: []`; somente
+a decisão explícita da UC-16 acrescenta uma aceitação. Não existe edição de
+estado por estas rotas. A resposta `201` inclui `Location` para o detalhe.
+A lista retorna `{"ocorrencias": [...]}`, ordenada por registro decrescente
+e ID crescente em empate. Obra existente sem ocorrências retorna `200` com
+lista vazia; obra inexistente retorna `404`. O detalhe exige obra existente e
+acessível e marco ainda pertencente a ela. IDs malformados retornam `400`,
+campos inválidos `422`, formato de requisição não suportado `415` e falha de
+banco/armazenamento `503`, sem anunciar cadastro completo.
+
+Antes do upload, as intenções ficam em `tbl_uploads_pendentes` com
+`tipo: ocorrencia` e `ocorrencia_id`. Rejeição confirmada no banco compensa os
+arquivos. Falha na limpeza mantém o diário para retomada. Um timeout de escrita
+preserva arquivos potencialmente salvos e retorna `503`; consulte a lista antes
+de reenviar, pois o POST não é idempotente. Após parar a aplicação e aguardar os
+uploads, use `python -m app.avancos.reconciliacao --listar` e
+`python -m app.avancos.reconciliacao --operacao ID --servico-parado`.
+A reconciliação remove somente referências sem uso e preserva evidências já
+gravadas, inclusive quando a confirmação do cadastro se perdeu. Não há worker
+automático. Novas exclusões devem considerar as evidências embutidas.
+
+Testes CT-64 a CT-68 e CT-03: `python -m pytest tests/test_ocorrencias.py -q`.
+O teste local recria a aplicação e consulta o mesmo banco simulado. Para provar
+persistência em MongoDB real e nova conexão em outro processo:
+`python -m pytest tests/test_ocorrencias.py -m atlas --atlas -q`.
+Os testes reais usam coleções temporárias, removidas ao final; o armazenamento
+continua simulado nesses cenários, sem upload no Cloudinary real.
 
 ## Linha do tempo publicada — UC-10
 
@@ -181,7 +248,7 @@ Na pasta `backend-pe03`, usando PowerShell:
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python -m pip install -r requirements-test.txt
+.\.venv\Scripts\python -m pip install -r requirements.txt
 .\.venv\Scripts\python -m pytest -v
 ```
 

@@ -1,1 +1,1 @@
-"""Registro de decisões de ocorrências."""
+"""Registro de problemas da obra e decisões sobre suas ocorrências."""

@@ -1,4 +1,4 @@
-"""Persistência atômica de aceitações vinculadas à ocorrência."""
+"""Persistência atômica da ocorrência com evidências e aceitações."""
 
 import db
 from pymongo import ReturnDocument
@@ -18,6 +18,40 @@ class RepositorioOcorrencias:
 
     def buscar(self, ocorrencia_id):
         return self.banco["tbl_ocorrencias"].find_one({"_id": ocorrencia_id})
+
+    def buscar_obra(self, obra_id):
+        return self.banco["tbl_obras"].find_one({"_id": obra_id})
+
+    def buscar_marco(self, marco_id):
+        return self.banco["tbl_marcos"].find_one({"_id": marco_id})
+
+    def buscar_trabalhador(self, trabalhador_id):
+        return self.banco["tbl_trabalhadores"].find_one({"_id": trabalhador_id})
+
+    def listar(self, obra_id):
+        return self.banco["tbl_ocorrencias"].find({"obra_id": obra_id}).sort(
+            [("data_registro", -1), ("_id", 1)])
+
+    def inserir(self, documento):
+        # Evidências e vínculos são embutidos: uma única escrita atômica,
+        # inclusive em MongoDB standalone, sem ocorrência parcial.
+        self.banco["tbl_ocorrencias"].insert_one(documento)
+
+    def criar_operacao(self, documento):
+        self.banco["tbl_uploads_pendentes"].insert_one(documento)
+
+    def registrar_referencia(self, operacao_id, referencia):
+        resultado = self.banco["tbl_uploads_pendentes"].update_one(
+            {"_id": operacao_id, "estado": "pendente"}, {"$push": {"referencias": referencia}})
+        if resultado.matched_count != 1:
+            raise RuntimeError("Diário de upload indisponível")
+
+    def remover_operacao_pendente(self, operacao_id):
+        self.banco["tbl_uploads_pendentes"].delete_one({"_id": operacao_id, "estado": "pendente"})
+
+    def concluir_operacao(self, operacao_id):
+        self.banco["tbl_uploads_pendentes"].update_one(
+            {"_id": operacao_id}, {"$set": {"estado": "concluida"}})
 
     def aceitar(self, ocorrencia_id, aceitacao, chave_reenvio=None):
         # Estado no filtro torna a validação e o append uma única operação atômica.

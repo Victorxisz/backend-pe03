@@ -1,4 +1,4 @@
-"""Diário de uploads usado pela edição e correção de avanços."""
+"""Diário de uploads para operações de negócio com evidências."""
 
 import hashlib
 import logging
@@ -14,10 +14,11 @@ logger = logging.getLogger(__name__)
 
 
 class OperacaoUpload:
-    def __init__(self, repositorio, avanco_id, tipo):
+    def __init__(self, repositorio, alvo_id, tipo, *, campo_vinculo="avanco_id"):
         self.repositorio = repositorio
-        self.avanco_id = avanco_id
+        self.alvo_id = alvo_id
         self.tipo = tipo
+        self.campo_vinculo = campo_vinculo
         self.id = hashlib.sha256(uuid4().bytes).hexdigest()
 
     def executar(self, servico, arquivos, salvar):
@@ -26,7 +27,7 @@ class OperacaoUpload:
         def reservar(_validados):
             nonlocal criada
             self.repositorio.criar_operacao({
-                "_id": self.id, "avanco_id": self.avanco_id, "tipo": self.tipo,
+                "_id": self.id, self.campo_vinculo: self.alvo_id, "tipo": self.tipo,
                 "estado": "pendente", "referencias": [],
                 "iniciado_em": datetime.now(timezone.utc),
             })

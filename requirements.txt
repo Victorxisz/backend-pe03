@@ -1,13 +1,21 @@
+# API, autenticação e HTTP
 Flask==3.0.3
-flask-cors
+flask-cors>=6.0.5,<7
+flask-bcrypt==1.0.1
+flask-jwt-extended==4.7.4
+Werkzeug>=3.1.9,<4
+
+# MongoDB (inclui bson e dnspython) e configuração
 pymongo==4.8.0
 python-dotenv==1.0.1
-pytest>=8,<9
-flask-bcrypt
-flask-jwt-extended==4.7.4
-freezegun>=1.5,<2
-mongomock>=4.3,<5
+
+# Armazenamento e validação do conteúdo das mídias
 cloudinary>=1.44,<2
 Pillow>=11,<13
 pypdf>=5,<7
 av>=14,<18
+
+# Testes, relógio controlado e MongoDB simulado
+pytest>=8,<9
+freezegun>=1.5,<2
+mongomock>=4.3,<5
