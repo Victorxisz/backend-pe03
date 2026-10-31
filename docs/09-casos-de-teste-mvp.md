@@ -178,6 +178,6 @@ Executar CT-107/108 se ViaCEP for escolhido; CT-109/110 se Cloudinary Free for e
 - Professor ainda precisa validar tema e qual integração externa satisfaz a disciplina.
 - Grupo ainda precisa fixar limite/tipos exatos de arquivo e política de acesso às mídias.
 - Estados adicionais de ocorrência além de `aberta`, `resolvida` e `sem solução` não foram definidos.
-- Para obra concluída, cálculo histórico de atraso deve usar data efetiva de conclusão; definir o contrato desse campo antes de CT-14/59.
+- Para obra concluída, cálculo histórico de atraso usa a data efetiva automática; conclusão e reabertura são verificadas também em `tests/obras/test_estado.py`.
 - A rota de trabalhadores já existente no repositório cobre parte de CT-90/96/99, mas **não** implica que listagem, autenticação, verificação de obra e cascata já funcionem.
-- CT-82 e CT-100 usam as propostas de tratamento de ocorrência ligada ao marco e trabalhador ligado a várias obras, descritas em UC-17/20; confirmá-las com o grupo antes de marcar esses testes como contrato final.
+- Confirmado em 30/10: CT-82 remove as ocorrências do marco. CT-100 preserva o trabalhador vinculado à construtora e às demais obras; a exclusão completa de obra/marco continua pendente de implementação.

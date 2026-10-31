@@ -22,7 +22,7 @@ O cenário deve usar registros fictícios explicitamente identificados. Um dado 
 - Não é possível informar simultaneamente os dois formatos de prazo nem um intervalo cujo fim preceda o início.
 - Após criar a obra, ela aparece na lista; permanece após atualizar a página ou reiniciar o servidor.
 - É possível filtrar por nome, situação, cliente de referência, data de entrega e data de registro. Os filtros mostram claramente quando não há resultados.
-- Os rótulos planejada, em andamento, concluída, suspensa, crítica e atrasada podem ser vistos e encontrados conforme a modelagem aprovada em RN-02.
+- Os estados planejada, em andamento, concluída e suspensa são separados do único alerta atrasada, calculado conforme RN-02. A conclusão efetiva é registrada automaticamente pelo servidor.
 
 ### CA-03 — Marcos e dependências (`F-06` e `F-07`)
 

@@ -33,3 +33,16 @@ def test_permitir_exemplo_explicitamente_ficticio():
 
     # Verificação
     assert findings == []
+
+
+def test_placeholder_teste_exato_nao_libera_valores_com_prefixo_semelhante():
+    campo = "CLOUDINARY_API_KEY"
+    assert find_secrets(campo + " = 'teste'") == []
+    assert len(find_secrets(campo + " = 'teste-valor-sintetico'")) == 1
+
+
+@pytest.mark.parametrize("valor", ["teste", "TESTE"])
+def test_permitir_valor_exato_usado_pelo_provedor_simulado(valor):
+    content = "CLOUDINARY_API_KEY" + " = '" + valor + "'"
+
+    assert find_secrets(content) == []

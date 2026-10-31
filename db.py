@@ -1,31 +1,20 @@
+"""Conexão compartilhada e fachada dos nomes de coleção já usados pela aplicação."""
+
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-from pymongo import MongoClient
+from app.database import BancoMongo
 
+load_dotenv(Path(__file__).resolve().parent / ".env")
+conexao = BancoMongo(os.getenv("MONGO_URI"))
+cliente_mongo = conexao.cliente
+banco_dados = conexao.banco
 
-# Carrega os dados inseridos no .env
-caminho_env = Path(__file__).resolve().parent / ".env"
-load_dotenv(caminho_env)
-
-mongo_uri = os.getenv("MONGO_URI")
-
-# Caso não ache a uri do mongo
-if not mongo_uri:
-    raise RuntimeError("Configure MONGO_URI no arquivo .env")
-
-# Cliente compartilhado pelas rotas dentro deste processo.
-cliente_mongo = MongoClient(mongo_uri)
-
-# O nome do banco deve estar informado na URI.
-banco_dados = cliente_mongo["banco_de_dados"]
-
-colecao_trabalhadores = banco_dados["tbl_trabalhadores"]
-colecao_construtora = banco_dados["tbl_construtora"]
-colecao_marcos = banco_dados["tbl_marcos"]
-colecao_historico = banco_dados["tbl_historico"]
-colecao_obras = banco_dados["tbl_obras"]
-colecao_ocorrencias = banco_dados["tbl_ocorrencias"]
-colecao_sessoes_revogadas = banco_dados["tbl_sessoes_revogadas"]
-
-colecao_construtora.create_index("email", unique=True) # Impede que uma construtora tenha mais de uma conta em um único email
+colecao_trabalhadores = conexao.colecao("tbl_trabalhadores")
+colecao_construtora = conexao.colecao("tbl_construtora")
+colecao_marcos = conexao.colecao("tbl_marcos")
+colecao_historico = conexao.colecao("tbl_historico")
+colecao_obras = conexao.colecao("tbl_obras")
+colecao_ocorrencias = conexao.colecao("tbl_ocorrencias")
+colecao_sessoes_revogadas = conexao.colecao("tbl_sessoes_revogadas")
+conexao.preparar_indices()

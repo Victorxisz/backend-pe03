@@ -5,7 +5,13 @@ from flask_jwt_extended import get_jwt_identity
 from app.auth.permissions import sessao_obrigatoria
 from pymongo.errors import PyMongoError
 
-from .service import ErroObra, buscar_obra, criar_obra, editar_descricao, listar_obras, listar_marcos
+from .service import ErroObra, ServicoObras
+
+servico = ServicoObras()
+buscar_obra = servico.buscar_obra
+criar_obra = servico.criar_obra
+editar_descricao = servico.editar_descricao
+listar_obras = servico.listar_obras
 
 obras_bp = Blueprint("obras", __name__, url_prefix="/obras")
 @obras_bp.before_request
@@ -66,24 +72,12 @@ def consultar_obras():
         situacao = "sem_resultados"
     else:
         situacao = "lista_vazia"
-    
+
     return jsonify(
             obras=obras,
             situacao=situacao,
             filtros_aplicados=filtros_aplicados,
         ), 200
-
-
-@obras_bp.get("/<string:obra_id>/marcos")
-def consultar_marcos(obra_id):
-    try:
-        marcos = listar_marcos(obra_id)
-    except ErroObra as erro:
-        return jsonify(mensagem=str(erro), campos=erro.campos), erro.status
-    except PyMongoError:
-        current_app.logger.error("Falha no banco durante consulta de marcos")
-        return jsonify(mensagem="Não foi possível consultar os marcos da obra"), 500
-    return jsonify(marcos), 200
 
 
 @obras_bp.patch("/<string:obra_id>")
@@ -107,3 +101,15 @@ def corrigir_descricao(obra_id):
         ),
         200,
     )
+
+
+@obras_bp.patch("/<string:obra_id>/estado")
+def alterar_estado(obra_id):
+    try:
+        obra = servico.alterar_estado(obra_id, request.get_json(silent=True), get_jwt_identity())
+    except ErroObra as erro:
+        return jsonify(mensagem=str(erro), campos=erro.campos), erro.status
+    except PyMongoError:
+        current_app.logger.error("Falha no banco durante alteração de estado da obra")
+        return jsonify(mensagem="Não foi possível alterar o estado da obra"), 500
+    return jsonify(obra), 200

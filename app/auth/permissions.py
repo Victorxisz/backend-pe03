@@ -2,7 +2,7 @@ from functools import wraps
 
 from bson import ObjectId
 from bson.errors import InvalidId
-from flask import jsonify
+from flask import jsonify, request
 from flask_jwt_extended import (
     get_jwt,
     get_jwt_identity,
@@ -13,6 +13,10 @@ from db import colecao_construtora
 def sessao_obrigatoria (funcao):
     @wraps(funcao)
     def verificar_sessao(*args, **kwargs):
+        # O preflight CORS não executa a operação. JWT também isenta OPTIONS,
+        # portanto não há claims para consultar nessa requisição do navegador.
+        if request.method == "OPTIONS":
+            return None
         # Verifica token, expiração e revogação.
         # Reutiliza a configuração do JWTManager em api.py
         verify_jwt_in_request()

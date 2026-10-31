@@ -1,6 +1,9 @@
 # 11. Organização proposta do backend
 
-**Estado:** proposta para discussão; esta estrutura **ainda não foi criada**. `backend/` abaixo representa a raiz do repositório do servidor, não uma pasta adicional obrigatória. A ideia é manter **uma aplicação Flask** dividida pelos assuntos do projeto.
+**Estado:** proposta original, parcialmente concretizada e substituída pela
+[organização efetiva com POO](13-modelo-poo.md), registrada em 30/10/2026.
+Use esse documento para orientar novas alterações. `backend/` abaixo representa
+a raiz do repositório do servidor, não uma pasta adicional obrigatória.
 
 ```text
 backend/

@@ -54,6 +54,7 @@ Avanço      1 ── * Mídia
 Obra        1 ── * Ocorrência ── 0..1 Marco
 Obra/Marco  1 ── * Mudança
 Obra/Marco/Avanço 1 ── * Registro Simulado do Comprador
+Construtora 1 ── * Trabalhador
 Obra        * ── * Trabalhador (vínculo cadastrado pela construtora)
 ```
 
@@ -61,7 +62,7 @@ Obra        * ── * Trabalhador (vínculo cadastrado pela construtora)
 
 **RN-01 — Entrega da obra.** Ao criar a obra, a construtora escolhe **uma** modalidade: data exata ou intervalo estimado. A interface deve mostrar qual modalidade foi escolhida. A data de registro da obra é gerada pelo sistema para permitir o filtro solicitado.
 
-**RN-02 — Estados exibidos da obra.** O ciclo de vida (`planejada`, `em andamento`, `concluída`, `suspensa`) é distinto dos alertas `crítica` e `atrasada`; assim uma obra pode estar em andamento e crítica/atrasada. `Atrasada` é calculado apenas após a data exata ou o fim do intervalo estimado de entrega; não pode ser marcado manualmente. A regra para uma obra já concluída com entrega vencida deve usar a data efetiva de conclusão, não o relógio atual.
+**RN-02 — Estado e alerta de atraso.** O ciclo de vida (`planejada`, `em andamento`, `concluída`, `suspensa`) é distinto do único alerta `atrasada`. Crítica e atrasada foram unificadas por decisão do grupo em 30/10/2026. O atraso é calculado somente após a data exata ou o fim do intervalo estimado; não pode ser marcado manualmente. A conclusão registra automaticamente a data efetiva no servidor, usada no cálculo histórico do atraso. Uma reabertura limpa a conclusão atual e preserva a anterior no histórico.
 
 **RN-03 — Marco.** Pertence a exatamente uma obra. Tem nome, descrição, início previsto, fim previsto e estado `a iniciar`, `em andamento` ou `concluído`. A mudança de estado é manual no MVP; não se calcula percentual automático.
 
@@ -73,7 +74,7 @@ Obra        * ── * Trabalhador (vínculo cadastrado pela construtora)
 
 **RN-07 — Mudança efetiva.** Ao registrar mudança de prazo de obra, prazo de marco, estado de marco ou estado de finalização, a construtora informa motivo; a aplicação guarda antes/depois, autor e data, e aplica o valor novo. A alteração e seu histórico devem persistir juntos. Obra e marco concluídos podem ser reabertos com motivo registrado.
 
-**RN-08 — Ocorrência.** Pertence a uma obra; vínculo com marco, responsável e mídia são opcionais. Pode começar `aberta` ou `sem solução` e depois mudar para qualquer estado permitido, incluindo `resolvida`. Uma aceitação de ocorrência sem solução exige justificativa e registro de quem a aceitou e quando. Medida compensatória não é obrigatória.
+**RN-08 — Ocorrência.** Pertence a uma obra; vínculo com marco, responsável e mídia são opcionais. O responsável, quando informado, é um trabalhador cadastrado. Pode começar `aberta` ou `sem solução` e depois mudar para qualquer estado permitido, incluindo `resolvida`. Uma ocorrência pode ter várias aceitações preservadas no histórico. Uma aceitação de ocorrência sem solução exige justificativa e registro de quem a aceitou e quando. Medida compensatória não é obrigatória.
 
 **RN-09 — Exclusão.** A exclusão definitiva de obra ou marco remove junto todos os registros dependentes, inclusive histórico e dados simulados associados. Antes da ação a interface mostra o nome do alvo, a extensão da perda e pede confirmação. Nenhuma referência órfã pode permanecer. Exclusão isolada de mudança já aplicada não faz parte do fluxo definido: sua retirada sem reverter o valor destruiria a explicação histórica.
 
@@ -90,3 +91,7 @@ Estes nomes descrevem fatos que devem aparecer no histórico; **não exigem even
 - Quais estados adicionais de ocorrência serão exibidos além de `aberta`, `resolvida` e `sem solução`? A transição é reversível e deve preservar o histórico.
 - Qual formato e limite de mídia o provedor gratuito escolhido permite?
 - Qual tratamento técnico garante remoção consistente de arquivos externos em exclusões em cascata?
+
+## Organização implementada
+
+Ver [modelo com POO e decisões de 30/10](13-modelo-poo.md). Ao excluir marco, suas ocorrências também são excluídas; responsáveis são trabalhadores. Os fluxos de ocorrência e exclusão completa continuam pendentes de implementação.

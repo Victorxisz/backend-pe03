@@ -112,7 +112,7 @@ def test_cadastro_obra_inexistente_nao_cria_orfao(
     (" (11) 3333-4444 ", "1133334444"), (" (11) 99999-9999 ", "11999999999"),
 ])
 def test_cadastro_normaliza_campos_e_ignora_campos_controlados_pela_api(
-    client, headers, database, obra_existente, telefone, esperado
+    client, headers, database, obra_existente, telefone, esperado, account
 ):
     response = client.post(
         f"/trabalhadores/obra/{obra_existente['_id']}/", headers=headers,
@@ -127,6 +127,7 @@ def test_cadastro_normaliza_campos_e_ignora_campos_controlados_pela_api(
         "_id": saved["_id"], "nome": "Ana", "email": "ana@example.com",
         "telefone": esperado, "cargo": "engenheiro", "ativo": True,
         "obras": [str(obra_existente["_id"])], "data_cadastro": datetime(2030, 10, 20, 12),
+        "construtora_id": str(account["_id"]),
     }
     assert database.tbl_obras.find_one({"_id": obra_existente["_id"]}) == obra_existente
 

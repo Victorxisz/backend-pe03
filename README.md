@@ -1,5 +1,124 @@
 # Projeto Ágil — acompanhamento de obras
 
+A organização atual com POO e as decisões de 30/10 estão em
+[Modelo e organização do backend](docs/13-modelo-poo.md).
+
+## Rotas existentes
+
+Inventário conferido no `url_map` da aplicação: **35 operações de negócio**.
+As barras finais abaixo fazem parte dos caminhos atuais. `HEAD` nas consultas,
+`OPTIONS` automático e a rota técnica `/static/{filename}` não entram na contagem.
+
+| Métodos | Caminho | Finalidade |
+| --- | --- | --- |
+| POST | `/construtora/` | Cadastrar conta |
+| POST | `/construtora/login/` | Entrar e emitir tokens |
+| POST | `/construtora/refresh/` | Renovar acesso com refresh token |
+| POST | `/construtora/logout/` | Encerrar a sessão |
+| PATCH, DELETE | `/construtora/{construtora_id}` | Alterar ou excluir a própria conta |
+| GET, POST | `/obras` | Listar/filtrar ou cadastrar obras |
+| GET, PATCH | `/obras/{obra_id}` | Consultar ou corrigir dados descritivos |
+| PATCH | `/obras/{obra_id}/estado` | Alterar estado com motivo e histórico |
+| GET, POST | `/obras/{obra_id}/marcos` | Listar ou cadastrar marcos |
+| GET | `/obras/{obra_id}/marcos/{marco_id}` | Consultar marco da obra |
+| POST | `/obras/{obra_id}/mudancas` | Aplicar replanejamento ou mudança de estado |
+| GET | `/obras/{obra_id}/previa` | Consultar avanços publicados |
+| PATCH | `/marcos/{marco_id}` | Alterar estado do marco com motivo |
+| GET, POST | `/marcos/{marco_id}/dependencias` | Listar ou criar dependência |
+| DELETE | `/marcos/{marco_id}/dependencias/{dependencia_id}` | Retirar dependência |
+| GET, POST | `/marcos/{marco_id}/avancos` | Listar ou cadastrar avanços com mídias |
+| GET, DELETE | `/avancos/{avanco_id}` | Consultar avanço ou excluir rascunho |
+| GET | `/avancos/{avanco_id}/midias` | Listar mídias |
+| GET, POST | `/avancos/{avanco_id}/publicacoes` | Consultar publicação ou publicar rascunho |
+| GET | `/midias/{midia_id}` | Consultar metadados da mídia |
+| GET | `/midias/{midia_id}/conteudo` | Abrir arquivo com sessão válida |
+| GET, POST | `/trabalhadores/obra/{obra_id}/` | Listar ou cadastrar trabalhadores da obra |
+| PATCH, DELETE | `/trabalhadores/{trabalhador_id}/` | Alterar ou excluir trabalhador |
+| GET | `/trabalhadores/nome/{nome_usuario}/` | Buscar por nome |
+| GET | `/trabalhadores/cargo/{cargo}/` | Buscar por cargo |
+
+Cadastro de conta e login são públicos. As operações de negócio exigem token;
+refresh exige refresh token e logout aceita access ou refresh da sessão.
+Marcos também verificam perfil de construtora e conta ativa. Conta inativa não
+pode alterar ou excluir o próprio cadastro, assim como não pode entrar/renovar.
+O preflight `OPTIONS` negocia CORS sem autenticação e não executa a operação.
+
+Os caminhos propostos em `docs/05-arquitetura-e-contratos.md` não são todos rotas
+implementadas. Ainda não existem, por exemplo, `PATCH /avancos/{id}` (o serviço
+de edição de rascunho existe, mas não sua rota), `DELETE /obras/{id}`,
+`DELETE /marcos/{id}`, consultas unificadas de mudanças, versões de correções
+publicadas, ocorrências e aceitações. Isso não foi tratado como defeito de uma
+rota existente nem substituído por endpoints que simulem sucesso.
+
+`tests/test_rotas_api.py` verifica CORS em todas as operações registradas,
+rejeição de chamadas sem token, conta inativa/perfil incorreto e IDs inválidos.
+Os testes específicos de cada módulo continuam cobrindo suas regras de negócio.
+
+## Replanejamento e situação — UC-12
+
+`POST /obras/{obraId}/mudancas` exige sessão da construtora. O corpo contém
+`alvo` (`tipo`: `obra` ou `marco`, e `id`), `campo`, `novo_valor`, `motivo` e
+`versao` inteira não negativa do alvo consultado. Documentos anteriores ao UC-12
+começam na versão `0`. O servidor lê o valor anterior do banco; campos como
+`valor_anterior`, `autor`, `instante` e `data_conclusao` não são aceitos no corpo.
+
+```json
+{
+  "alvo": {"tipo": "obra", "id": "507f1f77bcf86cd799439011"},
+  "campo": "entrega",
+  "novo_valor": {"modalidade": "intervalo_estimado", "inicio": "2031-01-01", "fim": "2031-02-01"},
+  "motivo": "Replanejamento aprovado pela construtora",
+  "versao": 0
+}
+```
+
+Campos aceitos:
+
+| Alvo | Campo | Novo valor |
+| --- | --- | --- |
+| obra | `entrega` | Objeto `data_exata` com `data`, ou `intervalo_estimado` com `inicio` e `fim` |
+| obra | `estado` | `planejada`, `em andamento`, `concluída` ou `suspensa` |
+| marco | `periodo_previsto` | Objeto com `inicio_previsto` e `fim_previsto` |
+| marco | `estado` | `a iniciar`, `em andamento` ou `concluído` |
+
+Datas usam `AAAA-MM-DD`; intervalos exigem fim maior ou igual ao início. A troca
+de modalidade substitui a entrega inteira, retirando campos incompatíveis.
+Alterar estado de marco chama UC-07: dependências pendentes retornam `409` com
+`codigo: DEPENDENCIAS_PENDENTES`. Após apresentar o aviso, reenviar com
+`confirmar_dependencias: true` confirma a decisão; as dependências são consultadas
+novamente. Essa confirmação só é aceita para estado de marco.
+
+**Conclusão efetiva:** `data_conclusao` é a data UTC do relógio do servidor na
+transição para `concluída`. Repetir esse estado preserva a data e a trilha.
+Reabrir para qualquer outro estado limpa o valor atual (`null`), preservando a
+data anterior no evento. Nova conclusão recebe a data da nova decisão. Registros
+antigos concluídos sem essa data continuam sem alerta histórico calculável;
+a consulta não inventa uma data de conclusão. O alerta `atrasada` compara a
+conclusão efetiva com o prazo vigente; para obras abertas usa a data atual UTC.
+No dia limite não há atraso. `atrasada` nunca é estado editável ou persistido.
+
+Sucesso retorna `200` com o alvo atualizado e sua versão. Versão desatualizada
+retorna `409`; dados inválidos, `422`; ID inválido, `400`; alvo inexistente ou de
+outra obra, `404`. Alterações sem diferença de valor não criam eventos nem versões.
+As rotas anteriores de estado reutilizam as mesmas regras e incrementam a versão.
+O blueprint é registrado na fábrica `app.create_app`, usada por `api.py`.
+
+**Persistência:** obras guardam prazo e evento em `historico_mudancas`, ou estado
+e evento em `historico_estados`, por uma única operação atômica no documento.
+Marcos atualizam alvo e `tbl_historico` numa transação MongoDB, exigindo replica
+set/Atlas. Não existe fallback para gravações separadas nem exclusão isolada de
+evento. Todos os eventos contêm alvo, campo, antes/depois, motivo, autor e instante.
+A comparação de versão na gravação impede sobrescrita, inclusive após uma
+sequência de alterações que devolva o alvo ao valor originalmente consultado.
+
+```powershell
+.\venv\Scripts\python -m pytest tests/test_mudancas.py tests/obras/test_estado.py tests/test_estado_marcos.py -q
+.\venv\Scripts\python -m pytest tests/test_mudancas.py tests/test_estado_marcos.py -m atlas --atlas -q
+```
+
+Os testes Atlas usam coleções temporárias e verificam reversão tanto antes quanto
+depois da inserção do evento. Testes em memória não comprovam transações reais.
+
 ## Cadastro de marcos — UC-05
 
 `POST /obras/{obraId}/marcos` exige token de acesso da construtora e uma obra
@@ -521,3 +640,66 @@ Os testes `-m cloudinary` de acesso também são opt-in, com `RUN_CLOUDINARY_TES
 e credenciais `TEST_CLOUDINARY_*`. Eles enviam arquivos reais pela integração,
 recuperam os bytes pelas rotas protegidas e removem os arquivos ao terminar.
 Sem essa execução, o provedor externo continua não validado de ponta a ponta.
+
+
+## UC-09 — excluir avanço em rascunho (CT-39)
+
+`DELETE /avancos/{avancoId}` exige a sessão de uma construtora ativa. O backend
+não altera nada ao apenas consultar ou abrir a confirmação: a interface deve
+cancelar sem enviar DELETE. Esta rota não exclui avanços publicados.
+
+- `204`, sem corpo: arquivos exclusivos removidos, mídias do rascunho removidas e avanço excluído.
+- `400`: ID inválido; `404`: avanço inexistente (inclusive ao repetir uma exclusão já concluída).
+- `409`: não é rascunho, revisão mudou ou outra requisição ainda está excluindo.
+- `422`: referência de uma mídia é inválida; nada é removido antes de validar o lote.
+- `503`: limpeza ou finalização no banco ainda não concluída; nunca representa sucesso.
+
+A exclusão faz uma reserva atômica por estado e revisão, usando o mesmo protocolo
+`app/avancos/revisoes.py` da publicação. O estado interno `exclusao_pendente`
+impede publicar/editar o rascunho durante a limpeza e retira suas mídias das rotas
+de leitura. Não é um novo estado de negócio editável pelo React.
+
+Antes de remover o primeiro arquivo, o próprio documento do avanço recebe um
+diário durável em `exclusao`: arquivos da operação, pendentes, início, tentativas
+e bloqueio temporário. Isso evita depender da memória do processo. A lista de
+pendentes diminui a cada arquivo confirmado; arquivos com referências em outros
+registros são preservados. A identidade compara provedor, public_id, tipo de
+recurso e tipo de entrega, sem depender da ordem do dicionário ou do formato.
+Referências históricas também são preservadas de forma conservadora.
+
+Se o provedor falhar, os demais arquivos ainda são processados, a falha é
+registrada com mensagem neutra e a resposta inclui `codigo="LIMPEZA_PENDENTE"`
+e a quantidade pendente, sem referências externas nem credenciais. Para retomar,
+repita o mesmo DELETE. Os arquivos já confirmados não são removidos novamente.
+Remover um objeto já ausente é aceito pelo adaptador Cloudinary, permitindo
+recuperar também timeouts cuja resposta tenha sido perdida.
+
+O bloqueio evita duas limpezas simultâneas do mesmo avanço e é renovado durante
+a operação. Após uma interrupção abrupta, outra requisição pode retomá-la quando
+o bloqueio de cinco minutos expirar. Não há agendador automático neste cartão.
+As pendências podem ser localizadas em `tbl_avancos` pelo estado
+`exclusao_pendente`, mesmo após reiniciar o servidor.
+
+As mídias do rascunho e o avanço só são removidos do banco depois de processar os
+arquivos. Se a finalização no MongoDB falhar, o diário permanece e o DELETE pode
+ser repetido, sem retornar 204 antecipadamente. Isso é compensação retomável,
+não uma transação distribuída entre MongoDB e Cloudinary. Todos os serviços que
+editarem rascunhos devem usar `revisoes.registrar_alteracao` e respeitar o estado;
+escritas diretas no banco fora desse protocolo não são uma API suportada.
+
+A verificação de compartilhamento consulta os registros do banco e preserva
+objetos referenciados por outras mídias ou por snapshots históricos. Registros
+já reservados para exclusão não são leitores ativos; a remoção externa é
+idempotente quando duas exclusões compartilham o mesmo objeto. Para o volume
+do MVP, a busca conservadora percorre as coleções; um volume maior exigirá um
+índice/registro central de referências para evitar essa varredura.
+
+```powershell
+.\.venv\Scripts\python -m pytest tests/test_exclusao_rascunhos.py -v
+```
+
+Os testes locais usam MongoDB em memória e simulam apenas o provedor externo.
+Cobrem fotos/vídeos/PDFs, ausência de efeitos antes do DELETE, arquivos
+compartilhados e históricos, autenticação, conflitos de revisão/publicação,
+falhas parciais, retomada após timeout e falhas de finalização no banco.
+Não comprovam persistência no Atlas nem remoção no Cloudinary real.
