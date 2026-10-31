@@ -879,3 +879,17 @@ armazenadas. Novos uploads são compensados se a gravação falhar; uma cadeia
 inconsistente retorna 409.
 
 Execute sem a base de demonstração: `python -m pytest tests/test_versoes.py -q`.
+
+### Histórico de mudanças
+
+`GET /obras/{id}/mudancas` devolve `{ "mudancas": [...] }` em ordem de instante.
+A lista **inclui** decisões sobre obra e marco e cada correção de publicação.
+Cada item possui `consulta` para `GET /mudancas/{id}`; correções também possuem
+`comparacao` apontando para `GET /avancos/{id}/versoes`. Os campos `antes` e
+`depois` vêm dos registros originais, sem alterar a trilha. Uma obra existente
+sem eventos devolve lista vazia; não há PATCH ou DELETE de mudança isolada.
+
+Execute com banco em memória e armazenamento simulado:
+`python -m pytest tests/test_historico.py tests/test_historico_integracao.py -q`.
+O teste de integração produz decisões e correções pelas rotas reais, confere a
+sequência após reiniciar a aplicação e não usa a base de demonstração.
