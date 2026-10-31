@@ -36,6 +36,7 @@ def create_app(config=None):
     from app.avancos.routes import avancos_bp
     from app.publicacoes.routes import publicacoes_bp
     from app.mudanças.routes import mudancas_bp
+    from app.historico.routes import historico_bp
 
     @jwt.token_in_blocklist_loader
     def verificar_sessao_encerrada(cabecalho, dados_token):
@@ -58,6 +59,7 @@ def create_app(config=None):
 
     bcrypt.init_app(application)
     for blueprint in (trabalhadores_bp, construtora_bp, sessoes_bp, obras_bp, marcos_bp,
-                      estado_marcos_bp, midias_bp, avancos_bp, publicacoes_bp, mudancas_bp):
+                      estado_marcos_bp, midias_bp, avancos_bp, publicacoes_bp, mudancas_bp,
+                      historico_bp):
         application.register_blueprint(blueprint)
     return application
