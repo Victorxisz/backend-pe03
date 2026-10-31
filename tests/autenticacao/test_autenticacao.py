@@ -163,4 +163,3 @@ def test_ct04_logout_revoga_token(client, account, database, obra):
     assert read_response.status_code == 401
     assert write_response.status_code == 401
     assert snapshot(database) == before
-

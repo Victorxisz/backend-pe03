@@ -7,7 +7,7 @@ from bson import ObjectId
 from pymongo.errors import PyMongoError
 
 from support_midias import config, conteudos
-from test_avancos_uc09 import backend, transacao_local
+from support_avancos import backend, transacao_local
 
 
 def ref(letra='a'):

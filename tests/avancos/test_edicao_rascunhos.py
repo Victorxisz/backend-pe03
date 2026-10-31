@@ -4,9 +4,7 @@ Sem --atlas, rollback é simulado: estes testes não comprovam isolamento nem
 concorrência real do MongoDB. O provedor de arquivos é sempre simulado.
 """
 
-from contextlib import nullcontext
 from copy import deepcopy
-from functools import wraps
 from types import SimpleNamespace
 from unittest.mock import Mock
 from uuid import uuid4
@@ -18,66 +16,7 @@ from pymongo.errors import PyMongoError
 from support import snapshot
 from support_midias import arquivo, config, conteudos
 
-
-@pytest.fixture
-def camadas(app):
-    # Imports após isolated_app: usa os módulos ligados ao banco desta execução.
-    from app.avancos import repository, service, validacoes
-    from app.avancos.midias import ErroMidia, ServicoMidias
-    from app.avancos.revisoes import ConflitoRascunho
-    from app.integracoes.armazenamento import ErroArmazenamento, ErroLimpeza
-    from app.mudanças.ocorrencias.historico.service import consultar_previa
-
-    return SimpleNamespace(
-        repo=repository, service=service, validacoes=validacoes,
-        ErroMidia=ErroMidia, ServicoMidias=ServicoMidias,
-        ConflitoRascunho=ConflitoRascunho,
-        ErroArmazenamento=ErroArmazenamento, ErroLimpeza=ErroLimpeza,
-        consultar_previa=consultar_previa,
-    )
-
-
-@pytest.fixture
-def transacao_local(camadas, database, monkeypatch, request):
-    if request.config.getoption("--atlas"):
-        return
-
-    import db
-    from mongomock.collection import Collection
-
-    # Guarda as operações originais para restaurar o banco mesmo quando um
-    # teste injeta uma falha de escrita na coleção.
-    apagar = Collection.delete_many
-    inserir = Collection.insert_many
-
-    class Sessao:
-        def with_transaction(self, gravar):
-            antes = snapshot(database)
-            try:
-                return gravar(self)
-            except Exception:
-                for nome in database.list_collection_names():
-                    apagar(database[nome], {})
-                for nome, documentos in antes.items():
-                    inserir(database[nome], deepcopy(documentos))
-                raise
-
-    monkeypatch.setattr(
-        db.cliente_mongo, "start_session", lambda: nullcontext(Sessao())
-    )
-
-    def sem_sessao(original):
-        @wraps(original)
-        def executar(*args, **kwargs):
-            kwargs.pop("session", None)
-            return original(*args, **kwargs)
-        return executar
-
-    for nome in (
-        "find", "find_one", "update_one", "insert_one", "insert_many",
-        "delete_many", "delete_one", "find_one_and_update",
-    ):
-        monkeypatch.setattr(Collection, nome, sem_sessao(getattr(Collection, nome)))
+from support_avancos import camadas, transacao_local
 
 
 @pytest.fixture

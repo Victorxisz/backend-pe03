@@ -2,8 +2,6 @@
 
 from datetime import datetime, timezone
 from io import BytesIO
-from unittest.mock import Mock
-from contextlib import nullcontext
 
 import pytest
 from bson import ObjectId
@@ -13,63 +11,9 @@ from pymongo.errors import PyMongoError
 
 from support import isolated_app, snapshot
 
-
-@pytest.fixture(autouse=True)
-def transacao_local(app, database, monkeypatch, request):
-    """Memória simula rollback; --atlas usa a sessão e a transação reais."""
-    if request.config.getoption("--atlas"):
-        return
-    import db
-    from mongomock.collection import Collection
-
-    class Sessao:
-        def with_transaction(self, gravar):
-            antes = snapshot(database)
-            try:
-                return gravar(self)
-            except Exception:
-                for nome in database.list_collection_names():
-                    database[nome].delete_many({})
-                for nome, documentos in antes.items():
-                    database[nome].insert_many(documentos)
-                raise
-
-    monkeypatch.setattr(db.cliente_mongo, "start_session", lambda: nullcontext(Sessao()))
-    def sem_sessao(original):
-        def executar(*args, **kwargs):
-            kwargs.pop("session", None)
-            return original(*args, **kwargs)
-        return executar
-    for nome in ("find_one_and_update", "update_one", "find", "insert_one"):
-        monkeypatch.setattr(Collection, nome, sem_sessao(getattr(Collection, nome)))
-
-
-@pytest.fixture
-def cenario(app, database, account, monkeypatch):
-    for chave, valor in {"CLOUDINARY_CLOUD_NAME": "teste", "CLOUDINARY_API_KEY": "teste",
-                         "CLOUDINARY_API_SECRET": "segredo-ficticio", "CLOUDINARY_FOLDER": "pe03/evidencias"}.items():
-        monkeypatch.setenv(chave, valor)
-    obra = ObjectId()
-    marco = ObjectId()
-    avanco = ObjectId()
-    midia = ObjectId()
-    database.tbl_obras.insert_one({"_id": obra, "nome": "Casa teste"})
-    database.tbl_marcos.insert_one({"_id": marco, "obra_id": obra, "nome": "Fundação"})
-    database.tbl_avancos.insert_one({"_id": avanco, "marco_id": marco, "data": "2030-10-19",
-                                    "descricao": "Fundação concretada", "estado": "rascunho"})
-    referencia = {"provedor": "cloudinary", "public_id": "pe03/evidencias/" + "a" * 32,
-                  "resource_type": "image", "delivery_type": "authenticated", "formato": "png"}
-    database.tbl_midias.insert_one({"_id": midia, "avanco_id": avanco, "tipo": "foto",
-                                   "nome": "fundacao.png", "mime": "image/png", "tamanho": 3,
-                                   "referencia_externa": referencia})
-    resource = Mock(return_value={"public_id": referencia["public_id"]})
-    download = Mock(side_effect=lambda *args, **kwargs: BytesIO(b"png"))
-    monkeypatch.setattr("cloudinary.api.resource", resource)
-    monkeypatch.setattr("app.integracoes.armazenamento.urlopen", download)
-    monkeypatch.setattr("urllib.request.urlopen", download)
-    return {"obra": obra, "marco": marco, "avanco": avanco, "midia": midia,
-            "resource": resource, "download": download,
-            "publicar": f"/avancos/{avanco}/publicacoes", "previa": f"/obras/{obra}/previa"}
+from support_avancos import transacao_local
+from support_publicacoes import cenario
+pytestmark = pytest.mark.usefixtures("transacao_local")
 
 
 def test_ct41_publicacao_com_autoria_midia_e_contexto(client, headers, account, database, cenario):
@@ -467,7 +411,7 @@ def test_ct45_previa_persistida_apos_novo_processo(client, headers, database, ce
     env = dict(os.environ, TEST_COLLECTION_PREFIX=database.prefixo,
                TEST_RESOURCE_PATH=cenario["previa"])
     resultado = subprocess.run(
-        [sys.executable, str(Path(__file__).with_name("restart_probe.py"))],
+        [sys.executable, str(Path(__file__).resolve().parents[1] / "restart_probe.py")],
         env=env, capture_output=True, text=True, timeout=30,
     )
     assert resultado.returncode == 0, "Falha ao consultar a prévia em processo novo"

@@ -1,7 +1,7 @@
 """UC-09 / CT-39: exclusão, arquivos compartilhados e limpeza retomável."""
 
 from copy import deepcopy
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -419,7 +419,6 @@ def test_ct39_repetir_exclusao_concluida_nao_remove_outros_arquivos(client, head
     # Verificação
     assert response.status_code == 404
     assert cenario.destroy.call_count == chamadas
-
 
 
 @pytest.mark.parametrize(

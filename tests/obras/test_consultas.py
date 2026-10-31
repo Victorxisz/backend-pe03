@@ -190,7 +190,6 @@ def test_ct15_filtros_invalidos(client, headers, database, two_works, query, fie
     assert snapshot(database) == before
 
 
-
 @routes(("GET", BASE))
 def test_ct11_lista_vazia(client, headers, database):
     # Preparação

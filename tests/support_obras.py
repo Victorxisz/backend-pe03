@@ -20,7 +20,6 @@ def assert_error(response, status, field=None):
         assert field in body.get("campos", []), body
 
 
-
 def seed(database, obra, **changes):
     doc = deepcopy(obra)
     doc.update(
@@ -32,7 +31,6 @@ def seed(database, obra, **changes):
     doc.update(changes)
     database.tbl_obras.insert_one(doc)
     return doc
-
 
 
 def assert_created(response, database, payload):
@@ -52,4 +50,3 @@ def assert_created(response, database, payload):
     assert instant == datetime(2030, 10, 20, 12, tzinfo=timezone.utc)
     assert saved["data_registro"].replace(tzinfo=timezone.utc) == instant
     return body
-

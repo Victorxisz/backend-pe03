@@ -352,4 +352,3 @@ def test_ct10_falha_banco(client, headers, database, obra):
     assert not response.headers.get("Location")
     assert "id" not in response.get_json()
     assert snapshot(database) == before
-

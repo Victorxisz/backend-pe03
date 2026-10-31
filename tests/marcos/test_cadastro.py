@@ -201,7 +201,7 @@ def test_falha_ao_salvar_marco_nao_anuncia_sucesso(
 
 def consultar_marco_em_novo_processo(database, id_marco):
     processo = subprocess.run(
-        [sys.executable, "-B", str(Path(__file__).with_name("restart_marcos_probe.py"))],
+        [sys.executable, "-B", str(Path(__file__).resolve().parents[1] / "restart_marcos_probe.py")],
         env=dict(os.environ, TEST_COLLECTION_PREFIX=database.prefixo, TEST_MARCO_ID=id_marco),
         capture_output=True,
         text=True,
