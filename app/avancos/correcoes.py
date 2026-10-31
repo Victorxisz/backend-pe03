@@ -1,6 +1,6 @@
 """Correção versionada de publicações com compensação de uploads."""
 
-from datetime import date, datetime, timezone
+from datetime import date
 
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -10,11 +10,12 @@ from uuid import uuid4
 from . import repository
 from .acesso_midias import midia_para_dict
 from .service import ErroAvanco
-from .versoes import _conteudo, consultar_versoes
+from .versoes import _conteudo, consultar_versoes, reconstruir_versoes
 from .revisoes import ConflitoRascunho
 from .midias import ServicoMidias, ResultadoPersistenciaIndeterminado
 from app.integracoes.armazenamento import ErroArmazenamento, ErroLimpeza
 from app.publicacoes.validacoes import validar_midias
+from app.dominio.comum import Relogio
 
 
 def corrigir_publicacao(avanco_id, dados, autor, arquivos=(), *, servico_midias=None):
@@ -48,7 +49,9 @@ def corrigir_publicacao(avanco_id, dados, autor, arquivos=(), *, servico_midias=
         raise ErroAvanco("Avanço não encontrado", 404, ["avanco_id"])
     if documento.get("estado") != "publicado" or not documento.get("publicacao"):
         raise ErroAvanco("Somente publicações podem ser corrigidas", 409, ["estado"])
-    cadeia = consultar_versoes(avanco_id)["versoes"]
+    # Usa o mesmo documento cuja revisão será comparada na escrita. A resposta
+    # de GET inclui retenção dinâmica e não deve ser persistida como conteúdo.
+    cadeia = reconstruir_versoes(documento)["versoes"]
     antes = cadeia[-1]["conteudo"]
     depois = {**antes, "midias": list(antes["midias"])}
     for campo in ("descricao", "data"):
@@ -84,7 +87,7 @@ def corrigir_publicacao(avanco_id, dados, autor, arquivos=(), *, servico_midias=
             item["conteudo"] = f"/midias/{item['id']}/conteudo"
     if not depois["midias"] and not arquivos and (antes["midias"] or "midias_manter" in dados):
         raise ErroAvanco("Mantenha ao menos uma mídia", 422, ["midias_manter"])
-    instante = datetime.now(timezone.utc)
+    instante = Relogio().agora()
     operacao_id = uuid4().hex if arquivos else None
 
     def salvar(enviadas):

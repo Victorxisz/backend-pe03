@@ -5,7 +5,7 @@ A organização atual com POO e as decisões de 30/10 estão em
 
 ## Rotas existentes
 
-Inventário conferido no `url_map` da aplicação: **39 operações de negócio**.
+Inventário conferido no `url_map` da aplicação: **40 operações de negócio**.
 As barras finais abaixo fazem parte dos caminhos atuais. `HEAD` nas consultas,
 `OPTIONS` automático e a rota técnica `/static/{filename}` não entram na contagem.
 
@@ -27,7 +27,8 @@ As barras finais abaixo fazem parte dos caminhos atuais. `HEAD` nas consultas,
 | GET, POST | `/marcos/{marco_id}/dependencias` | Listar ou criar dependência |
 | DELETE | `/marcos/{marco_id}/dependencias/{dependencia_id}` | Retirar dependência |
 | GET, POST | `/marcos/{marco_id}/avancos` | Listar ou cadastrar avanços com mídias |
-| GET, PATCH, DELETE | `/avancos/{avanco_id}` | Consultar avanço, editar ou excluir rascunho |
+| GET, PATCH, DELETE | `/avancos/{avanco_id}` | Consultar, editar rascunho/corrigir publicação ou excluir rascunho |
+| GET | `/avancos/{avanco_id}/versoes` | Consultar versões e comparar alterações |
 | GET | `/avancos/{avanco_id}/midias` | Listar mídias |
 | GET, POST | `/avancos/{avanco_id}/publicacoes` | Consultar publicação ou publicar rascunho |
 | GET | `/midias/{midia_id}` | Consultar metadados da mídia |
@@ -47,8 +48,8 @@ O preflight `OPTIONS` negocia CORS sem autenticação e não executa a operaçã
 
 Os caminhos propostos em `docs/05-arquitetura-e-contratos.md` não são todos rotas
 implementadas. Ainda não existem, por exemplo, `DELETE /obras/{id}`,
-`DELETE /marcos/{id}`, consultas unificadas de mudanças, versões de correções
-publicadas, ocorrências e aceitações. Isso não foi tratado como defeito de uma
+`DELETE /marcos/{id}`, consultas unificadas de mudanças, ocorrências e aceitações.
+Isso não foi tratado como defeito de uma
 rota existente nem substituído por endpoints que simulem sucesso.
 
 `tests/test_rotas_api.py` verifica CORS em todas as operações registradas,
@@ -71,7 +72,7 @@ snapshot original; sem o campo atual, permanece a composição original.
 `editado: true` indica diferença de texto, data ou mídia, ou uma marca persistida
 `avanco.editado: true` para correções que tenham restaurado o conteúdo original.
 A leitura não altera o snapshot nem o banco. O fluxo de escrita e o histórico de
-correções da UC-11 continuam pendentes.
+correções da UC-11 são descritos na seção de consulta de versões abaixo.
 
 Os testes de prévia, publicação e acesso à mídia cobrem filtros, ordenação,
 autenticação, composição atual e releitura em nova instância. A comprovação em
@@ -868,7 +869,24 @@ Não comprovam persistência no Atlas nem remoção no Cloudinary real.
 `GET /avancos/{id}/versoes` exige sessão e retorna versões em ordem, com a
 atual identificada e os trechos de texto antes/depois para cada correção. A
 versão inicial vem do snapshot da publicação. A consulta não expõe referências
-privadas do provedor; as mídias usam os metadados e caminhos autenticados salvos.
+privadas do provedor. Cada mídia inclui `retida`, indicando se o registro ainda
+pertence ao acervo desse avanço. O caminho `conteudo` é reconstruído para a rota
+autenticada; se o registro foi removido ou pertence a outro avanço, retorna
+`retida: false` e `conteudo: null`, preservando os metadados históricos. Essa
+checagem é local, sem chamadas ao provedor; `retida` não verifica a disponibilidade
+do arquivo remoto. A informação de retenção é somente de consulta e não é
+gravada nos snapshots nem considerada uma correção de conteúdo.
+
+Cada versão contém `numero`, `atual`, `conteudo`, `autor_original`,
+`origem_simulada` e `correcao`. A correção separa autor, motivo e instante de
+quem criou o avanço. `campos` identifica alterações de data, descrição e mídias;
+`diferencas_texto` contém trechos `igual`, `inserido`, `removido` ou `substituido`,
+com `antes` e `depois`. Concatenar cada lado reconstrói integralmente o texto.
+Datas de auditoria usam ISO 8601 e IDs BSON são serializados como texto.
+
+Avanço inexistente retorna 404, rascunho retorna uma lista vazia, e publicação
+sem correções retorna uma versão atual. Publicação declarada sem snapshot ou
+cadeia inconsistente retorna 409 `HISTORICO_INDISPONIVEL`, sem fabricar versões.
 
 `PATCH /avancos/{id}` com JSON ou `multipart/form-data` e `motivo` corrige uma
 publicação. Aceita `descricao`, `data`, `midias_manter` (lista JSON de IDs de
@@ -878,4 +896,11 @@ atual em uma transação MongoDB. Mídias de versões anteriores permanecem
 armazenadas. Novos uploads são compensados se a gravação falhar; uma cadeia
 inconsistente retorna 409.
 
+A revisão usa a mesma validação de concorrência da edição de rascunhos e da
+publicação. Revisões inválidas são rejeitadas, e o conteúdo usado para compor
+o próximo evento vem da mesma leitura cuja revisão será comparada na gravação.
+
 Execute sem a base de demonstração: `python -m pytest tests/test_versoes.py -q`.
+Rollback após a escrita e conflito concorrente são verificados em MongoDB real
+com `python -m pytest tests/test_versoes.py -m atlas --atlas -q`, em coleções
+temporárias. A rede de armazenamento dos demais testes é simulada.

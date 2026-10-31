@@ -39,14 +39,13 @@ def buscar_avanco(avanco_id):
 
 def salvar_correcao_publicada(documento, correcao, conteudo, novas_midias=(), operacao_id=None):
     """Aplica conteúdo e snapshot juntos; revisão impede duas correções concorrentes."""
-    revisao = documento.get("revisao", 0)
+    revisao_esperada = filtro_revisao(documento)
 
     def gravar(sessao):
         if novas_midias:
             db.banco_dados["tbl_midias"].insert_many(list(novas_midias), session=sessao)
         resultado = db.banco_dados["tbl_avancos"].update_one(
-            {"_id": documento["_id"], "estado": "publicado", "revisao":
-             revisao if "revisao" in documento else {"$exists": False}},
+            {"_id": documento["_id"], "estado": "publicado", **revisao_esperada},
             {"$set": {"data": conteudo["data"], "descricao": conteudo["descricao"],
                       "midias": conteudo["midias"], "editado": True},
              "$push": {"correcoes": correcao}, "$inc": {"revisao": 1}},
@@ -75,6 +74,13 @@ def salvar_correcao_publicada(documento, correcao, conteudo, novas_midias=(), op
 
 def consultar_midias(avanco_id):
     return list(db.banco_dados["tbl_midias"].find({"avanco_id": avanco_id}).sort("_id", 1))
+
+
+def consultar_midias_retidas(avanco_id, identificadores):
+    """Identifica referências ainda no acervo sem carregar dados do provedor."""
+    return {str(item["_id"]) for item in db.banco_dados["tbl_midias"].find(
+        {"avanco_id": avanco_id, "_id": {"$in": list(identificadores)}}, {"_id": 1}
+    )}
 
 
 def buscar_midia_por_id(midia_id):
