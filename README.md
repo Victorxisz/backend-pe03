@@ -862,3 +862,20 @@ Cobrem fotos/vídeos/PDFs, ausência de efeitos antes do DELETE, arquivos
 compartilhados e históricos, autenticação, conflitos de revisão/publicação,
 falhas parciais, retomada após timeout e falhas de finalização no banco.
 Não comprovam persistência no Atlas nem remoção no Cloudinary real.
+
+### Consulta de versões de avanços
+
+`GET /avancos/{id}/versoes` exige sessão e retorna versões em ordem, com a
+atual identificada e os trechos de texto antes/depois para cada correção. A
+versão inicial vem do snapshot da publicação. A consulta não expõe referências
+privadas do provedor; as mídias usam os metadados e caminhos autenticados salvos.
+
+`PATCH /avancos/{id}` com JSON ou `multipart/form-data` e `motivo` corrige uma
+publicação. Aceita `descricao`, `data`, `midias_manter` (lista JSON de IDs de
+mídias já vinculadas no multipart) e até cinco arquivos em `midias`. Cada correção
+grava `antes`, `depois`, motivo, autor e instante no avanço, junto com o conteúdo
+atual em uma transação MongoDB. Mídias de versões anteriores permanecem
+armazenadas. Novos uploads são compensados se a gravação falhar; uma cadeia
+inconsistente retorna 409.
+
+Execute sem a base de demonstração: `python -m pytest tests/test_versoes.py -q`.

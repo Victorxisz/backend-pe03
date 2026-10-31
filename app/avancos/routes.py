@@ -10,6 +10,9 @@ from app.auth.permissions import sessao_obrigatoria
 from app.integracoes.armazenamento import ErroArmazenamento, ErroLimpeza
 from .midias import ErroMidia, ResultadoPersistenciaIndeterminado
 from .service import ErroAvanco, criar_avanco, consultar_avanco, consultar_avancos, excluir_rascunho, editar_rascunho
+from .versoes import consultar_versoes
+from .correcoes import corrigir_publicacao
+from . import repository as avancos_repository
 
 avancos_bp = Blueprint("avancos", __name__)
 
@@ -98,6 +101,11 @@ def consultar_avanco_route(avanco_id):
     return jsonify(consultar_avanco(avanco_id)), 200
 
 
+@avancos_bp.get("/avancos/<string:avanco_id>/versoes")
+def listar_versoes(avanco_id):
+    return jsonify(consultar_versoes(avanco_id)), 200
+
+
 @avancos_bp.patch("/avancos/<string:avanco_id>")
 def editar_avanco_route(avanco_id):
     if request.is_json:
@@ -109,6 +117,16 @@ def editar_avanco_route(avanco_id):
                 dados["midias_manter"] = json.loads(dados["midias_manter"])
             except (TypeError, ValueError):
                 raise ErroAvanco("midias_manter deve ser uma lista JSON de IDs", 422, ["midias_manter"]) from None
+    from bson import ObjectId
+    from bson.errors import InvalidId
+    try:
+        documento = avancos_repository.buscar_avanco(ObjectId(avanco_id))
+    except (InvalidId, TypeError):
+        documento = None
+    if documento is not None and documento.get("estado") == "publicado":
+        if not documento.get("publicacao"):
+            raise ErroAvanco("Publicação inconsistente", 409, ["publicacao"])
+        return jsonify(corrigir_publicacao(avanco_id, dados, get_jwt_identity(), arquivos)), 200
     return jsonify(editar_rascunho(avanco_id, dados, arquivos)), 200
 
 
