@@ -3,6 +3,22 @@
 from app.dominio.comum import ErroDominio
 
 
+def validar_cadastro(dados):
+    if not isinstance(dados, dict):
+        raise ErroDominio("Envie um objeto com os dados da ocorrência", ["corpo"])
+    permitidos = {"titulo", "descricao", "estado", "marco_id", "responsavel_id"}
+    erros = sorted(set(dados) - permitidos)
+    for campo in ("titulo", "descricao"):
+        if not isinstance(dados.get(campo), str) or not dados[campo].strip():
+            erros.append(campo)
+    if not isinstance(dados.get("estado"), str) or dados["estado"] not in ("aberta", "sem solução"):
+        erros.append("estado")
+    if erros:
+        raise ErroDominio("Informe título, descrição e estado inicial aberta ou sem solução", erros)
+    return {campo: valor.strip() if isinstance(valor, str) else valor
+            for campo, valor in dados.items()}
+
+
 def validar_aceitacao(dados):
     if not isinstance(dados, dict):
         raise ErroDominio("Envie um objeto JSON", ["corpo"])
