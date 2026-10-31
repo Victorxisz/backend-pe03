@@ -54,7 +54,7 @@ implementadas. Ainda não existem, por exemplo, `DELETE /obras/{id}`,
 Isso não foi tratado como defeito de uma
 rota existente nem substituído por endpoints que simulem sucesso.
 
-`tests/test_rotas_api.py` verifica CORS em todas as operações registradas,
+`tests/infraestrutura/test_rotas_api.py` verifica CORS em todas as operações registradas,
 rejeição de chamadas sem token, conta inativa/perfil incorreto e IDs inválidos.
 Os testes específicos de cada módulo continuam cobrindo suas regras de negócio.
 
@@ -78,7 +78,7 @@ da UC-11 estão implementados pelo PATCH de avanços e pela consulta de versões
 
 Os testes de prévia, publicação e acesso à mídia cobrem filtros, ordenação,
 autenticação, composição atual e releitura em nova instância. A comprovação em
-processo independente e MongoDB real usa `tests/test_publicacoes.py::test_ct45_previa_persistida_apos_novo_processo`
+processo independente e MongoDB real usa `tests/avancos/test_publicacoes.py::test_ct45_previa_persistida_apos_novo_processo`
 com `--atlas`; os testes locais em memória não comprovam durabilidade no MongoDB.
 
 ## Replanejamento e situação — UC-12
@@ -139,8 +139,8 @@ A comparação de versão na gravação impede sobrescrita, inclusive após uma
 sequência de alterações que devolva o alvo ao valor originalmente consultado.
 
 ```powershell
-.\venv\Scripts\python -m pytest tests/test_mudancas.py tests/obras/test_estado.py tests/test_estado_marcos.py -q
-.\venv\Scripts\python -m pytest tests/test_mudancas.py tests/test_estado_marcos.py -m atlas --atlas -q
+.\venv\Scripts\python -m pytest tests/mudancas/test_mudancas.py tests/obras/test_estado.py tests/marcos/test_estado.py -q
+.\venv\Scripts\python -m pytest tests/mudancas/test_mudancas.py tests/marcos/test_estado.py -m atlas --atlas -q
 ```
 
 Os testes Atlas usam coleções temporárias e verificam reversão tanto antes quanto
@@ -159,7 +159,7 @@ Dados inválidos retornam `422`, ID de obra inválido retorna `400` e obra
 inexistente retorna `404`, sem gravação. Falha no banco retorna `500`.
 
 ```powershell
-.\venv\Scripts\python -m pytest tests/test_marcos.py -v
+.\venv\Scripts\python -m pytest tests/marcos/test_cadastro.py -v
 ```
 
 CT-18 e CT-19 verificam o fluxo desde o cadastro da obra, a resposta do marco,
@@ -167,7 +167,7 @@ o documento salvo e a preservação do banco nas rejeições. CT-21 usa a mesma
 `MONGO_URI` da aplicação, no ambiente ou no `.env`, conforme a seção abaixo:
 
 ```powershell
-.\venv\Scripts\python -m pytest tests/test_marcos.py -k ct21 --atlas -v
+.\venv\Scripts\python -m pytest tests/marcos/test_cadastro.py -k ct21 --atlas -v
 ```
 
 CT-21 inicia outro processo com uma aplicação Flask e conexão MongoDB novas e
@@ -581,7 +581,7 @@ a parte de armazenamento de CT-31/32/34/35 e CT-109/110; não comprovam sozinhos
 os casos de uso completos de rascunho, edição ou publicação.
 
 ```powershell
-.\.venv\Scripts\python -m pytest tests/test_armazenamento.py -v
+.\.venv\Scripts\python -m pytest tests/midias/test_armazenamento.py -v
 ```
 
 Por padrão, o SDK externo é simulado e os arquivos de teste são gerados localmente.
@@ -592,7 +592,7 @@ variáveis na sessão, habilite explicitamente:
 
 ```powershell
 $env:RUN_CLOUDINARY_TESTS = "1"
-.\.venv\Scripts\python -m pytest tests/test_armazenamento.py -m cloudinary -v
+.\.venv\Scripts\python -m pytest tests/midias/test_armazenamento.py -m cloudinary -v
 ```
 
 O teste real envia PNG, MP4 e PDF, abre o acesso assinado, compara os bytes e remove
@@ -653,7 +653,7 @@ ou do Cloudinary não entram na resposta. O download é limitado ao tamanho salv
 e recusado se os bytes recebidos não corresponderem ao tamanho esperado.
 
 ```powershell
-.\.venv\Scripts\python -m pytest tests/test_armazenamento.py tests/test_acesso_midias.py -v
+.\.venv\Scripts\python -m pytest tests/midias/test_armazenamento.py tests/midias/test_acesso.py -v
 ```
 
 Os testes locais geram arquivos válidos, simulam somente a fronteira externa e
@@ -777,9 +777,9 @@ também com a aplicação parada, use:
 Referências compartilhadas permanecem na fila até deixarem de ser usadas.
 As rotinas são operacionais; não há um worker automático de limpeza.
 
-`tests/test_reconciliacao_midias.py` cobre falhas, retomada e retenção de arquivos
+`tests/midias/test_reconciliacao.py` cobre falhas, retomada e retenção de arquivos
 compartilhados com banco e provedor simulados. O teste opt-in
-`tests/test_fluxo_midias_real.py` exige `--atlas`, `RUN_CLOUDINARY_TESTS=1` e
+`tests/integracao/test_fluxo_midias_real.py` exige `--atlas`, `RUN_CLOUDINARY_TESTS=1` e
 `TEST_CLOUDINARY_CLOUD_NAME`, `TEST_CLOUDINARY_API_KEY`, `TEST_CLOUDINARY_API_SECRET`.
 Ele usa coleções temporárias, pasta exclusiva de arquivos e remove seus dados
 ao final; cobre cadastro, repetição idempotente, edição, reinicialização da
@@ -788,7 +788,7 @@ aplicação, publicação, correção, acesso autenticado e exclusão de outro r
 Para executar CT-31 a CT-36 localmente, sem Atlas nem Cloudinary reais:
 
 ```powershell
-.\.venv\Scripts\python -m pytest tests/test_avancos.py tests/test_avancos_atlas.py tests/test_avancos_integracao.py tests/test_armazenamento.py -m "not cloudinary" -q -ra
+.\.venv\Scripts\python -m pytest tests/avancos/test_cadastro_contrato.py tests/integracao/test_avancos_atlas.py tests/integracao/test_avancos_cloudinary.py tests/midias/test_armazenamento.py -m "not cloudinary" -q -ra
 ```
 
 O teste local simula a transação e a fronteira do Cloudinary; isso não comprova
@@ -803,7 +803,7 @@ separado consulta o avanço com uma nova conexão.
 
 ```powershell
 # Após definir TEST_UC09_MONGO_URI para o cluster exclusivo de teste:
-.\.venv\Scripts\python -m pytest tests/test_avancos_atlas.py --uc09-atlas -v
+.\.venv\Scripts\python -m pytest tests/integracao/test_avancos_atlas.py --uc09-atlas -v
 ```
 
 A execução em Atlas não valida o Cloudinary real. Os testes reais do Cloudinary
@@ -812,7 +812,7 @@ existentes exigem configuração e credenciais exclusivas de teste separadas.
 
 ### Integração real do UC-09
 
-O teste conjunto em `tests/test_avancos_integracao.py` exige **cluster Atlas e
+O teste conjunto em `tests/integracao/test_avancos_cloudinary.py` exige **cluster Atlas e
 conta Cloudinary exclusivos de teste**. Ele só executa com `--uc09-atlas` e
 `--uc09-cloudinary`, `TEST_UC09_MONGO_URI` apontando para o cluster de teste e
 as variáveis `TEST_UC09_CLOUDINARY_CLOUD_NAME`, `TEST_UC09_CLOUDINARY_API_KEY`
@@ -824,7 +824,7 @@ transação real do Atlas e falha injetada na gravação de metadados.
 
 ```powershell
 # Somente após configurar os serviços exclusivos de teste:
-.\.venv\Scripts\python -m pytest tests/test_avancos_atlas.py tests/test_avancos_integracao.py --uc09-atlas --uc09-cloudinary -v
+.\.venv\Scripts\python -m pytest tests/integracao/test_avancos_atlas.py tests/integracao/test_avancos_cloudinary.py --uc09-atlas --uc09-cloudinary -v
 ```
 
 Ao fim, os arquivos e bancos temporários são removidos. Se a limpeza de arquivo
@@ -884,7 +884,7 @@ do MVP, a busca conservadora percorre as coleções; um volume maior exigirá um
 índice/registro central de referências para evitar essa varredura.
 
 ```powershell
-.\.venv\Scripts\python -m pytest tests/test_exclusao_rascunhos.py -v
+.\.venv\Scripts\python -m pytest tests/avancos/test_exclusao_rascunhos.py -v
 ```
 
 Os testes locais usam MongoDB em memória e simulam apenas o provedor externo.
@@ -938,12 +938,12 @@ quando esse campo está presente. As mídias anteriores ficam retidas para o
 histórico, sem exclusão automática por uma correção.
 
 Testes da escrita (CT-46 a CT-51):
-`python -m pytest tests/test_correcao_publicada.py -q`.
-Testes da consulta e comparação: `python -m pytest tests/test_versoes.py -q`.
+`python -m pytest tests/avancos/test_correcao_publicada.py -q`.
+Testes da consulta e comparação: `python -m pytest tests/avancos/test_versoes.py -q`.
 Por padrão, usam MongoDB em memória com rollback simulado e Cloudinary simulado.
 
 Rollback após a escrita e conflito concorrente são verificados em MongoDB real
-com `python -m pytest tests/test_versoes.py -m atlas --atlas -q`, em coleções
+com `python -m pytest tests/avancos/test_versoes.py -m atlas --atlas -q`, em coleções
 temporárias. A rede de armazenamento dos demais testes é simulada.
 
 ### Histórico de mudanças
@@ -963,6 +963,6 @@ retornam `409 HISTORICO_INDISPONIVEL`, tanto na lista quanto no detalhe, sem
 regravar registros nem transformar inconsistências em histórico vazio.
 
 Execute com banco em memória e armazenamento simulado:
-`python -m pytest tests/test_historico.py tests/test_historico_integracao.py -q`.
+`python -m pytest tests/historico/test_consultas.py tests/integracao/test_historico.py -q`.
 O teste de integração produz decisões e correções pelas rotas reais, confere a
 sequência após reiniciar a aplicação e não usa a base de demonstração.

@@ -1,10 +1,7 @@
 """CT-31 a CT-36: registro e consulta de avanços em rascunho."""
 
 from io import BytesIO
-from contextlib import nullcontext
-from copy import deepcopy
 from datetime import datetime, timezone
-from functools import wraps
 from unittest.mock import patch
 from types import SimpleNamespace
 
@@ -13,40 +10,8 @@ from bson import ObjectId
 from pymongo.errors import PyMongoError
 from support import snapshot
 
-
-@pytest.fixture(autouse=True)
-def transacao_local(app, database, monkeypatch, request):
-    """Memória simula rollback; Atlas usa sessões reais quando habilitado."""
-    if request.config.getoption("--atlas"):
-        return
-    import db
-    from mongomock.collection import Collection
-
-    apagar, inserir = Collection.delete_many, Collection.insert_many
-
-    class Sessao:
-        def with_transaction(self, gravar):
-            antes = snapshot(database)
-            try:
-                return gravar(self)
-            except Exception:
-                for nome in database.list_collection_names():
-                    apagar(database[nome], {})
-                for nome, documentos in antes.items():
-                    inserir(database[nome], deepcopy(documentos))
-                raise
-
-    monkeypatch.setattr(db.cliente_mongo, "start_session", lambda: nullcontext(Sessao()))
-
-    def sem_sessao(original):
-        @wraps(original)
-        def executar(*args, **kwargs):
-            kwargs.pop("session", None)
-            return original(*args, **kwargs)
-        return executar
-
-    for nome in ("find", "find_one", "update_one", "insert_one", "insert_many", "find_one_and_update"):
-        monkeypatch.setattr(Collection, nome, sem_sessao(getattr(Collection, nome)))
+from support_avancos import transacao_local
+pytestmark = pytest.mark.usefixtures("transacao_local")
 
 
 class ServicoMidiasFalso:

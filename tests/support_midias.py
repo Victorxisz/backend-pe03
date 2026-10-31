@@ -13,7 +13,6 @@ def config():
     return ConfiguracaoArmazenamento("nuvem-ficticia", "chave-ficticia", "segredo-ficticio")
 
 
-
 @pytest.fixture(scope="module")
 def conteudos():
     imagens = {}
@@ -42,7 +41,5 @@ def conteudos():
     return imagens
 
 
-
 def arquivo(conteudo, nome="evidencia.bin", mime="application/octet-stream"):
     return FileStorage(stream=BytesIO(conteudo), filename=nome, content_type=mime)
-

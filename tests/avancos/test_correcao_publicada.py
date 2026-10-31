@@ -13,7 +13,7 @@ from pymongo.errors import PyMongoError
 
 from support import snapshot
 from support_midias import arquivo, config, conteudos
-from test_avancos_uc09 import backend, transacao_local
+from support_avancos import backend, transacao_local
 
 
 @pytest.fixture

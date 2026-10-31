@@ -5,7 +5,6 @@ Os testes locais não comprovam o fluxo completo de rascunhos nem o Cloudinary r
 
 import os
 from dataclasses import replace
-from io import BytesIO
 from unittest.mock import Mock
 from urllib.request import urlopen
 from urllib.parse import parse_qs, urlparse

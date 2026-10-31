@@ -69,7 +69,7 @@ Cobre **F-02, RN-01 e CA-02**.
 **Arquivos previstos:**
 
 - Editar/reutilizar `app/obras/routes.py`, `app/obras/service.py`, `app/obras/validacoes.py` e `app/obras/repository.py`.
-- Complementar `tests/obras/test_cadastro.py`, `tests/obras/test_cadastro_atlas.py` e os testes de cadastro existentes em `tests/test_cadastro_obras.py`, evitando duplicação.
+- Complementar `tests/obras/test_cadastro.py`, `tests/obras/test_cadastro_atlas.py` e os testes de cadastro existentes em `tests/obras/test_validacoes_cadastro.py`, evitando duplicação.
 - Atualizar `docs/05-arquitetura-e-contratos.md` se houver ajuste de contrato.
 
 **Fazer:**
@@ -178,7 +178,7 @@ Cobre **F-06, RN-03 e CA-03**.
 **Arquivos previstos:**
 
 - Editar/reutilizar `app/marcos/routes.py`, `app/marcos/service.py`, `app/marcos/validacoes.py`, `app/marcos/repository.py` e `app/obras/repository.py` conforme os acessos atuais.
-- Complementar `tests/test_marcos.py` e `tests/test_consultas_marcos.py`.
+- Complementar `tests/marcos/test_cadastro.py` e `tests/marcos/test_consultas.py`.
 
 **Fazer:**
 
@@ -215,7 +215,7 @@ Cobre a gestão de dependências de **F-07, RN-04 e CA-03**.
 **Arquivos previstos:**
 
 - Editar/reutilizar `app/marcos/routes.py`, `app/marcos/service.py`, `app/marcos/dependencias.py` e `app/marcos/repository.py`.
-- Complementar `tests/test_dependencias.py` e a consulta de marcos quando necessário.
+- Complementar `tests/marcos/test_dependencias.py` e a consulta de marcos quando necessário.
 
 **Fazer:**
 
@@ -252,7 +252,7 @@ Cobre a mudança de estado de **F-07**, a parte correspondente de **F-12**, **RN
 **Arquivos previstos:**
 
 - Editar/reutilizar `app/marcos/routes.py`, `app/marcos/service.py`, `app/marcos/validacoes.py`, `app/marcos/repository.py` e `app/historico/repository.py`.
-- Complementar `tests/test_estado_marcos.py`.
+- Complementar `tests/marcos/test_estado.py`.
 
 **Fazer:**
 
@@ -290,7 +290,7 @@ Cobre **F-08, RN-05 e CA-04**, incluindo a infraestrutura de mídia necessária 
 
 - Criar `app/avancos/routes.py`, `app/avancos/service.py` e completar `app/avancos/validacoes.py`, atualmente sem implementação.
 - Editar/reutilizar `app/avancos/repository.py`, `midias.py`, `acesso_midias.py`, `midias_routes.py`, `app/integracoes/armazenamento.py` e `app/config.py`.
-- Complementar `tests/test_armazenamento.py`, `tests/test_acesso_midias.py` e criar `tests/test_avancos.py` para o fluxo de rascunho. Registrar novas rotas em `api.py`.
+- Complementar `tests/midias/test_armazenamento.py`, `tests/midias/test_acesso.py` e criar `tests/avancos/test_cadastro_contrato.py` para o fluxo de rascunho. Registrar novas rotas em `api.py`.
 
 **Fazer:**
 
@@ -329,7 +329,7 @@ Cobre **F-09**, retirada de rascunho relacionada a **F-19**, **RN-05 e CA-04/09*
 
 - Criar/completar `app/avancos/routes.py` e `service.py` previstos em UC-08.
 - Editar/reutilizar `app/avancos/repository.py`, `validacoes.py`, `midias.py` e `revisoes.py`.
-- Criar `tests/test_edicao_rascunhos.py` e `tests/test_exclusao_rascunhos.py`.
+- Criar `tests/avancos/test_edicao_rascunhos.py` e `tests/avancos/test_exclusao_rascunhos.py`.
 
 **Fazer:**
 
@@ -367,7 +367,7 @@ Cobre **F-10, RN-05 e CA-04**.
 **Arquivos previstos:**
 
 - Editar/reutilizar a implementação existente em `app/mudanças/ocorrencias/historico/routes.py`, `service.py`, `repository.py` e `validacoes.py`.
-- Reutilizar serviços de mídia em `app/avancos/` e complementar `tests/test_publicacoes.py`.
+- Reutilizar serviços de mídia em `app/avancos/` e complementar `tests/avancos/test_publicacoes.py`.
 - Se a equipe mover publicação para `app/avancos/`, fazer a migração com imports e registro em `api.py` na mesma entrega, preservando o contrato. A mudança de pasta não é requisito deste cartão.
 
 **Fazer:**
@@ -445,7 +445,7 @@ Cobre **F-12, RN-01, RN-02, RN-07 e CA-06**.
 
 - Criar `app/mudanças/routes.py`, `service.py`, `repository.py` e `validacoes.py`, sem sobrescrever o submódulo existente de publicação.
 - Editar/reutilizar `app/obras/service.py`, `repository.py`, `app/marcos/service.py`, `repository.py` e `app/historico/repository.py`.
-- Criar `tests/test_mudancas.py`; complementar testes de estado de marco e alertas de obra. Registrar o blueprint em `api.py`.
+- Criar `tests/mudancas/test_mudancas.py`; complementar testes de estado de marco e alertas de obra. Registrar o blueprint em `api.py`.
 
 **Fazer:**
 
@@ -484,7 +484,7 @@ Cobre **F-13, RN-06, RN-07 e CA-05/06**.
 
 - Criar `app/historico/routes.py` e `service.py`; complementar `app/historico/repository.py`.
 - Reutilizar os leitores de mudanças e versões de `app/mudanças/` e `app/avancos/`, criados nos cartões correspondentes.
-- Criar `tests/test_historico.py` e registrar as rotas em `api.py`.
+- Criar `tests/historico/test_consultas.py` e registrar as rotas em `api.py`.
 
 **Fazer:**
 
@@ -597,7 +597,7 @@ Cobre a aceitação formal de **F-15, RN-08 e CA-07**.
 **Arquivos previstos:**
 
 - Editar/completar `app/ocorrencias/routes.py`, `service.py`, `validacoes.py` e `repository.py`.
-- Criar `tests/test_aceitacao_ocorrencias.py`; complementar as consultas de histórico/detalhe.
+- Criar `tests/ocorrencias/test_aceitacoes.py`; complementar as consultas de histórico/detalhe.
 
 **Fazer:**
 

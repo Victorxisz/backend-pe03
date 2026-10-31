@@ -298,7 +298,7 @@ with conectar_mongo() as cliente:
 '''
     ambiente = dict(os.environ, TEST_COLLECTION_PREFIX=database.prefixo,
                     TEST_OBRA_ID=ID, TEST_MARCO_ID=str(marco_id),
-                    PYTHONPATH=str(Path(__file__).parent))
+                    PYTHONPATH=str(Path(__file__).resolve().parents[1]))
     processo = subprocess.run([sys.executable, "-B", "-c", consulta], env=ambiente,
                               capture_output=True, text=True, encoding="utf-8", timeout=30)
     assert processo.returncode == 0, "Falha na releitura em processo novo; credenciais omitidas"

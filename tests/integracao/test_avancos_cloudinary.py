@@ -14,8 +14,8 @@ from flask_jwt_extended import create_access_token
 
 from support import isolated_app
 from support_midias import conteudos
-from tests.test_avancos_uc09 import dados
-from tests.test_avancos_atlas import banco_uc09
+from support_avancos import dados
+from support_atlas import banco_uc09
 
 
 @pytest.fixture
@@ -76,7 +76,7 @@ def test_ct31_ct32_arquivo_real_apos_reinicio(
             processo = subprocess.run(
                 [
                     sys.executable,
-                    str(Path(__file__).with_name("uc09_restart_probe.py")),
+                    str(Path(__file__).resolve().parents[1] / "uc09_restart_probe.py"),
                 ],
                 env=env,
                 capture_output=True,

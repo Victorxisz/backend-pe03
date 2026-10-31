@@ -49,4 +49,3 @@ def test_ct09_persistencia_atlas_apos_novo_processo(
         for field in ("autor", "data_registro"):
             assert recovered[field] == created_body[field]
     assert restarted["body"] == reloaded.get_json()
-

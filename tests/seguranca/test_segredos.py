@@ -4,7 +4,6 @@ from pathlib import Path
 from secret_audit import audit_git
 
 
-
 def test_ct04_credenciais_no_conteudo_e_historico_git():
     # Preparação
     root = Path(__file__).resolve().parents[2]
@@ -14,4 +13,3 @@ def test_ct04_credenciais_no_conteudo_e_historico_git():
 
     # Verificação
     assert not findings, "Possíveis segredos (valores omitidos): " + repr(findings)
-

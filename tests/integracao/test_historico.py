@@ -1,9 +1,9 @@
 """UC-13 ponta a ponta: eventos produzidos pelas rotas de origem."""
 
-from bson import ObjectId
 
 from support import isolated_app, snapshot
-from test_publicacoes import cenario, transacao_local
+from support_publicacoes import cenario
+from support_avancos import transacao_local
 
 
 def test_uc13_reune_decisoes_e_correcoes_reais(client, headers, database, obra, cenario, account):
