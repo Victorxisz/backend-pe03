@@ -1280,3 +1280,58 @@ Execute com banco em memória e armazenamento simulado:
 `python -m pytest tests/historico/test_consultas.py tests/integracao/test_historico.py -q`.
 O teste de integração produz decisões e correções pelas rotas reais, confere a
 sequência após reiniciar a aplicação e não usa a base de demonstração.
+# UC-18 — Exclusão individual de registros
+
+`DELETE /avancos/{id}` também remove avanços publicados. O ramo de rascunho
+continua usando a limpeza e o contrato sem corpo de UC-09. Para publicados e
+`DELETE /ocorrencias/{id}`, envie `{"confirmar": true}`. O contexto opcional
+`obra_id`/`marco_id` pode ir no JSON ou na query string, uma única vez, e precisa
+corresponder à cadeia real do registro. Não escolhe quais dependentes remover.
+
+Antes da confirmação, consulte `GET /avancos/{id}/exclusao` ou
+`GET /ocorrencias/{id}/exclusao`, com o mesmo Bearer token das demais rotas.
+A resposta contém `alvo` (ID, nome, obra e marco) e `perda` (contagens de
+publicações, versões, exemplos simulados, histórico, aceitações e mídias,
+conforme o tipo). Essas consultas não alteram dados.
+
+O módulo servido em `/static/exclusao-registro.js` fornece a confirmação para
+o frontend, com nome, identificador e dependentes. Use o cliente HTTP autenticado
+da interface; ele deve repassar as opções da requisição, inclusive os headers:
+
+```javascript
+import { confirmarExclusao } from "/static/exclusao-registro.js";
+const removido = await confirmarExclusao(`/avancos/${id}`, fetchAutenticado);
+if (removido) atualizarLista();
+```
+
+Cancelar ou pressionar Escape não envia DELETE. Este repositório contém a API
+e esse componente reutilizável; a aplicação React é mantida separadamente.
+
+Publicado, versões, publicação e origem simulada vivem no mesmo documento de
+avanço; histórico de estados e aceitações vivem na ocorrência. A transação
+remove o documento e seus dependentes, incluindo a trilha em `tbl_historico`.
+Arquivos compartilhados são preservados. Referências por ID fora do conjunto
+bloqueiam a operação com 409 para impedir metadados órfãos. Uploads ainda
+pendentes também bloqueiam a exclusão até sua reconciliação.
+
+Somente 204 indica exclusão concluída. Falha externa retorna 503 com
+`codigo: LIMPEZA_PENDENTE`, identificador da pendência e quantidade de arquivos.
+O diário em `tbl_exclusoes_pendentes` sobrevive ao reinício. Repita o mesmo
+DELETE confirmado para retomar; contexto e autoria são verificados novamente.
+Após concluir, repetir retorna 404. IDs inválidos retornam 400; contexto
+divergente retorna 409; ausência de confirmação retorna 422. Nunca reutilize um
+ID de registro excluído para criar outro registro.
+
+Validação:
+
+```powershell
+python -m pytest --require-routes -q -p no:cacheprovider
+python -m pytest tests/test_exclusao_registros.py tests/test_exclusao_cascata.py -m atlas --atlas -q -p no:cacheprovider
+node --test tests/test_exclusao_interface.mjs
+```
+
+O inventário obrigatório e o fluxo de sucesso de todas as rotas agora incluem
+UC-01 a UC-18. Os testes de UC-09/CT-39 continuam exercitando o mesmo ramo de
+rascunho; UC-17 e UC-18 compartilham as fixtures em `tests/support_exclusoes.py`.
+Integrações Cloudinary reais continuam condicionadas às credenciais exclusivas
+de teste descritas em `tests/README.md`.

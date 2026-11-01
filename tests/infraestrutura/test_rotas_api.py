@@ -9,7 +9,7 @@ def rotas_registradas(app):
     return [regra for regra in app.url_map.iter_rules() if regra.endpoint != "static"]
 
 
-def test_inventario_obrigatorio_uc01_a_uc16(app):
+def test_inventario_obrigatorio_uc01_a_uc18(app):
     """Ausência de uma rota destes UCs falha, sem depender de marker opcional."""
     operacoes = [
         (("POST",), "/construtora/"),
@@ -20,15 +20,16 @@ def test_inventario_obrigatorio_uc01_a_uc16(app):
         (("POST",), "/sessoes"),
         (("GET", "DELETE"), "/sessoes/atual"),
         (("GET", "POST"), "/obras"),
-        (("GET", "PATCH"), "/obras/{id}"),
+        (("GET", "PATCH", "DELETE"), "/obras/{id}"),
         (("PATCH",), "/obras/{id}/estado"),
         (("GET", "POST"), "/obras/{id}/marcos"),
         (("GET",), "/obras/{id}/marcos/{id}"),
-        (("PATCH",), "/marcos/{id}"),
+        (("PATCH", "DELETE"), "/marcos/{id}"),
         (("GET", "POST"), "/marcos/{id}/dependencias"),
         (("DELETE",), "/marcos/{id}/dependencias/{id}"),
         (("GET", "POST"), "/marcos/{id}/avancos"),
         (("GET", "PATCH", "DELETE"), "/avancos/{id}"),
+        (("GET",), "/avancos/{id}/exclusao"),
         (("GET",), "/avancos/{id}/midias"),
         (("GET",), "/midias/{id}"),
         (("GET",), "/midias/{id}/conteudo"),
@@ -38,7 +39,8 @@ def test_inventario_obrigatorio_uc01_a_uc16(app):
         (("GET", "POST"), "/obras/{id}/mudancas"),
         (("GET",), "/mudancas/{id}"),
         (("GET", "POST"), "/obras/{id}/ocorrencias"),
-        (("GET", "PATCH"), "/ocorrencias/{id}"),
+        (("GET", "PATCH", "DELETE"), "/ocorrencias/{id}"),
+        (("GET",), "/ocorrencias/{id}/exclusao"),
         (("GET", "POST"), "/ocorrencias/{id}/aceitacoes"),
     ]
     adaptador = app.url_map.bind("localhost")

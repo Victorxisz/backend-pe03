@@ -9,12 +9,22 @@ from pymongo.errors import PyMongoError
 from app.auth.permissions import sessao_obrigatoria
 from app.integracoes.armazenamento import ErroArmazenamento, ErroLimpeza
 from .midias import ErroMidia, ResultadoPersistenciaIndeterminado
-from .service import ErroAvanco, criar_avanco, consultar_avanco, consultar_avancos, excluir_rascunho, editar_rascunho
+from .service import ErroAvanco, criar_avanco, consultar_avanco, consultar_avancos, excluir_avanco, editar_rascunho
+from app.exclusoes import ErroExclusao
+from app.serializacao import serializar
 from .versoes import consultar_versoes
 from .correcoes import corrigir_publicacao
 from . import repository as avancos_repository
 
 avancos_bp = Blueprint("avancos", __name__)
+
+
+@avancos_bp.errorhandler(ErroExclusao)
+def responder_exclusao(erro):
+    resposta = jsonify(erro.corpo())
+    if erro.status == 503:
+        resposta.headers["Retry-After"] = "30"
+    return resposta, erro.status
 
 
 @avancos_bp.before_request
@@ -132,5 +142,15 @@ def editar_avanco_route(avanco_id):
 
 @avancos_bp.delete("/avancos/<string:avanco_id>")
 def excluir(avanco_id):
-    excluir_rascunho(avanco_id)
+    excluir_avanco(avanco_id, contexto_exclusao(), get_jwt_identity())
     return "", 204
+
+
+def contexto_exclusao():
+    from app.exclusao_registros import ler_contexto
+    return ler_contexto()
+
+
+@avancos_bp.get("/avancos/<string:avanco_id>/exclusao")
+def previa_exclusao(avanco_id):
+    return jsonify(serializar(excluir_avanco(avanco_id, contexto_exclusao(), get_jwt_identity(), previa=True)))

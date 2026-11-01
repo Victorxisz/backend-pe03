@@ -24,7 +24,9 @@ def cenario(app, database, account, monkeypatch, config):
                          "CLOUDINARY_API_SECRET": config.api_secret,
                          "CLOUDINARY_FOLDER": config.pasta}.items():
         monkeypatch.setenv(chave, valor)
-    avanco = {"_id": ObjectId(), "estado": "rascunho", "revisao": 0,
+    obra = database.tbl_obras.insert_one({"nome": "Obra", "autor": str(account["_id"])}).inserted_id
+    marco = database.tbl_marcos.insert_one({"obra_id": obra, "nome": "Marco"}).inserted_id
+    avanco = {"_id": ObjectId(), "marco_id": marco, "estado": "rascunho", "revisao": 0,
               "autor": str(account["_id"]), "descricao": "Rascunho descartável"}
     database.tbl_avancos.insert_one(avanco)
     objetos, falhas = {}, set()
@@ -396,7 +398,7 @@ def test_ct39_referencia_invalida_preserva_rascunho(client, headers, database, c
 def test_ct39_dois_rascunhos_em_exclusao_nao_deixam_arquivo_compartilhado_orfao(client, headers, database, cenario):
     # Preparação
     from app.avancos.midias import preparar_limpeza
-    outro = database.tbl_avancos.insert_one({"estado": "rascunho"}).inserted_id
+    outro = database.tbl_avancos.insert_one({"estado": "rascunho", "marco_id": cenario.avanco["marco_id"]}).inserted_id
     midia = cenario.adicionar(dono=outro, referencia=cenario.midias[0]["referencia_externa"])
     arquivos = preparar_limpeza([midia])
     database.tbl_avancos.update_one({"_id": outro}, {"$set": {"estado": "exclusao_pendente", "exclusao": {

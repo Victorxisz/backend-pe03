@@ -7,9 +7,34 @@ from app.auth.permissions import sessao_obrigatoria
 from app.avancos.midias import ErroMidia, ResultadoPersistenciaIndeterminado
 from app.integracoes.armazenamento import ErroArmazenamento
 from .service import ErroOcorrencia, ServicoOcorrencias
+from app.exclusoes import ErroExclusao
+from app.serializacao import serializar
 
 ocorrencias_bp = Blueprint("ocorrencias", __name__)
 servico = ServicoOcorrencias()
+
+
+@ocorrencias_bp.errorhandler(ErroExclusao)
+def responder_exclusao(erro):
+    resposta = jsonify(erro.corpo())
+    if erro.status == 503:
+        resposta.headers["Retry-After"] = "30"
+    return resposta, erro.status
+
+
+@ocorrencias_bp.delete("/ocorrencias/<string:ocorrencia_id>")
+@sessao_obrigatoria
+def excluir_ocorrencia(ocorrencia_id):
+    from app.exclusao_registros import ler_contexto
+    servico.excluir(ocorrencia_id, ler_contexto(), get_jwt_identity())
+    return "", 204
+
+
+@ocorrencias_bp.get("/ocorrencias/<string:ocorrencia_id>/exclusao")
+@sessao_obrigatoria
+def previa_exclusao(ocorrencia_id):
+    from app.exclusao_registros import ler_contexto
+    return jsonify(serializar(servico.excluir(ocorrencia_id, ler_contexto(), get_jwt_identity(), previa=True)))
 
 
 def _erro(erro):
