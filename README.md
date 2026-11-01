@@ -5,7 +5,7 @@ A organização atual com POO e as decisões de 30/10 estão em
 
 ## Rotas existentes
 
-Inventário conferido no `url_map` da aplicação: **47 operações de negócio**.
+Inventário conferido no `url_map` da aplicação: **48 operações de negócio**.
 As barras finais abaixo fazem parte dos caminhos atuais. `HEAD` nas consultas,
 `OPTIONS` automático e a rota técnica `/static/{filename}` não entram na contagem.
 
@@ -40,7 +40,7 @@ As barras finais abaixo fazem parte dos caminhos atuais. `HEAD` nas consultas,
 | POST | `/sessoes` | Entrar na conta configurada |
 | GET, DELETE | `/sessoes/atual` | Consultar ou encerrar sessão |
 | GET, POST | `/trabalhadores/obra/{obra_id}/` | Listar ou cadastrar trabalhadores da obra |
-| PATCH, DELETE | `/trabalhadores/{trabalhador_id}/` | Alterar ou excluir trabalhador |
+| GET, PATCH, DELETE | `/trabalhadores/{trabalhador_id}/` | Consultar o detalhe, alterar ou excluir trabalhador |
 | GET | `/trabalhadores/nome/{nome_usuario}/` | Buscar por nome |
 | GET | `/trabalhadores/cargo/{cargo}/` | Buscar por cargo |
 
@@ -52,7 +52,8 @@ O preflight `OPTIONS` negocia CORS sem autenticação e não executa a operaçã
 
 Os caminhos propostos em `docs/05-arquitetura-e-contratos.md` não são todos rotas
 implementadas. Ainda não existem, por exemplo, `DELETE /obras/{id}`,
-`DELETE /marcos/{id}`, edição e exclusão individual de ocorrências.
+`DELETE /marcos/{id}`, edição e exclusão individual de ocorrências e
+`GET /obras/{id}/trabalhadores` — os trabalhadores usam os caminhos da tabela acima.
 Isso não foi tratado como defeito de uma
 rota existente nem substituído por endpoints que simulem sucesso.
 
@@ -242,6 +243,63 @@ confere todos os campos do marco na coleção temporária. Essa verificação co
 do cadastro; a releitura por HTTP depende da implementação do cartão de consultas.
 Sem `--atlas`, CT-21 fica como `SKIP`; os testes em memória não comprovam persistência.
 
+## Trabalhadores da obra — UC-19
+
+Caminhos implementados, todos com barra final e sessão de construtora ativa:
+
+- `POST /trabalhadores/obra/{obraId}/` — cadastra a pessoa e já a vincula à obra.
+- `GET /trabalhadores/obra/{obraId}/` — lista quem está vinculado àquela obra.
+- `GET /trabalhadores/{trabalhadorId}/` — detalhe do cadastro, usado para abrir a
+  pessoa na interface e indicado no `Location` da criação.
+- `GET /trabalhadores/nome/{nome}/` e `GET /trabalhadores/cargo/{cargo}/` — busca
+  parcial, sem distinguir maiúsculas. São filtros e **não** substituem o detalhe por ID.
+- `PATCH` e `DELETE /trabalhadores/{trabalhadorId}/` — manutenção e remoção (UC-20).
+
+A rota `/obras/{obraId}/trabalhadores` do contrato proposto **não existe**: o
+frontend deve usar os caminhos acima, com a barra final.
+
+O cadastro exige `nome`, `email`, `telefone` e `cargo`, todos textos preenchidos.
+O telefone aceita dígitos, espaços, parênteses e hífen, com DDD e 10 ou 11 dígitos,
+sem `+55`, e é gravado somente com números. O cargo é gravado em minúsculas; nome
+e email perdem espaços nas pontas. `id`, `ativo: true`, `data_cadastro` em UTC e a
+construtora da sessão vêm do servidor: enviá-los no corpo não muda o que é gravado.
+Não se cria token, senha ou sessão de trabalhador.
+
+A obra é identificada pelo `_id` do MongoDB e precisa existir antes do cadastro.
+A resposta `201` traz `mensagem`, `id`, `obra_id` e `Location` com
+`/trabalhadores/{id}/`. O detalhe e a listagem devolvem `id`, `nome`, `email`,
+`telefone`, `cargo`, `obras`, `ativo` e `data_cadastro`. Diferente das obras,
+`data_cadastro` sai no formato de data HTTP do Flask
+(`Sun, 20 Oct 2030 12:00:00 GMT`); converter para ISO-8601 seria mudança de
+contrato e não foi feita neste cartão.
+
+Cada situação tem resposta própria, sem confundir ausência com erro:
+
+| Situação | Resposta |
+| --- | --- |
+| Obra existente sem trabalhadores | `200` com lista vazia |
+| Obra inexistente | `404` `{"erro": "Obra não encontrada"}` |
+| Trabalhador inexistente ou de outra construtora | `404` `{"erro": "Trabalhador não encontrado"}` |
+| Identificador fora do formato `ObjectId` | `400`, dizendo se é o ID da obra ou do trabalhador |
+| Campo obrigatório ausente ou formato inválido | `422` com a mensagem do campo |
+| Falha no banco | `503`, sem detalhe do driver |
+| Requisição sem sessão válida | `401`, sem criar nem expor cadastro |
+
+Uma pessoa pode participar de mais de uma obra: a listagem usa a lista `obras` do
+cadastro e nunca apresenta alguém numa obra à qual não está vinculada. O detalhe
+continua disponível mesmo quando `obras` está vazio.
+
+CT-93 foi escrito quando o vínculo de obra usava código numérico. Como o contrato
+real é o `ObjectId`, "código não positivo" passou a ser verificado como
+identificador fora desse formato, que retorna `400`; a obra inexistente continua
+em cenário próprio, com `404` e sem gravação.
+
+```powershell
+.\.venv\Scripts\python -m pytest tests/trabalhadores -v
+# CT-94 relê lista e detalhe em processo e conexão novos:
+.\.venv\Scripts\python -m pytest tests/trabalhadores/test_persistencia_atlas.py --atlas -v
+```
+
 ## Executar os testes
 
 Na pasta `backend-pe03`, usando PowerShell:
@@ -269,7 +327,7 @@ tests/
 ├── conftest.py                  # aplicação, banco, conta, tokens e relógio
 ├── support.py                   # carregamento isolado e snapshots
 ├── support_obras.py             # preparação e verificações de obras
-├── restart_probe.py             # processo independente do CT-09
+├── restart_probe.py             # processo independente do CT-09 e do CT-94
 ├── autenticacao/
 │   └── test_autenticacao.py     # CT-01 a CT-04
 ├── obras/
@@ -279,7 +337,11 @@ tests/
 │   ├── test_edicao.py           # UC-04: CT-16/17 e alerta não editável
 │   └── test_edicao_atlas.py     # UC-04 com conexão real
 ├── trabalhadores/
-│   └── test_cadastro.py         # regressão do cadastro existente
+│   ├── test_cadastro.py         # CT-90 a CT-93: cadastro, validações e ID da obra
+│   ├── test_consultas.py        # CT-94: listagem por obra, detalhe por ID e filtros
+│   ├── test_rotas.py            # CT-95 e UC-20: edição, exclusão e sessão obrigatória
+│   ├── test_persistencia_atlas.py  # CT-94 com conexão e processo novos
+│   └── test_vinculo_construtora.py # isolamento entre construtoras
 ├── seguranca/
 │   ├── test_segredos.py         # CT-04: arquivos e histórico Git
 │   └── test_detector_segredos.py
@@ -291,8 +353,8 @@ Os códigos CT e o padrão **Preparação → Execução → Verificação** for
 Os cenários HTTP locais integram Flask e armazenamento em memória. Os arquivos
 `*_atlas.py` exigem `--atlas`; testes do detector de segredos verificam a função
 isoladamente. Testes de ponta a ponta pelo React continuam fora desta suíte.
-Arquivos para edição, exclusão e consultas de trabalhadores devem ser adicionados
-quando esses cenários forem escritos; a reorganização preserva a cobertura existente.
+As consultas, a edição e a exclusão de trabalhadores já têm arquivos próprios;
+a reorganização preserva a cobertura existente.
 O modo de importação `importlib` permite nomes como `test_cadastro.py` em pastas distintas.
 Tokens das fixtures usam o mesmo gerador da aplicação, com ID da construtora,
 `tipo` e `sessao_id`. CT-01 verifica a emissão dos tokens; CT-04 verifica que logout
@@ -369,7 +431,7 @@ erros de importação, autenticação ou implementação não são convertidos e
 **Uma execução com skips não significa que CT-01 a CT-17 foram aprovados.**
 
 `tests/trabalhadores/test_cadastro.py` preserva a regressão do cadastro já implementado
-nesta branch (obra fictícia com ObjectId). `tests/infraestrutura/test_isolamento.py` verifica o
+nesta branch (obra fictícia com ObjectId) e cobre CT-90 a CT-93 do UC-19. `tests/infraestrutura/test_isolamento.py` verifica o
 redirecionamento do banco e a ausência de dados herdados. O cadastro `/usuarios`
 foi removido da suíte: não integra CT-01 a CT-17 nem a conta única do MVP.
 
@@ -537,18 +599,13 @@ GET ainda pendente; a releitura HTTP fica em cenários separados. Para executar:
 
 O corpo completo está documentado no [contrato da API](docs/05-arquitetura-e-contratos.md#cadastro-de-obra--contrato-implementado).
 
-O cadastro de trabalhadores recebido da main exige ObjectId e vínculo com obra
-existente, usando transação. Os cinco cenários de `tests/trabalhadores/test_cadastro.py`
-foram alinhados: criam uma obra fictícia no banco isolado, verificam o ID da obra
-na resposta e o vínculo nas duas coleções. Cada ausência de campo deve retornar
-`422` com a mensagem específica, preservando o snapshot de todas as coleções.
-
-O `mongomock` não suporta sessões: somente no modo local, a fixture desse arquivo
-simula o contexto da sessão/transação e remove o argumento `session` antes de
-executar as operações reais no armazenamento em memória. Isso verifica o fluxo
-e os dados salvos, sem comprovar atomicidade ou rollback no MongoDB. Com
-`--atlas`, a adaptação fica desativada e usa-se a sessão real nas coleções temporárias
-do banco da aplicação.
+O cadastro de trabalhadores exige o `ObjectId` da obra e a existência dela antes
+de gravar. O vínculo fica na lista `obras` do próprio trabalhador, numa única
+inserção: o documento da obra não é alterado, e os cenários de
+`tests/trabalhadores/test_cadastro.py` verificam isso comparando a obra antes e
+depois. Cada ausência de campo retorna `422` com a mensagem específica,
+preservando o snapshot de todas as coleções. O contrato completo das rotas está
+em [Trabalhadores da obra — UC-19](#trabalhadores-da-obra--uc-19).
 
 ```powershell
 .\.venv\Scripts\python -m pytest tests/trabalhadores/test_cadastro.py -v

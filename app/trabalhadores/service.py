@@ -67,6 +67,10 @@ class ServicoTrabalhadores:
         return {"mensagem": "Trabalhador criado com sucesso e vinculado à obra",
                 "id": str(novo_id), "obra_id": str(identificador)}
 
+    def detalhar(self, trabalhador_id, autor):
+        identificador = self._identificar(trabalhador_id, "do trabalhador")
+        return trabalhador_para_dict(self._exigir_trabalhador(identificador, autor))
+
     def atualizar(self, trabalhador_id, dados, autor):
         identificador = self._identificar(trabalhador_id, "do trabalhador")
         campos = self._validar(dados, atualizacao=True)

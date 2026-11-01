@@ -42,6 +42,8 @@ idempotência, falhas de cadastro e integração com exclusão. Os corpos dos te
 e suas parametrizações foram preservados. O cadastro contratual fica em arquivo
 próprio porque também verifica a representação pública e a publicação posterior.
 
-A reorganização manteve 455 funções de teste e 1.142 casos parametrizados.
-A redução de duplicação concentrou-se nas fixtures de banco e armazenamento;
-cenários de erro, segurança e concorrência não foram removidos por quantidade.
+A reorganização manteve as 455 funções de teste e os 1.142 casos parametrizados
+que existiam então; a suíte cresceu depois com os cartões seguintes. A redução de
+duplicação concentrou-se nas fixtures de banco e armazenamento; cenários de erro,
+segurança e concorrência não foram removidos por quantidade. Para conferir o
+inventário atual, use `python -m pytest --collect-only -q`.

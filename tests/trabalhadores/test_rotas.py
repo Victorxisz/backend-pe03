@@ -202,6 +202,7 @@ def test_falha_na_gravacao_preserva_banco(
 
 @pytest.mark.parametrize("method,path", [
     ("POST", "/trabalhadores/obra/{obra}/"),
+    ("GET", "/trabalhadores/{id}/"),
     ("PATCH", "/trabalhadores/{id}/"), ("DELETE", "/trabalhadores/{id}/"),
     ("GET", "/trabalhadores/nome/João/"), ("GET", "/trabalhadores/cargo/pedreiro/"),
     ("GET", "/trabalhadores/obra/{obra}/"),

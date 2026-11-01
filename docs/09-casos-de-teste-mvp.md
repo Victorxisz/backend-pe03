@@ -141,8 +141,8 @@
 | CT-90 | A/I | Cadastrar trabalhador com nome, email, telefone DDD e cargo em obra existente. | `201`, ID, vínculo, ativo e data de cadastro; visível na obra. |
 | CT-91 | A | Omitir cada campo obrigatório e enviar JSON que não é objeto. | `422`; nenhum trabalhador criado. |
 | CT-92 | A | Enviar email inválido, telefone sem 10/11 dígitos ou com caracteres vedados. | `422`; mensagem adequada. |
-| CT-93 | A | Tentar cadastrar em obra inexistente ou código não positivo. | Rejeição; não cria trabalhador órfão. |
-| CT-94 | A/I | Listar/consultar trabalhadores da obra após reinício. | Cadastro persistente; outra obra não mostra vínculo inexistente. |
+| CT-93 | A | Tentar cadastrar em obra inexistente ou com identificador fora do formato de ID do MongoDB (texto, número, tamanho errado). | Identificador malformado `400`; obra ausente `404`; não cria trabalhador órfão. |
+| CT-94 | A/I | Listar a obra e abrir o detalhe `GET /trabalhadores/{trabalhadorId}/` após reinício. | Cadastro persistente na lista e no detalhe; outra obra não mostra vínculo inexistente. |
 | CT-95 | A | Chamar rotas de trabalhador sem sessão. | `401`; nenhum cadastro, leitura, edição ou exclusão. |
 | CT-96 | A/I | Corrigir nome, cargo e telefone de trabalhador. | Só campos enviados mudam; telefone normalizado; cargo padronizado. |
 | CT-97 | A/I | Trocar vínculos de obra A para B; depois enviar lista vazia. | Lista substituída corretamente; nenhuma obra inexistente aceita. |
@@ -179,5 +179,6 @@ Executar CT-107/108 se ViaCEP for escolhido; CT-109/110 se Cloudinary Free for e
 - Grupo ainda precisa fixar limite/tipos exatos de arquivo e política de acesso às mídias.
 - Estados adicionais de ocorrência além de `aberta`, `resolvida` e `sem solução` não foram definidos.
 - Para obra concluída, cálculo histórico de atraso usa a data efetiva automática; conclusão e reabertura são verificadas também em `tests/obras/test_estado.py`.
-- A rota de trabalhadores já existente no repositório cobre parte de CT-90/96/99, mas **não** implica que listagem, autenticação, verificação de obra e cascata já funcionem.
+- A rota de trabalhadores já existente no repositório cobre parte de CT-90/96/99, mas **não** implica que listagem, autenticação, verificação de obra e cascata já funcionem. Listagem por obra, detalhe por ID, sessão obrigatória e verificação da obra foram implementados em UC-19; a cascata de CT-100 continua pendente.
+- CT-93 foi escrito quando o vínculo de obra usava código numérico. O cadastro usa o `_id` do MongoDB (`ObjectId` de 24 caracteres hexadecimais), então "código não positivo" passou a significar identificador fora desse formato, que retorna `400`. A obra inexistente continua verificada em separado, com `404` e sem gravação.
 - Confirmado em 30/10: CT-82 remove as ocorrências do marco. CT-100 preserva o trabalhador vinculado à construtora e às demais obras; a exclusão completa de obra/marco continua pendente de implementação.

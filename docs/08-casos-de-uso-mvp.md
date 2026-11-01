@@ -166,7 +166,7 @@ Cada caso contém objetivo, gatilho, condições, caminho principal, desvios e r
 
 **Fluxo principal:** 1. A construtora informa nome, email, telefone com DDD e cargo. 2. O servidor valida, cria o trabalhador com vínculo à obra, status ativo e data de cadastro. 3. A interface lista trabalhadores da obra e permite consultar seus dados. Trabalhador não ganha sessão.
 
-**Desvios:** dados inválidos ou obra inexistente são rejeitados; cadastro com erro no banco não aparece como salvo. A implementação atual possui `POST /trabalhadores/obra/{codigo_obra}/`, mas ainda precisa de leitura, autenticação e validação de existência da obra para satisfazer este caso. **Pós-condição:** trabalhador persistente e vinculado. **Testes:** CT-90 a CT-95.
+**Desvios:** dados inválidos ou obra inexistente são rejeitados; cadastro com erro no banco não aparece como salvo. Implementado em `POST /trabalhadores/obra/{obraId}/`, `GET /trabalhadores/obra/{obraId}/` e `GET /trabalhadores/{trabalhadorId}/`, com sessão obrigatória, obra verificada pelo `ObjectId` e detalhe apontado no `Location` da criação; o caminho proposto `/obras/{obraId}/trabalhadores` não existe. **Pós-condição:** trabalhador persistente e vinculado. **Testes:** CT-90 a CT-95, com CT-93 ajustado ao formato de ID do MongoDB.
 
 ### UC-20 — Editar vínculos/dados e excluir trabalhador
 
