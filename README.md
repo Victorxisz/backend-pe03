@@ -33,7 +33,7 @@ As barras finais abaixo fazem parte dos caminhos atuais. `HEAD` nas consultas,
 | GET, POST | `/marcos/{marco_id}/dependencias` | Listar ou criar dependência |
 | DELETE | `/marcos/{marco_id}/dependencias/{dependencia_id}` | Retirar dependência |
 | GET, POST | `/marcos/{marco_id}/avancos` | Listar ou cadastrar avanços com mídias |
-| GET, PATCH, DELETE | `/avancos/{avanco_id}` | Consultar, editar rascunho/corrigir publicado ou excluir rascunho |
+| GET, PATCH, DELETE | `/avancos/{avanco_id}` | Consultar, editar rascunho/corrigir publicado ou excluir rascunho/publicado |
 | GET | `/avancos/{avanco_id}/exclusao` | Consultar alvo e extensão da perda |
 | GET | `/avancos/{avanco_id}/versoes` | Consultar versões e diferenças das correções |
 | GET | `/avancos/{avanco_id}/midias` | Listar mídias |
@@ -47,7 +47,8 @@ As barras finais abaixo fazem parte dos caminhos atuais. `HEAD` nas consultas,
 | GET | `/trabalhadores/nome/{nome_usuario}/` | Buscar por nome |
 | GET | `/trabalhadores/cargo/{cargo}/` | Buscar por cargo |
 
-Cadastro de conta e login são públicos. As operações de negócio exigem token;
+Login é público; cadastro público de conta fica bloqueado quando a única conta
+do MVP está definida em `CONSTRUTORA_ID`. As operações de negócio exigem token;
 refresh exige refresh token e logout aceita access ou refresh da sessão.
 Marcos também verificam perfil de construtora e conta ativa. Conta inativa não
 pode alterar ou excluir o próprio cadastro, assim como não pode entrar/renovar.
@@ -59,7 +60,7 @@ implementadas. `GET /obras/{id}/trabalhadores` usa o caminho
 
 `tests/infraestrutura/test_rotas_api.py` verifica CORS em todas as operações registradas,
 rejeição de chamadas sem token, conta inativa/perfil incorreto e IDs inválidos.
-Também exige a presença das operações dos UC-01 a UC-18 e UC-21, sem ignorar rotas ausentes.
+Também exige a presença das operações dos UC-01 a UC-21, sem ignorar rotas ausentes.
 Os testes específicos de cada módulo continuam cobrindo suas regras de negócio.
 
 `tests/integracao/test_todas_rotas.py` exercita o fluxo de sucesso de **cada uma
@@ -339,6 +340,15 @@ Uma pessoa pode participar de mais de uma obra: a listagem usa a lista `obras` d
 cadastro e nunca apresenta alguém numa obra à qual não está vinculada. O detalhe
 continua disponível mesmo quando `obras` está vazio.
 
+Ao excluir um trabalhador, suas ocorrências são preservadas e ficam sem
+responsável. Ao substituir `obras`, somente as ocorrências de obras retiradas
+perdem esse responsável. O cadastro e essa retirada são gravados juntos em uma
+transação MongoDB quando há ocorrências afetadas; uma falha desfaz a operação.
+As aceitações e transições anteriores permanecem intactas, e a versão das
+ocorrências afetadas aumenta para impedir a gravação de formulários antigos.
+Testes de sucesso e rollback: `python -m pytest tests/trabalhadores/test_responsaveis.py -q`;
+acrescente `--atlas` para transações reais em coleções temporárias.
+
 CT-93 foi escrito quando o vínculo de obra usava código numérico. Como o contrato
 real é o `ObjectId`, "código não positivo" passou a ser verificado como
 identificador fora desse formato, que retorna `400`; a obra inexistente continua
@@ -474,7 +484,7 @@ Na branch `MatheusHermida`, o PATCH de edição descritiva já está registrado.
 Login, renovação e logout estão registrados em `/construtora/login/`,
 `/construtora/refresh/` e `/construtora/logout/`. O cadastro está registrado em
 `POST /obras`. Consulta/listagem/exclusão de obras e consulta
-de marcos continuam pendentes. A suíte verifica o mapa de rotas antes dos cenários e informa
+de marcos também estão implementadas. A suíte verifica o mapa de rotas antes dos cenários e informa
 `SKIP` com a dependência exata. Assim que a rota existir, o teste passa a executá-la:
 erros de importação, autenticação ou implementação não são convertidos em `SKIP`.
 `--require-routes` transforma ausência de rota em falha de preparação para CI/aceite.
@@ -670,19 +680,22 @@ Todas as consultas abaixo exigem uma sessão JWT de construtora ativa e não rev
 - `GET /obras/{id}`: retorna o detalhe; ID inválido retorna 400 e obra ausente retorna 404.
 - `GET /obras/{id}/marcos`: lista somente marcos vinculados à obra; obra sem marcos retorna lista vazia, obra ausente retorna 404.
 
-A listagem aceita `nome`, `cliente`, `estado`, `registroDe`, `registroAte`,
+A listagem aceita `nome`, `cliente`, `estado`, `alerta`, `registroDe`, `registroAte`,
 `entregaDe` e `entregaAte`. Nome e cliente usam busca parcial literal sem distinguir
 maiúsculas de minúsculas. Estado aceita `planejada`, `em andamento`, `concluída`
-e `suspensa`. Os filtros são combinados por interseção.
+e `suspensa`. `alerta` aceita somente `atrasada`, calculada na consulta e
+combinável com o ciclo de vida, conforme D-13. Exemplo:
+`GET /obras?estado=em%20andamento&alerta=atrasada`.
+Os filtros são combinados por interseção.
 Datas usam `AAAA-MM-DD`; os limites são inclusivos e podem ser enviados separadamente.
 O registro considera o dia em UTC; entrega estimada considera o fim do intervalo.
-Filtros desconhecidos, datas inválidas e intervalos invertidos retornam 422 antes
+Filtros desconhecidos ou repetidos, alertas inválidos, datas inválidas e intervalos invertidos retornam 422 antes
 da consulta das obras. Falhas de consulta retornam 500 com mensagem sem detalhes do driver.
 
 Lista e detalhe retornam os mesmos alertas derivados, sem alterar o banco.
 `atrasada` aparece após a data exata ou o fim estimado, preservando o estado da obra.
-Obras concluídas não recebem atraso baseado no relógio atual; a regra histórica
-com data efetiva de conclusão continua dependendo do contrato desse campo.
+Obras concluídas usam a data efetiva de conclusão para o atraso histórico;
+registros antigos sem essa data não recebem uma data inventada na consulta.
 
 ```powershell
 .\.venv\Scripts\python -m pytest tests/obras/test_consultas.py -v

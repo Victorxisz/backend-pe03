@@ -67,7 +67,7 @@ Os métodos `GET` de mudanças estão implementados em UC-13; o contrato de
 listagem unificada, comparação e inconsistências está no
 [README](../README.md#histórico-de-mudanças).
 
-- `GET /obras` aceita filtros por `nome`, `estado`, `cliente`, `entregaDe`, `entregaAte`, `registroDe` e `registroAte`. Definir o significado de cada intervalo antes de implementar os filtros.
+- `GET /obras` aceita filtros por `nome`, `estado`, `alerta`, `cliente`, `entregaDe`, `entregaAte`, `registroDe` e `registroAte`, combinados por interseção. `alerta=atrasada` é derivado do prazo e da conclusão efetiva, separado do ciclo de vida (D-13). Os intervalos são inclusivos; registro usa o dia em UTC e entrega estimada usa o fim do intervalo. Filtros repetidos ou inválidos retornam `422` antes da consulta.
 - Datas de dia usam `AAAA-MM-DD`; instantes de auditoria usam formato ISO 8601 com fuso explícito.
 - Uma criação retorna `201 Created`, a representação criada e `Location` com sua URI.
 - Mensagem de erro usa estrutura estável, por exemplo `{ "codigo": "PRAZO_INVALIDO", "mensagem": "O fim do intervalo deve ser posterior ao início.", "campos": ["entrega.fim"] }`.
@@ -91,7 +91,8 @@ parte deste contrato; usar `cliente` e `data_registro`, respectivamente.
 A criação retorna `201`, os dados persistidos, `id` textual e `Location` com
 `/obras/{id}`. Dados inválidos, inclusive JSON malformado,
 retornam `422` com `mensagem` e `campos`; falha de gravação retorna `500` com
-`mensagem`. Consulta GET da URI indicada em `Location` continua pendente.
+`mensagem`. A consulta GET da URI indicada em `Location` está implementada e
+retorna o cadastro persistido com os alertas calculados no servidor.
 
 Exemplo de corpo:
 
