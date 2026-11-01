@@ -9,7 +9,7 @@ def rotas_registradas(app):
     return [regra for regra in app.url_map.iter_rules() if regra.endpoint != "static"]
 
 
-def test_inventario_obrigatorio_uc01_a_uc18(app):
+def test_inventario_obrigatorio_uc01_a_uc21(app):
     """Ausência de uma rota destes UCs falha, sem depender de marker opcional."""
     operacoes = [
         (("POST",), "/construtora/"),
@@ -43,6 +43,10 @@ def test_inventario_obrigatorio_uc01_a_uc18(app):
         (("GET", "PATCH", "DELETE"), "/ocorrencias/{id}"),
         (("GET",), "/ocorrencias/{id}/exclusao"),
         (("GET", "POST"), "/ocorrencias/{id}/aceitacoes"),
+        (("GET", "POST"), "/trabalhadores/obra/{id}/"),
+        (("GET", "PATCH", "DELETE"), "/trabalhadores/{id}/"),
+        (("GET",), "/trabalhadores/nome/Ana/"),
+        (("GET",), "/trabalhadores/cargo/pedreiro/"),
     ]
     adaptador = app.url_map.bind("localhost")
     for metodos, caminho in operacoes:
