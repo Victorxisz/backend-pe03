@@ -64,6 +64,7 @@ def test_todas_operacoes_possuem_fluxo_de_sucesso(app, client, headers, account,
     trabalhador = chamar("POST", f"/trabalhadores/obra/{obra_id}/", 201, json={
         "nome": "Ana Souza", "email": "ana@example.com", "telefone": "11987654321", "cargo": "Pedreira"}).json["id"]
     chamar("GET", f"/trabalhadores/obra/{obra_id}/")
+    chamar("GET", f"/trabalhadores/{trabalhador}/")
     chamar("GET", "/trabalhadores/nome/Ana/")
     chamar("GET", "/trabalhadores/cargo/pedreira/")
     chamar("PATCH", f"/trabalhadores/{trabalhador}/", json={"cargo": "Mestre de obras"})
@@ -107,11 +108,18 @@ def test_todas_operacoes_possuem_fluxo_de_sucesso(app, client, headers, account,
     resolvida = chamar("PATCH", f"/ocorrencias/{ocorrencia}", json={"versao": 0,
         "transicao": {"estado": "resolvida", "motivo": "Reparo inspecionado"}}).json
     assert len(resolvida["aceitacoes"]) == 1 and resolvida["aceitacoes_do_estado_atual"] == []
+    chamar("GET", f"/avancos/{avanco_id}/exclusao")
+    chamar("GET", f"/ocorrencias/{ocorrencia}/exclusao")
+    chamar("DELETE", f"/ocorrencias/{ocorrencia}", 204, json={"confirmar": True})
+    chamar("DELETE", f"/avancos/{avanco_id}", 204, json={"confirmar": True})
     chamar("DELETE", f"/trabalhadores/{trabalhador}/")
+    # UC-17 também faz parte do inventário de operações obrigatórias.
+    chamar("DELETE", f"/marcos/{segundo}", 204, json={"confirmar": True})
+    chamar("DELETE", f"/obras/{obra_id}", 204, json={"confirmar": True})
 
     obrigatorias = {(metodo, regra.rule) for regra in app.url_map.iter_rules() if regra.endpoint != "static"
                     for metodo in regra.methods - {"HEAD", "OPTIONS"}}
-    assert len(obrigatorias) == 48
+    assert len(obrigatorias) == 54
     assert obrigatorias <= sucessos, sorted(obrigatorias - sucessos)
 
 

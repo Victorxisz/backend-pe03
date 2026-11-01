@@ -152,7 +152,9 @@ def test_correcao_com_midia_preserva_consultas_publicacao_e_autoria(
     assert previa.json["atualizacoes"][0]["editado"] is True
     midia = versoes[-1]["conteudo"]["midias"][0]
     assert client.get(midia["conteudo"], headers=headers).data == conteudos["png"]
-    assert client.delete(rota, headers=headers).status_code == 409
+    exclusao = client.delete(rota, headers=headers)
+    assert exclusao.status_code == 422
+    assert exclusao.json["codigo"] == "CONFIRMACAO_OBRIGATORIA"
     assert snapshot(database) == antes
 
 

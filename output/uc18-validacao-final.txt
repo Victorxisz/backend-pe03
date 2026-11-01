@@ -1,0 +1,65 @@
+........................................................................ [  5%]
+........................................................................ [ 10%]
+........................................................................ [ 15%]
+........................................................................ [ 20%]
+........................................................................ [ 25%]
+..........................................................s............. [ 30%]
+.sss..........................................................sssss..... [ 35%]
+s.........................................s............................. [ 40%]
+................................................................s.ssss.. [ 45%]
+.......................ss.....................................sss....... [ 50%]
+..................................sss................................... [ 55%]
+........................ssssss.......................................... [ 60%]
+................s....................................................... [ 65%]
+...................................sss.................................. [ 70%]
+...................................................ss.s................s [ 75%]
+............................................s..........s................ [ 80%]
+.......................s.............................ss................. [ 86%]
+.............................................ss......................... [ 91%]
+...................................ssss................................. [ 96%]
+.......................................................                  [100%]
+=========================== short test summary info ===========================
+SKIPPED [1] tests\avancos\test_publicacoes.py:400: test_ct45_previa_persistida_apos_novo_processo: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\avancos\test_versoes.py:161: test_correcao_real_preserva_cadeia_e_reverte_falha_no_banco: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\avancos\test_versoes.py:195: test_correcao_concorrente_nao_sobrescreve_historico: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\avancos\test_versoes.py:213: test_rollback_real_tambem_remove_novas_midias_e_compensa_upload: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\integracao\test_avancos_atlas.py:22: Exige --uc09-atlas e TEST_UC09_MONGO_URI de cluster exclusivo de teste
+SKIPPED [1] tests\integracao\test_avancos_atlas.py:73: Exige --uc09-atlas e TEST_UC09_MONGO_URI de cluster exclusivo de teste
+SKIPPED [3] tests\integracao\test_avancos_cloudinary.py:40: Exige --uc09-cloudinary e credenciais TEST_UC09_CLOUDINARY_* exclusivas
+SKIPPED [1] tests\integracao\test_fluxo_midias_real.py:14: test_cadastro_edicao_publicacao_correcao_e_reinicio: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\marcos\test_cadastro.py:215: test_ct21_persistencia_atlas_apos_reinicio: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\marcos\test_estado.py:34: test_ct26_altera_estado_e_registra_autor_instante_e_motivo: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\marcos\test_estado.py:63: test_ct28_confirmacao_revalida_dependencias_e_registra_decisao: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\marcos\test_estado.py:90: test_ct29_reabertura_preserva_os_dois_eventos[a iniciar]: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\marcos\test_estado.py:90: test_ct29_reabertura_preserva_os_dois_eventos[em andamento]: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\marcos\test_estado.py:108: test_ct30_falha_ao_gravar_historico_nao_altera_estado: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\marcos\test_estado.py:228: test_historico_inserido_tambem_e_revertido_em_falha: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\marcos\test_estado.py:248: test_versao_impede_sobrescrita_apos_estado_ir_e_voltar: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [3] tests\midias\test_acesso.py:269: Exige Cloudinary exclusivo de teste e RUN_CLOUDINARY_TESTS=1
+SKIPPED [3] tests\midias\test_armazenamento.py:312: Exige RUN_CLOUDINARY_TESTS=1 e credenciais TEST_CLOUDINARY_* exclusivas
+SKIPPED [1] tests\mudancas\test_mudancas.py:207: test_ct54_persiste_periodo_e_trilha: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\mudancas\test_mudancas.py:222: test_ct58_rollback_marco_e_evento[False]: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\mudancas\test_mudancas.py:222: test_ct58_rollback_marco_e_evento[True]: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\mudancas\test_mudancas.py:247: test_ct28_ct29_confirmar_e_reabrir_marco: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\mudancas\test_mudancas.py:261: test_estado_e_periodo_compartilham_versao: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\mudancas\test_mudancas.py:272: test_valor_e_trilha_persistem_em_outro_processo: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\obras\test_cadastro_atlas.py:15: test_ct09_persistencia_atlas_apos_novo_processo: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\obras\test_edicao_atlas.py:14: test_ct16_ct17_persistencia_atlas[ct16-correcao]: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\obras\test_edicao_atlas.py:14: test_ct16_ct17_persistencia_atlas[ct17-prazo]: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\obras\test_edicao_atlas.py:14: test_ct16_ct17_persistencia_atlas[ct17-conclusao]: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\test_aceitacao_ocorrencias.py:197: test_posts_simultaneos_mongo_real[True]: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\test_aceitacao_ocorrencias.py:197: test_posts_simultaneos_mongo_real[False]: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\test_aceitacao_ocorrencias.py:231: test_aceitacao_e_resolucao_simultaneas_mongo_real: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\test_aceitacao_ocorrencias.py:318: test_ct78_persistencia_em_novo_processo: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\test_atualizacao_ocorrencias.py:250: test_concorrencia_em_mongo_real: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\test_atualizacao_ocorrencias.py:327: test_ct73_persistencia_em_novo_processo: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\test_exclusao_cascata.py:652: test_ct85_processo_novo_no_atlas_nao_recupera_os_dados: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\test_exclusao_registros.py:206: test_ct89_persistencia_em_processo_independente[avanco]: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\test_exclusao_registros.py:206: test_ct89_persistencia_em_processo_independente[ocorrencia]: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\test_ocorrencias.py:324: test_ct68_mongo_real_em_novo_processo[False]: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\test_ocorrencias.py:324: test_ct68_mongo_real_em_novo_processo[True]: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\trabalhadores\test_persistencia_atlas.py:33: test_cadastro_listado_e_consultado_apos_reinicio: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\trabalhadores\test_persistencia_atlas.py:64: test_detalhe_de_trabalhador_ausente_apos_reinicio: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\trabalhadores\test_persistencia_atlas.py:78: test_cadastro_edicao_e_exclusao_persistem_em_nova_conexao: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+SKIPPED [1] tests\trabalhadores\test_persistencia_atlas.py:108: test_rejeicao_de_vinculo_inexistente_preserva_banco_real: exige --atlas com MONGO_URI; mem�ria n�o comprova persist�ncia
+1374 passed, 49 skipped in 496.58s (0:08:16)

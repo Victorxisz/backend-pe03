@@ -23,6 +23,11 @@ class RepositorioOcorrencias:
     def buscar(self, ocorrencia_id):
         return self.banco["tbl_ocorrencias"].find_one({"_id": ocorrencia_id})
 
+    def upload_em_andamento(self, ocorrencia_id, *, session=None):
+        return self.banco["tbl_uploads_pendentes"].find_one(
+            {"ocorrencia_id": ocorrencia_id, "estado": "pendente"}, session=session,
+        ) is not None
+
     def buscar_obra(self, obra_id):
         return self.banco["tbl_obras"].find_one({"_id": obra_id})
 

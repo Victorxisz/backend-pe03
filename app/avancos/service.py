@@ -590,3 +590,8 @@ _limpar_apos_edicao = _servico._limpar_apos_edicao
 criar_avanco = _servico.criar_avanco
 consultar_avanco = _servico.consultar_avanco
 consultar_avancos = _servico.consultar_avancos
+
+
+def excluir_avanco(avanco_id, dados, autor, *, previa=False):
+    from app.exclusao_registros import excluir_registro
+    return excluir_registro("avanco", avanco_id, dados, autor, previa=previa)

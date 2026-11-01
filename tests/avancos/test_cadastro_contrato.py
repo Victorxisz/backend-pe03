@@ -112,7 +112,9 @@ def test_cadastro_e_publicacao_compartilham_as_mesmas_midias(client, headers, da
         publicacao = client.post(f"/avancos/{avanco_id}/publicacoes", headers=headers)
     assert publicacao.status_code == 201
     assert publicacao.get_json()["midias"][0]["id"] == midias[0]["id"]
-    assert client.delete(f"/avancos/{avanco_id}", headers=headers).status_code == 409
+    exclusao = client.delete(f"/avancos/{avanco_id}", headers=headers)
+    assert exclusao.status_code == 422
+    assert exclusao.json["codigo"] == "CONFIRMACAO_OBRIGATORIA"
     assert database.tbl_midias.count_documents({}) == 1
 
 

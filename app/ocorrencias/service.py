@@ -24,6 +24,10 @@ class ErroOcorrencia(Exception):
 
 
 class ServicoOcorrencias:
+    def excluir(self, ocorrencia_id, dados, autor, *, previa=False):
+        from app.exclusao_registros import excluir_registro
+        return excluir_registro("ocorrencia", ocorrencia_id, dados, autor, previa=previa)
+
     def __init__(self, repositorio=None, relogio=None):
         self.repositorio = repositorio or RepositorioOcorrencias()
         self.relogio = relogio if relogio is not None else Relogio()
