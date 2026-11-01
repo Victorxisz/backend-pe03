@@ -322,6 +322,7 @@ def remover_avancos(avancos, *, session=None):
     if not ids:
         return
     for colecao, filtro in (
+        ("tbl_feedback_simulado", {"atualizacao_id": {"$in": ids}}),
         ("tbl_midias", {"avanco_id": {"$in": ids}}),
         ("tbl_limpezas_midias", {"avanco_id": {"$in": ids}}),
         ("tbl_uploads_pendentes", {"avanco_id": {"$in": ids}}),

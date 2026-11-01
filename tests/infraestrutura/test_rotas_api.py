@@ -35,6 +35,7 @@ def test_inventario_obrigatorio_uc01_a_uc18(app):
         (("GET",), "/midias/{id}/conteudo"),
         (("GET", "POST"), "/avancos/{id}/publicacoes"),
         (("GET",), "/obras/{id}/previa"),
+        (("GET",), "/obras/{id}/feedback-simulado"),
         (("GET",), "/avancos/{id}/versoes"),
         (("GET", "POST"), "/obras/{id}/mudancas"),
         (("GET",), "/mudancas/{id}"),

@@ -5,7 +5,7 @@ A organização atual com POO e as decisões de 30/10 estão em
 
 ## Rotas existentes
 
-Inventário conferido no `url_map` da aplicação: **48 operações de negócio**.
+Inventário conferido no `url_map` da aplicação: **55 operações de negócio**.
 As barras finais abaixo fazem parte dos caminhos atuais. `HEAD` nas consultas,
 `OPTIONS` automático e a rota técnica `/static/{filename}` não entram na contagem.
 
@@ -25,13 +25,16 @@ As barras finais abaixo fazem parte dos caminhos atuais. `HEAD` nas consultas,
 | GET | `/mudancas/{mudanca_id}` | Consultar o detalhe de uma mudança |
 | GET, POST | `/ocorrencias/{ocorrenciaId}/aceitacoes` | Consultar ou registrar aceitações |
 | GET, POST | `/obras/{obra_id}/ocorrencias` | Listar ou registrar problemas da obra |
-| GET, PATCH | `/ocorrencias/{ocorrencia_id}` | Consultar, editar ou mudar estado com motivo |
+| GET, PATCH, DELETE | `/ocorrencias/{ocorrencia_id}` | Consultar, editar, mudar estado ou excluir com confirmação |
+| GET | `/ocorrencias/{ocorrencia_id}/exclusao` | Consultar alvo e extensão da perda |
 | GET | `/obras/{obra_id}/previa` | Consultar avanços publicados |
+| GET | `/obras/{obra_id}/feedback-simulado` | Consultar exemplos fictícios no contexto de obra, marco ou atualização |
 | PATCH, DELETE | `/marcos/{marco_id}` | Alterar estado com motivo ou excluir com os dependentes |
 | GET, POST | `/marcos/{marco_id}/dependencias` | Listar ou criar dependência |
 | DELETE | `/marcos/{marco_id}/dependencias/{dependencia_id}` | Retirar dependência |
 | GET, POST | `/marcos/{marco_id}/avancos` | Listar ou cadastrar avanços com mídias |
 | GET, PATCH, DELETE | `/avancos/{avanco_id}` | Consultar, editar rascunho/corrigir publicado ou excluir rascunho |
+| GET | `/avancos/{avanco_id}/exclusao` | Consultar alvo e extensão da perda |
 | GET | `/avancos/{avanco_id}/versoes` | Consultar versões e diferenças das correções |
 | GET | `/avancos/{avanco_id}/midias` | Listar mídias |
 | GET, POST | `/avancos/{avanco_id}/publicacoes` | Consultar publicação ou publicar rascunho |
@@ -51,19 +54,16 @@ pode alterar ou excluir o próprio cadastro, assim como não pode entrar/renovar
 O preflight `OPTIONS` negocia CORS sem autenticação e não executa a operação.
 
 Os caminhos propostos em `docs/05-arquitetura-e-contratos.md` não são todos rotas
-implementadas. Ainda não existem, por exemplo, `DELETE /obras/{id}`,
-`DELETE /marcos/{id}`, edição e exclusão individual de ocorrências e
-`GET /obras/{id}/trabalhadores` — os trabalhadores usam os caminhos da tabela acima.
-Isso não foi tratado como defeito de uma
-rota existente nem substituído por endpoints que simulem sucesso.
+implementadas. `GET /obras/{id}/trabalhadores` usa o caminho
+`GET /trabalhadores/obra/{id}/` da tabela acima.
 
 `tests/infraestrutura/test_rotas_api.py` verifica CORS em todas as operações registradas,
 rejeição de chamadas sem token, conta inativa/perfil incorreto e IDs inválidos.
-Também exige a presença das operações dos UC-01 a UC-16, sem ignorar rotas ausentes.
+Também exige a presença das operações dos UC-01 a UC-18 e UC-21, sem ignorar rotas ausentes.
 Os testes específicos de cada módulo continuam cobrindo suas regras de negócio.
 
 `tests/integracao/test_todas_rotas.py` exercita o fluxo de sucesso de **cada uma
-das 48 operações** e falha se alguma rota registrada ficar sem resposta de
+das 55 operações** e falha se alguma rota registrada ficar sem resposta de
 sucesso no cenário. Inclui autenticação, trabalhadores, publicação, correção,
 mudanças e o ciclo de ocorrências. Também verifica corpos inválidos e igualdade
 da data de registro entre cadastro e releitura, na precisão BSON de milissegundos.
@@ -1335,3 +1335,99 @@ UC-01 a UC-18. Os testes de UC-09/CT-39 continuam exercitando o mesmo ramo de
 rascunho; UC-17 e UC-18 compartilham as fixtures em `tests/support_exclusoes.py`.
 Integrações Cloudinary reais continuam condicionadas às credenciais exclusivas
 de teste descritas em `tests/README.md`.
+
+## Dados simulados — UC-21
+
+Implementação em `app/simulados/{routes,service,repository}.py`, registrada na
+fábrica `create_app` usada por `api.py`. O produto oferece somente leitura com
+sessão de construtora ativa. Não há cadastro, login ou envio de mensagem pelos
+perfis de comprador e engenheiro.
+
+### Carregar o cenário de demonstração
+
+Configure `.env` conforme `.env.example`, incluindo Atlas com transações e o
+armazenamento Cloudinary. Crie uma obra e um marco dessa obra pelas rotas normais.
+Use uma obra de demonstração, o ID da construtora dona da obra e uma evidência
+fictícia local em um dos formatos aceitos pelo cadastro de avanços.
+Na raiz do backend, execute (substitua os IDs e o caminho):
+
+```powershell
+.\venv\Scripts\python scripts/carregar_dados_demonstracao.py --obra-id ID_OBRA --marco-id ID_MARCO --construtora-id ID_CONSTRUTORA --arquivo "C:\caminho\evidencia-ficticia.png" --data 2026-10-31
+```
+
+A carga cria três feedbacks de obra (avaliação, compreensão e dúvida), uma dúvida
+de marco e uma compreensão de atualização. Cria também um avanço publicado com
+autoria e origem de engenheiro fictício; o arquivo passa pelos serviços normais
+de validação, upload e publicação. Os feedbacks ficam em `tbl_feedback_simulado`;
+o avanço, suas mídias e suas versões usam as coleções existentes.
+
+Para repetir, mantenha os mesmos IDs, data, nome e conteúdo do arquivo.
+A chave de idempotência evita upload/avanço duplicado; IDs determinísticos e
+`$setOnInsert` evitam feedback duplicado. Exemplos, correções anteriores e dados
+alheios ao cenário são preservados. A carga imprime os IDs e não cria usuários.
+
+Os cinco feedbacks são gravados em uma transação. Upload/cadastro, publicação e
+carga de feedbacks são etapas retomáveis: uma falha posterior pode deixar o avanço
+já criado; repetir os mesmos argumentos retoma o cenário. Em erro de commit ou
+limpeza de upload, consulte os diários existentes antes de repetir; não troque a
+chave para contornar uma operação pendente. O comando não é executado ao iniciar
+o servidor e não oferece uma rota pública de carga.
+
+### Contrato para o frontend
+
+| Consulta | Contexto retornado |
+| --- | --- |
+| `GET /obras/{obraId}/feedback-simulado` | Somente exemplos vinculados diretamente à obra |
+| `GET /obras/{obraId}/feedback-simulado?marco_id={marcoId}` | Somente exemplos daquele marco |
+| `GET /obras/{obraId}/feedback-simulado?atualizacao_id={avancoId}` | Somente exemplos daquela atualização publicada |
+
+Os filtros são mutuamente exclusivos, não aceitam repetição nem parâmetros
+extras. A atualização é identificada pelo ID do avanço publicado. O servidor
+valida a obra, o dono e o vínculo do marco/atualização. IDs inválidos retornam
+`400`; alvos inexistentes ou de outra obra retornam `404`; filtros ambíguos ou
+extras retornam `422`. Sem token retorna `401`; perfil incompatível, `403`.
+Sem exemplos retorna `200` com `{"feedbacks": []}`. Métodos de escrita retornam
+`405`. Falha de banco retorna `503` com mensagem neutra.
+
+Exemplo de item dentro de `feedbacks`:
+
+```json
+{
+  "id": "ID_EXEMPLO",
+  "obra_id": "ID_OBRA",
+  "alvo": {"tipo": "marco", "id": "ID_MARCO"},
+  "tipo": "duvida",
+  "texto": "Exemplo: quais atividades faltam para concluir este marco?",
+  "cliente": {"nome": "Comprador fictício — demonstração UC-21", "ficticio": true},
+  "origem": "simulado",
+  "simulado": true
+}
+```
+
+O avanço fictício aparece nas consultas de avanço/publicação e na prévia existente.
+A prévia informa `simulado`, `origem_simulada` e `autor_original`. Depois de uma
+correção normal via `PATCH /avancos/{id}`, também informa
+`editado_pela_construtora`, `ultima_correcao` (autor, instante, motivo, campos e
+texto anterior) e o caminho `versoes`. `GET /avancos/{id}/versoes` preserva toda a
+cadeia, autoria original, alterações e diferenças de texto. A interface deve
+exibir a marca **simulado**, o contexto e a autoria da correção.
+
+Excluir obra, marco ou avanço publicado remove seus feedbacks na mesma transação
+da cascata UC-17/18 e contabiliza esses exemplos no aviso de perda. Excluir um
+marco preserva feedbacks diretamente vinculados à obra; excluir uma atualização
+preserva os feedbacks de obra e marco.
+
+### Verificar
+
+```powershell
+.\venv\Scripts\python -m pytest tests/test_dados_simulados.py --require-routes -q
+.\venv\Scripts\python -m pytest --require-routes -q
+.\venv\Scripts\python -m pytest tests/test_dados_simulados.py tests/integracao/test_todas_rotas.py --atlas --require-routes -q
+```
+
+Os testes UC-21 cobrem CT-102–106, CT-50, repetição após correção, isolamento entre
+obras, rejeições, autenticação e rollback dos feedbacks. Sem `--atlas`, banco e
+transações são simulados. Com `--atlas`, as coleções são temporárias e isoladas;
+o armazenamento de mídia continua simulado. A validação visual e a demonstração
+React → Flask no ambiente publicado permanecem necessárias para o aceite da UC
+completa.

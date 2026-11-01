@@ -1,0 +1,37 @@
+UC-21 — validação do backend
+Data de referência: 31/10/2026 (America/Sao_Paulo)
+Responsável pela implementação e execução: Codex
+
+1. Regressão completa
+Comando: .\venv\Scripts\python.exe -m pytest --require-routes -q --tb=short
+Resultado: 1394 passed, 49 skipped; 0 failures (665.47s).
+Banco, transações locais e provedor de mídia simulados nesta rodada.
+Os skips são integrações opt-in; não equivalem a testes aprovados.
+
+2. UC-21 e fluxos gerais com MongoDB real
+Comando: .\venv\Scripts\python.exe -m pytest tests/test_dados_simulados.py tests/integracao/test_todas_rotas.py --atlas --require-routes -q
+Resultado: 28 passed; 0 failures (77.15s).
+Coleções temporárias isoladas no MongoDB configurado; mídia simulada.
+O fluxo geral exige sucesso de todas as 55 operações HTTP registradas.
+UC-21: CT-102–106, CT-50, contexto, origem fictícia, autenticação,
+repetição sem duplicação, preservação das correções e rollback dos feedbacks.
+
+3. Persistência, reinício e concorrência dos módulos existentes
+Comando: .\venv\Scripts\python.exe -m pytest -m atlas --atlas --require-routes -q --tb=short
+Resultado: 37 passed, 1 skipped, 1405 deselected; 0 failures (105.28s).
+O skip exige RUN_CLOUDINARY_TESTS=1 e TEST_CLOUDINARY_* exclusivos de teste.
+
+4. Compatibilidade final da prévia com correções antigas
+Comando: .\venv\Scripts\python.exe -m pytest tests/test_exclusao_cascata.py::test_ct79_cancelar_nao_envia_delete_e_consultas_nao_alteram tests/test_dados_simulados.py --require-routes -q
+Resultado: 21 passed; 0 failures (12.83s).
+A suíte completa final também inclui esses cenários.
+
+5. Comando de carga
+Comando: .\venv\Scripts\python.exe scripts/carregar_dados_demonstracao.py --help
+Resultado: exit code 0; argumentos de obra, marco, construtora, arquivo e data disponíveis.
+
+Limites da validação
+- Nenhuma integração real com Cloudinary foi habilitada; o provedor de mídia foi simulado.
+- Frontend e demonstração no ambiente publicado não foram validados nesta entrega de backend.
+- A carga foi executada pelos testes em coleções temporárias; não foi carregado um cenário nos dados normais da aplicação.
+- O README contém o contrato HTTP e o procedimento para carregar o cenário de demonstração.
