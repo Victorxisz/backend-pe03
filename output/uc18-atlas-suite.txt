@@ -1,0 +1,4 @@
+....s.................................                                   [100%]
+=========================== short test summary info ===========================
+SKIPPED [1] tests\integracao\test_fluxo_midias_real.py:18: Exige RUN_CLOUDINARY_TESTS=1 e credenciais TEST_CLOUDINARY_*
+37 passed, 1 skipped, 1382 deselected in 77.08s (0:01:17)

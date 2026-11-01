@@ -442,11 +442,13 @@ class ServicoAvancos:
         }
         if "origem_simulada" in documento:
             resposta["origem_simulada"] = documento["origem_simulada"]
+            resposta["simulado"] = bool(documento["origem_simulada"])
         if documento.get("editado") is True:
             resposta["editado"] = True
         return resposta
 
-    def criar_avanco(self, marco_id, formulario, arquivos, autor, servico_midias=None, *, chave=None):
+    def criar_avanco(self, marco_id, formulario, arquivos, autor, servico_midias=None, *, chave=None,
+                     origem_simulada=None):
         if chave is not None and not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", chave):
             raise ErroAvanco("Idempotency-Key inválida", 422, ["Idempotency-Key"])
         marco = self._id(marco_id, "marco_id")
@@ -464,6 +466,9 @@ class ServicoAvancos:
             "autor": autor,
             "data_registro": instante,
         }
+        # Metadado reservado à carga interna; as rotas não aceitam este campo.
+        if origem_simulada is not None:
+            documento["origem_simulada"] = origem_simulada
         operacao_id = hashlib.sha256(f"{autor}:{chave or uuid4().hex}".encode()).hexdigest()
         operacao_criada = False
 
@@ -481,6 +486,8 @@ class ServicoAvancos:
                     for item in validados
                 ],
             }
+            if origem_simulada is not None:
+                assinatura["origem_simulada"] = origem_simulada
             impressao = hashlib.sha256(
                 json.dumps(assinatura, sort_keys=True, ensure_ascii=False).encode()
             ).hexdigest()
@@ -590,3 +597,8 @@ _limpar_apos_edicao = _servico._limpar_apos_edicao
 criar_avanco = _servico.criar_avanco
 consultar_avanco = _servico.consultar_avanco
 consultar_avancos = _servico.consultar_avancos
+
+
+def excluir_avanco(avanco_id, dados, autor, *, previa=False):
+    from app.exclusao_registros import excluir_registro
+    return excluir_registro("avanco", avanco_id, dados, autor, previa=previa)

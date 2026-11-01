@@ -5,12 +5,12 @@ A organização atual com POO e as decisões de 30/10 estão em
 
 ## Rotas existentes
 
-Inventário conferido no `url_map` da aplicação: **51 operações de negócio**.
+Inventário conferido no `url_map` da aplicação: **55 operações de negócio**.
 As barras finais abaixo fazem parte dos caminhos atuais. `HEAD` nas consultas,
 `OPTIONS` automático e a rota técnica `/static/{filename}` não entram na contagem.
 Também ficam fora os quatro métodos de escrita registrados em
 `/obras/{obra_id}/feedback-simulado` apenas para recusar interação (UC-21): o
-`url_map` tem 55 entradas sem `HEAD`/`OPTIONS`, das quais 4 são recusas.
+`url_map` tem 59 entradas sem `HEAD`/`OPTIONS`, das quais 4 são recusas.
 
 | Métodos | Caminho | Finalidade |
 | --- | --- | --- |
@@ -28,14 +28,16 @@ Também ficam fora os quatro métodos de escrita registrados em
 | GET | `/mudancas/{mudanca_id}` | Consultar o detalhe de uma mudança |
 | GET, POST | `/ocorrencias/{ocorrenciaId}/aceitacoes` | Consultar ou registrar aceitações |
 | GET, POST | `/obras/{obra_id}/ocorrencias` | Listar ou registrar problemas da obra |
-| GET | `/ocorrencias/{ocorrencia_id}` | Consultar ocorrência e evidências |
+| GET, PATCH, DELETE | `/ocorrencias/{ocorrencia_id}` | Consultar, editar, mudar estado ou excluir com confirmação |
+| GET | `/ocorrencias/{ocorrencia_id}/exclusao` | Consultar alvo e extensão da perda |
 | GET | `/obras/{obra_id}/previa` | Consultar avanços publicados |
 | GET | `/obras/{obra_id}/feedback-simulado` | Consultar exemplos simulados de comprador e engenheiro (somente leitura) |
 | PATCH, DELETE | `/marcos/{marco_id}` | Alterar estado com motivo ou excluir com os dependentes |
 | GET, POST | `/marcos/{marco_id}/dependencias` | Listar ou criar dependência |
 | DELETE | `/marcos/{marco_id}/dependencias/{dependencia_id}` | Retirar dependência |
 | GET, POST | `/marcos/{marco_id}/avancos` | Listar ou cadastrar avanços com mídias |
-| GET, PATCH, DELETE | `/avancos/{avanco_id}` | Consultar, editar rascunho/corrigir publicado ou excluir rascunho |
+| GET, PATCH, DELETE | `/avancos/{avanco_id}` | Consultar, editar rascunho/corrigir publicado ou excluir rascunho/publicado |
+| GET | `/avancos/{avanco_id}/exclusao` | Consultar alvo e extensão da perda |
 | GET | `/avancos/{avanco_id}/versoes` | Consultar versões e diferenças das correções |
 | GET | `/avancos/{avanco_id}/midias` | Listar mídias |
 | GET, POST | `/avancos/{avanco_id}/publicacoes` | Consultar publicação ou publicar rascunho |
@@ -48,22 +50,30 @@ Também ficam fora os quatro métodos de escrita registrados em
 | GET | `/trabalhadores/nome/{nome_usuario}/` | Buscar por nome |
 | GET | `/trabalhadores/cargo/{cargo}/` | Buscar por cargo |
 
-Cadastro de conta e login são públicos. As operações de negócio exigem token;
+Login é público; cadastro público de conta fica bloqueado quando a única conta
+do MVP está definida em `CONSTRUTORA_ID`. As operações de negócio exigem token;
 refresh exige refresh token e logout aceita access ou refresh da sessão.
 Marcos também verificam perfil de construtora e conta ativa. Conta inativa não
 pode alterar ou excluir o próprio cadastro, assim como não pode entrar/renovar.
 O preflight `OPTIONS` negocia CORS sem autenticação e não executa a operação.
 
 Os caminhos propostos em `docs/05-arquitetura-e-contratos.md` não são todos rotas
-implementadas. Ainda não existem, por exemplo, `DELETE /obras/{id}`,
-`DELETE /marcos/{id}`, edição e exclusão individual de ocorrências e
-`GET /obras/{id}/trabalhadores` — os trabalhadores usam os caminhos da tabela acima.
-Isso não foi tratado como defeito de uma
-rota existente nem substituído por endpoints que simulem sucesso.
+implementadas. `GET /obras/{id}/trabalhadores` usa o caminho
+`GET /trabalhadores/obra/{id}/` da tabela acima.
 
 `tests/infraestrutura/test_rotas_api.py` verifica CORS em todas as operações registradas,
 rejeição de chamadas sem token, conta inativa/perfil incorreto e IDs inválidos.
+Também exige a presença das operações dos UC-01 a UC-21, sem ignorar rotas ausentes.
 Os testes específicos de cada módulo continuam cobrindo suas regras de negócio.
+
+`tests/integracao/test_todas_rotas.py` exercita o fluxo de sucesso de **cada uma
+das 55 operações** e falha se alguma rota registrada ficar sem resposta de
+sucesso no cenário. Inclui autenticação, trabalhadores, publicação, correção,
+mudanças e o ciclo de ocorrências. Também verifica corpos inválidos e igualdade
+da data de registro entre cadastro e releitura, na precisão BSON de milissegundos.
+Por padrão usa banco e mídia simulados. Para o mesmo fluxo com MongoDB real,
+mantendo a mídia simulada e usando somente coleções temporárias:
+`python -m pytest tests/integracao/test_todas_rotas.py --atlas -k "fluxo_de_sucesso or data_de_ocorrencia" -q`.
 
 ## Registrar ocorrências — UC-14
 
@@ -107,8 +117,8 @@ as evidências possuem `ocorrencia_id`, sem publicação nem entrada na prévia.
 
 Ocorrência, vínculos, evidências e aceitações ficam juntos em `tbl_ocorrencias`,
 numa única inserção atômica. `sem solução` começa com `aceitacoes: []`; somente
-a decisão explícita da UC-16 acrescenta uma aceitação. Não existe edição de
-estado por estas rotas. A resposta `201` inclui `Location` para o detalhe.
+a decisão explícita da UC-16 acrescenta uma aceitação. A resposta `201` inclui
+`Location` para o detalhe. A edição e as transições usam o PATCH da UC-15.
 A lista retorna `{"ocorrencias": [...]}`, ordenada por registro decrescente
 e ID crescente em empate. Obra existente sem ocorrências retorna `200` com
 lista vazia; obra inexistente retorna `404`. O detalhe exige obra existente e
@@ -133,6 +143,46 @@ persistência em MongoDB real e nova conexão em outro processo:
 `python -m pytest tests/test_ocorrencias.py -m atlas --atlas -q`.
 Os testes reais usam coleções temporárias, removidas ao final; o armazenamento
 continua simulado nesses cenários, sem upload no Cloudinary real.
+
+## Atualizar, resolver e reabrir ocorrências — UC-15
+
+`PATCH /ocorrencias/{id}` recebe JSON com `versao` consultada e os objetos
+`alteracoes` (título, descrição e vínculos opcionais) e/ou `transicao` (estado e
+motivo obrigatório). Edição preserva estado; transições aceitam somente `aberta`,
+`resolvida` e `sem solução`. O detalhe e a lista expõem `historico_estados` em
+ordem de gravação. Estado e evento ficam juntos numa atualização atômica;
+conflitos retornam `409` para nova consulta e decisão explícita.
+
+As aceitações permanecem em `aceitacoes`, como fatos históricos. O campo
+`aceitacoes_do_estado_atual` identifica somente decisões aplicáveis ao episódio
+atual de `sem solução`; resolver ou reabrir não apaga nem reaplica uma aceitação.
+O [contrato completo](docs/05-arquitetura-e-contratos.md#atualização-de-ocorrências--uc-15)
+documenta exemplos, validações, concorrência, compatibilidade e respostas HTTP.
+
+Testes: `python -m pytest tests/test_atualizacao_ocorrencias.py -q`.
+Persistência em novo processo e concorrência no MongoDB real:
+`python -m pytest tests/test_atualizacao_ocorrencias.py -m atlas --atlas -q`.
+
+## Aceitar ocorrência sem solução — UC-16
+
+`POST /ocorrencias/{id}/aceitacoes` exige sessão ativa, JSON e `justificativa`
+preenchida. `medida_compensatoria` é opcional e pode ser `null`. ID, conta autora
+e instante vêm do servidor. A gravação exige estado `sem solução` no mesmo
+episódio validado, preserva o estado e acrescenta uma decisão ao histórico.
+`GET` no mesmo recurso devolve as decisões, incluindo após resolver/reabrir.
+
+Gere uma `Idempotency-Key` por confirmação e preserve-a nos retries: mesmo
+conteúdo e chave retornam a decisão original (`200`); chave nova cria decisão
+(`201`); a mesma chave com outro conteúdo retorna `409`. Sem cabeçalho, cada
+POST é uma nova decisão. Aceitação antiga permanece histórica, sem ser
+reaplicada a um episódio novo. Falhas de banco retornam `503`; com timeout,
+reutilize a mesma chave para confirmar sem duplicação.
+
+O [contrato UC-16](docs/05-arquitetura-e-contratos.md#aceitar-ocorrência-sem-solução--uc-16)
+detalha campos, formato da chave, concorrência e respostas HTTP.
+Testes: `python -m pytest tests/test_aceitacao_ocorrencias.py -q`.
+MongoDB real e novo processo:
+`python -m pytest tests/test_aceitacao_ocorrencias.py -m atlas --atlas -q`.
 
 ## Linha do tempo publicada — UC-10
 
@@ -297,6 +347,15 @@ Cada situação tem resposta própria, sem confundir ausência com erro:
 Uma pessoa pode participar de mais de uma obra: a listagem usa a lista `obras` do
 cadastro e nunca apresenta alguém numa obra à qual não está vinculada. O detalhe
 continua disponível mesmo quando `obras` está vazio.
+
+Ao excluir um trabalhador, suas ocorrências são preservadas e ficam sem
+responsável. Ao substituir `obras`, somente as ocorrências de obras retiradas
+perdem esse responsável. O cadastro e essa retirada são gravados juntos em uma
+transação MongoDB quando há ocorrências afetadas; uma falha desfaz a operação.
+As aceitações e transições anteriores permanecem intactas, e a versão das
+ocorrências afetadas aumenta para impedir a gravação de formulários antigos.
+Testes de sucesso e rollback: `python -m pytest tests/trabalhadores/test_responsaveis.py -q`;
+acrescente `--atlas` para transações reais em coleções temporárias.
 
 CT-93 foi escrito quando o vínculo de obra usava código numérico. Como o contrato
 real é o `ObjectId`, "código não positivo" passou a ser verificado como
@@ -550,7 +609,7 @@ Na branch `MatheusHermida`, o PATCH de edição descritiva já está registrado.
 Login, renovação e logout estão registrados em `/construtora/login/`,
 `/construtora/refresh/` e `/construtora/logout/`. O cadastro está registrado em
 `POST /obras`. Consulta/listagem/exclusão de obras e consulta
-de marcos continuam pendentes. A suíte verifica o mapa de rotas antes dos cenários e informa
+de marcos também estão implementadas. A suíte verifica o mapa de rotas antes dos cenários e informa
 `SKIP` com a dependência exata. Assim que a rota existir, o teste passa a executá-la:
 erros de importação, autenticação ou implementação não são convertidos em `SKIP`.
 `--require-routes` transforma ausência de rota em falha de preparação para CI/aceite.
@@ -746,19 +805,22 @@ Todas as consultas abaixo exigem uma sessão JWT de construtora ativa e não rev
 - `GET /obras/{id}`: retorna o detalhe; ID inválido retorna 400 e obra ausente retorna 404.
 - `GET /obras/{id}/marcos`: lista somente marcos vinculados à obra; obra sem marcos retorna lista vazia, obra ausente retorna 404.
 
-A listagem aceita `nome`, `cliente`, `estado`, `registroDe`, `registroAte`,
+A listagem aceita `nome`, `cliente`, `estado`, `alerta`, `registroDe`, `registroAte`,
 `entregaDe` e `entregaAte`. Nome e cliente usam busca parcial literal sem distinguir
 maiúsculas de minúsculas. Estado aceita `planejada`, `em andamento`, `concluída`
-e `suspensa`. Os filtros são combinados por interseção.
+e `suspensa`. `alerta` aceita somente `atrasada`, calculada na consulta e
+combinável com o ciclo de vida, conforme D-13. Exemplo:
+`GET /obras?estado=em%20andamento&alerta=atrasada`.
+Os filtros são combinados por interseção.
 Datas usam `AAAA-MM-DD`; os limites são inclusivos e podem ser enviados separadamente.
 O registro considera o dia em UTC; entrega estimada considera o fim do intervalo.
-Filtros desconhecidos, datas inválidas e intervalos invertidos retornam 422 antes
+Filtros desconhecidos ou repetidos, alertas inválidos, datas inválidas e intervalos invertidos retornam 422 antes
 da consulta das obras. Falhas de consulta retornam 500 com mensagem sem detalhes do driver.
 
 Lista e detalhe retornam os mesmos alertas derivados, sem alterar o banco.
 `atrasada` aparece após a data exata ou o fim estimado, preservando o estado da obra.
-Obras concluídas não recebem atraso baseado no relógio atual; a regra histórica
-com data efetiva de conclusão continua dependendo do contrato desse campo.
+Obras concluídas usam a data efetiva de conclusão para o atraso histórico;
+registros antigos sem essa data não recebem uma data inventada na consulta.
 
 ```powershell
 .\.venv\Scripts\python -m pytest tests/obras/test_consultas.py -v
@@ -1493,3 +1555,59 @@ sobrevivesse ao alvo (CT-106).
 Testes: `python -m pytest tests/test_dados_simulados.py -q`. Usam a própria
 carga, MongoDB em memória com rollback local e Cloudinary simulado; a marcação
 visual é validada com o frontend.
+
+## UC-18 — excluir um registro individual
+
+`DELETE /avancos/{id}` também remove avanços publicados. O ramo de rascunho
+continua usando a limpeza e o contrato sem corpo de UC-09. Para publicados e
+`DELETE /ocorrencias/{id}`, envie `{"confirmar": true}`. O contexto opcional
+`obra_id`/`marco_id` pode ir no JSON ou na query string, uma única vez, e precisa
+corresponder à cadeia real do registro. Não escolhe quais dependentes remover.
+
+Antes da confirmação, consulte `GET /avancos/{id}/exclusao` ou
+`GET /ocorrencias/{id}/exclusao`, com o mesmo Bearer token das demais rotas.
+A resposta contém `alvo` (ID, nome, obra e marco) e `perda` (contagens de
+publicações, versões, exemplos simulados, histórico, aceitações e mídias,
+conforme o tipo). Essas consultas não alteram dados.
+
+O módulo servido em `/static/exclusao-registro.js` fornece a confirmação para
+o frontend, com nome, identificador e dependentes. Use o cliente HTTP autenticado
+da interface; ele deve repassar as opções da requisição, inclusive os headers:
+
+```javascript
+import { confirmarExclusao } from "/static/exclusao-registro.js";
+const removido = await confirmarExclusao(`/avancos/${id}`, fetchAutenticado);
+if (removido) atualizarLista();
+```
+
+Cancelar ou pressionar Escape não envia DELETE. Este repositório contém a API
+e esse componente reutilizável; a aplicação React é mantida separadamente.
+
+Publicado, versões, publicação e origem simulada vivem no mesmo documento de
+avanço; histórico de estados e aceitações vivem na ocorrência. A transação
+remove o documento e seus dependentes, incluindo a trilha em `tbl_historico`.
+Arquivos compartilhados são preservados. Referências por ID fora do conjunto
+bloqueiam a operação com 409 para impedir metadados órfãos. Uploads ainda
+pendentes também bloqueiam a exclusão até sua reconciliação.
+
+Somente 204 indica exclusão concluída. Falha externa retorna 503 com
+`codigo: LIMPEZA_PENDENTE`, identificador da pendência e quantidade de arquivos.
+O diário em `tbl_exclusoes_pendentes` sobrevive ao reinício. Repita o mesmo
+DELETE confirmado para retomar; contexto e autoria são verificados novamente.
+Após concluir, repetir retorna 404. IDs inválidos retornam 400; contexto
+divergente retorna 409; ausência de confirmação retorna 422. Nunca reutilize um
+ID de registro excluído para criar outro registro.
+
+Validação:
+
+```powershell
+python -m pytest --require-routes -q -p no:cacheprovider
+python -m pytest tests/test_exclusao_registros.py tests/test_exclusao_cascata.py -m atlas --atlas -q -p no:cacheprovider
+node --test tests/test_exclusao_interface.mjs
+```
+
+O inventário obrigatório e o fluxo de sucesso de todas as rotas agora incluem
+UC-01 a UC-18. Os testes de UC-09/CT-39 continuam exercitando o mesmo ramo de
+rascunho; UC-17 e UC-18 compartilham as fixtures em `tests/support_exclusoes.py`.
+Integrações Cloudinary reais continuam condicionadas às credenciais exclusivas
+de teste descritas em `tests/README.md`.

@@ -39,6 +39,13 @@ def buscar_avanco(avanco_id):
     return db.banco_dados["tbl_avancos"].find_one({"_id": avanco_id})
 
 
+def upload_em_andamento(avanco_id, *, session=None):
+    """Não descarta o diário de arquivos enviados por uma correção em curso."""
+    return db.banco_dados["tbl_uploads_pendentes"].find_one(
+        {"avanco_id": avanco_id, "estado": "pendente"}, session=session,
+    ) is not None
+
+
 def salvar_correcao_publicada(documento, correcao, conteudo, novas_midias=(), operacao_id=None, midias_validadas=()):
     """Aplica conteúdo e snapshot juntos; revisão impede duas correções concorrentes."""
     revisao = filtro_revisao(documento)
@@ -323,6 +330,7 @@ def remover_avancos(avancos, *, session=None):
     if not ids:
         return
     for colecao, filtro in (
+        ("tbl_feedback_simulado", {"avanco_id": {"$in": ids}}),
         ("tbl_midias", {"avanco_id": {"$in": ids}}),
         ("tbl_limpezas_midias", {"avanco_id": {"$in": ids}}),
         ("tbl_uploads_pendentes", {"avanco_id": {"$in": ids}}),

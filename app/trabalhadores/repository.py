@@ -23,6 +23,11 @@ class RepositorioTrabalhadores:
         return self.trabalhadores.find_one({"_id": identificador})
 
     def atualizar(self, identificador, campos):
+        """P-10: retirar o vínculo de obra não mexe na atribuição de responsável.
+
+        A ausência da obra pode ser temporária; só a remoção do cadastro
+        reescreve ``responsavel_id``, no serviço, que conduz a transação.
+        """
         return self.trabalhadores.update_one({"_id": identificador}, {"$set": campos}).matched_count
 
     def excluir(self, identificador, *, session=None):

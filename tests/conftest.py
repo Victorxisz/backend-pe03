@@ -100,7 +100,8 @@ def account(database):
         "_id": ObjectId(),
         "nome": "Construtora Teste",
         "email": "construtora@example.com",
-        "senha_hash": Bcrypt().generate_password_hash("Senha_teste123!").decode(),
+        # Custo reduzido só para a credencial fictícia criada em cada teste.
+        "senha_hash": Bcrypt().generate_password_hash("Senha_teste123!", rounds=4).decode(),
         "ativo": True,
     }
     database.tbl_construtora.insert_one(account)

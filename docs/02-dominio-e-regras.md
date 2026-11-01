@@ -94,4 +94,4 @@ Estes nomes descrevem fatos que devem aparecer no histórico; **não exigem even
 
 ## Organização implementada
 
-Ver [modelo com POO e decisões de 30/10](13-modelo-poo.md). Ao excluir marco, suas ocorrências também são excluídas; responsáveis são trabalhadores. Os fluxos de ocorrência e exclusão completa continuam pendentes de implementação.
+Ver [modelo com POO e decisões de 30/10](13-modelo-poo.md). Ao excluir marco, suas ocorrências também são excluídas; responsáveis são trabalhadores. Cadastro, edição, transições, aceitações e exclusão completa estão implementados. UC-17/18 usam transação para os documentos e diário durável para a limpeza externa; somente respondem sucesso após concluir a limpeza. Excluir trabalhador ou retirá-lo da obra preserva as ocorrências e remove a responsabilidade inválida, mantendo aceitações e histórico. O [contrato UC-15](05-arquitetura-e-contratos.md#atualização-de-ocorrências--uc-15) distingue aceitações históricas das decisões do episódio atual.

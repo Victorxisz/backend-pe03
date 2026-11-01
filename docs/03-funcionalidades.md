@@ -47,7 +47,7 @@ Este catálogo descreve **o que o usuário consegue fazer e por quê**. `P0` com
 
 **Dados mínimos da ocorrência:** identificador, obra, título, descrição, data de registro, estado e autor. Marco, foto/vídeo/documento e responsável são opcionais. O responsável opcional deve referenciar um trabalhador. Para `sem solução — aceita`, registrar justificativa, pessoa que aceitou e data da aceitação, preservando todas as aceitações anteriores. A medida compensatória pode ser registrada, mas não exigida.
 
-**Trabalhador no MVP:** nome, email, telefone, cargo, estado ativo, data de cadastro, vínculo com a construtora e vínculos com obras. O cadastro já iniciado no servidor não substitui login nem a autorização da construtora; listagem, validação de obra existente e integração com a interface ainda precisam ser concluídas.
+**Trabalhador no MVP:** nome, email, telefone, cargo, estado ativo, data de cadastro, vínculo com a construtora e vínculos com obras. Cadastro, consultas, edição, exclusão e validação de obra existente estão implementados com sessão obrigatória. A manutenção de vínculos retira responsabilidades inválidas de ocorrências, preservando seu histórico. A integração visual deve ser verificada no repositório do frontend.
 
 ## Dados simulados e transparência
 

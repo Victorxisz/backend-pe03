@@ -9,6 +9,51 @@ def rotas_registradas(app):
     return [regra for regra in app.url_map.iter_rules() if regra.endpoint != "static"]
 
 
+def test_inventario_obrigatorio_uc01_a_uc21(app):
+    """Ausência de uma rota destes UCs falha, sem depender de marker opcional."""
+    operacoes = [
+        (("POST",), "/construtora/"),
+        (("POST",), "/construtora/login/"),
+        (("POST",), "/construtora/refresh/"),
+        (("POST",), "/construtora/logout/"),
+        (("PATCH", "DELETE"), "/construtora/{id}"),
+        (("POST",), "/sessoes"),
+        (("GET", "DELETE"), "/sessoes/atual"),
+        (("GET", "POST"), "/obras"),
+        (("GET", "PATCH", "DELETE"), "/obras/{id}"),
+        (("PATCH",), "/obras/{id}/estado"),
+        (("GET", "POST"), "/obras/{id}/marcos"),
+        (("GET",), "/obras/{id}/marcos/{id}"),
+        (("PATCH", "DELETE"), "/marcos/{id}"),
+        (("GET", "POST"), "/marcos/{id}/dependencias"),
+        (("DELETE",), "/marcos/{id}/dependencias/{id}"),
+        (("GET", "POST"), "/marcos/{id}/avancos"),
+        (("GET", "PATCH", "DELETE"), "/avancos/{id}"),
+        (("GET",), "/avancos/{id}/exclusao"),
+        (("GET",), "/avancos/{id}/midias"),
+        (("GET",), "/midias/{id}"),
+        (("GET",), "/midias/{id}/conteudo"),
+        (("GET", "POST"), "/avancos/{id}/publicacoes"),
+        (("GET",), "/obras/{id}/previa"),
+        (("GET",), "/obras/{id}/feedback-simulado"),
+        (("GET",), "/avancos/{id}/versoes"),
+        (("GET", "POST"), "/obras/{id}/mudancas"),
+        (("GET",), "/mudancas/{id}"),
+        (("GET", "POST"), "/obras/{id}/ocorrencias"),
+        (("GET", "PATCH", "DELETE"), "/ocorrencias/{id}"),
+        (("GET",), "/ocorrencias/{id}/exclusao"),
+        (("GET", "POST"), "/ocorrencias/{id}/aceitacoes"),
+        (("GET", "POST"), "/trabalhadores/obra/{id}/"),
+        (("GET", "PATCH", "DELETE"), "/trabalhadores/{id}/"),
+        (("GET",), "/trabalhadores/nome/Ana/"),
+        (("GET",), "/trabalhadores/cargo/pedreiro/"),
+    ]
+    adaptador = app.url_map.bind("localhost")
+    for metodos, caminho in operacoes:
+        for metodo in metodos:
+            adaptador.match(caminho.format(id="507f1f77bcf86cd799439011"), method=metodo)
+
+
 def caminho_de_teste(regra):
     caminho = regra.rule
     for argumento in regra.arguments:

@@ -92,10 +92,16 @@ class ServicoObras:
         return self.obra_para_dict(documento)
 
     def listar_obras(self, parametros):
-        permitidos = {"nome", "cliente", "estado", "registroDe", "registroAte", "entregaDe", "entregaAte"}
+        permitidos = {"nome", "cliente", "estado", "alerta", "registroDe", "registroAte", "entregaDe", "entregaAte"}
         desconhecidos = sorted(set(parametros) - permitidos)
         if desconhecidos:
             raise ErroObra("Filtros desconhecidos", 422, desconhecidos)
+        if hasattr(parametros, "getlist"):
+            repetidos = sorted(campo for campo in parametros if len(parametros.getlist(campo)) != 1)
+            if repetidos:
+                raise ErroObra("Não repita filtros", 422, repetidos)
+        if "alerta" in parametros and parametros["alerta"] != "atrasada":
+            raise ErroObra("O único alerta permitido é 'atrasada'", 422, ["alerta"])
         datas = {}
         for campo in ("registroDe", "registroAte", "entregaDe", "entregaAte"):
             if campo not in parametros:
@@ -154,7 +160,10 @@ class ServicoObras:
                 {"entrega.modalidade": "data_exata", "entrega.data": entrega},
                 {"entrega.modalidade": "intervalo_estimado", "entrega.fim": entrega},
             ]
-        return [self.obra_para_dict(documento) for documento in self.repositorio.consultar_obras(filtro)]
+        obras = [self.obra_para_dict(documento) for documento in self.repositorio.consultar_obras(filtro)]
+        if "alerta" in parametros:
+            obras = [obra for obra in obras if parametros["alerta"] in obra["alertas"]]
+        return obras
 
     def listar_marcos(self, identifier):
         # Compatibilidade para consumidores do serviço anterior à migração da rota.

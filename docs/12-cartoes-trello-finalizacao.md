@@ -2,6 +2,11 @@
 
 Referência: 30/10/2026. Entrega prevista na documentação: 03/11/2026.
 
+Revisão do backend em 01/11/2026: consultar o
+[resultado por UC e suas evidências](10-matriz-de-rastreabilidade.md#verificação-do-backend--01112026).
+Os cartões abaixo preservam o roteiro de implementação; suas descrições de
+pendências anteriores não substituem esse registro de verificação.
+
 São **21 cartões, um para cada caso de uso**, mantendo o foco no backend dos cartões anteriores. As atividades técnicas ficam dentro do caso de uso, inclusive armazenamento e acesso a mídias. Elas não viram cartões de infraestrutura separados.
 
 O modelo preserva **Contexto e cobertura → Arquivos previstos → Fazer → Pronto quando → Testes relacionados → Dependências**, com contexto suficiente para usar cada descrição como prompt de implementação. Os títulos agora usam os identificadores dos casos de uso.
@@ -777,6 +782,12 @@ UC-01, UC-02 e UC-19. UC-17 completa o cenário de exclusão de obra; UC-14 deve
 ---
 
 ## Cartão 21 — [UC-21] Consultar dados simulados do comprador e do engenheiro
+
+**Backend implementado:** módulo `app/simulados/`, carga em
+`scripts/carregar_dados_demonstracao.py` e testes em `tests/test_dados_simulados.py`.
+Ver [contrato, carga e verificação no README](../README.md#dados-simulados--uc-21).
+A validação visual com o frontend e a demonstração publicada continuam pendentes
+para o aceite completo do cartão.
 
 **Contexto e cobertura:**
 

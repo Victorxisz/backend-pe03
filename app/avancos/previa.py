@@ -8,6 +8,7 @@ from flask import Blueprint, current_app, jsonify
 from pymongo.errors import PyMongoError
 
 from app.auth.permissions import sessao_obrigatoria
+from app.serializacao import serializar
 from . import repository
 
 
@@ -60,6 +61,20 @@ def _representar(documento):
         representacao["editado"] = True
     if "origem_simulada" in documento:
         representacao["origem_simulada"] = documento["origem_simulada"]
+        representacao["simulado"] = bool(documento["origem_simulada"])
+        representacao["autor_original"] = documento.get("autor")
+        if documento.get("correcoes"):
+            ultima = documento["correcoes"][-1]
+            representacao["editado_pela_construtora"] = True
+            representacao["ultima_correcao"] = serializar({
+                "autor": ultima["autor"], "motivo": ultima["motivo"],
+                "instante": ultima["instante"], "texto_anterior": ultima["antes"]["descricao"],
+                "campos": ultima.get("campos", [
+                    campo for campo in ("data", "descricao", "midias")
+                    if ultima["antes"].get(campo) != ultima["depois"].get(campo)
+                ]),
+            })
+            representacao["versoes"] = f"/avancos/{documento['_id']}/versoes"
     return representacao
 
 

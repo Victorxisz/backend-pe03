@@ -80,8 +80,8 @@ não inventa data de conclusão para registros que ainda não a possuem.
 estado, a revisão e as mídias em uma transação. Arquivos antigos são removidos
 somente após o commit e quando não existem outras referências. Falhas de limpeza
 mantêm uma tarefa em `tbl_limpezas_midias`; isso permite retomada.
-A edição está disponível no serviço; a rota HTTP PATCH de rascunho ainda não está
-registrada neste checkout.
+A edição está disponível no serviço e na rota `PATCH /avancos/{id}`, que
+distingue rascunho de correção publicada e exige motivo para esta última.
 
 Após integrar a `main`, cadastro e consultas de avanços também passam pelo
 `ServicoAvancos`. Cadastro e metadados em `tbl_midias` são persistidos na mesma
@@ -106,23 +106,34 @@ pela construtora segue em `ServicoCorrecoes`, sem um fluxo paralelo. Não existe
 serviço de escrita para comprador ou engenheiro; a carga é um procedimento em
 `scripts/carregar_dados_demonstracao.py`.
 
-## Decisões confirmadas para módulos ainda pendentes
+## Decisões confirmadas para ocorrências e exclusões
 
 - Ocorrência tem responsável opcional vinculado a `Trabalhador`, além de título,
   descrição, obra, marco opcional, autoria, data, estado e mídias opcionais.
 - Ocorrência admite várias aceitações sem solução. Mudanças posteriores de estado
   não apagam aceitações ou transições anteriores.
 - Reenvios de `POST /ocorrencias/{id}/aceitacoes` devem carregar a mesma chave
-  `Idempotency-Key`; a repetição retorna a aceitação original (HTTP 200) sem
+  `Idempotency-Key` e os mesmos textos; a repetição retorna a aceitação original (HTTP 200) sem
   duplicá-la. Uma nova decisão usa nova chave. Sem cabeçalho, cada POST é uma
   decisão nova. A aceitação é anexada atomicamente somente enquanto o estado é
   `sem solução`; a rota GET devolve o histórico mesmo após mudança de estado.
+  Reutilizar a chave com outro conteúdo retorna `409`, sem sobrescrever a
+  decisão. O episódio validado é preservado até a escrita. O contrato completo
+  está em [aceitação UC-16](05-arquitetura-e-contratos.md#aceitar-ocorrência-sem-solução--uc-16).
 - Excluir um marco apaga suas ocorrências e os registros dependentes delas.
 - Uma obra tem um cliente de referência, inclusive quando representa apartamentos.
 
-Ocorrências, aceitações, correções de conteúdo publicado e exclusão completa de
-obra/marco ainda não têm fluxos completos neste checkout. Esta refatoração não
-os apresenta como funcionalidades disponíveis. Dados antigos de trabalhadores
+Cadastro e consultas de ocorrências (UC-14), edição e transições (UC-15) e
+aceitações (UC-16) estão implementados em `app/ocorrencias`. Estado e histórico
+são atualizados juntos no documento da ocorrência, com controle de versão.
+Aceitações anteriores permanecem no histórico; o episódio distingue sua
+aplicação ao estado atual. O contrato está em
+[atualização de ocorrências](05-arquitetura-e-contratos.md#atualização-de-ocorrências--uc-15).
+A exclusão completa de obra/marco está implementada em UC-17, junto com UC-18
+para registros individuais: documentos em transação e limpeza externa retomável.
+A manutenção de trabalhadores em UC-20 preserva ocorrências e histórico: remover
+o cadastro zera a atribuição viva e guarda quem respondia (P-10), enquanto
+retirar só o vínculo de obra não mexe na atribuição. Dados antigos de trabalhadores
 sem `construtora_id` continuam legíveis pelo comportamento legado; a vinculação
 histórica requer uma migração específica, sem inventar a empresa proprietária.
 

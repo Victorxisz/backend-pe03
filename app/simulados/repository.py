@@ -75,6 +75,14 @@ class RepositorioSimulados:
             return []
         return list(self.colecao.find(filtro, session=session).sort("_id", 1))
 
+    def contar(self, filtro):
+        """Quantos exemplos dependem do filtro, sem carregar os documentos.
+
+        Usada pela prévia de perda da exclusão individual (UC-18), que só
+        precisa da contagem para o aviso de confirmação.
+        """
+        return self.colecao.count_documents(filtro)
+
     def remover_do_conjunto(self, filtro, *, session=None):
         """RN-09: o exemplo não sobrevive ao objeto que ele contextualiza."""
         if filtro is None:

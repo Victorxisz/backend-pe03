@@ -9,22 +9,25 @@ transversais das rotas; `seguranca` cobre a auditoria de segredos.
 Estar nessa pasta não implica rede real: cada arquivo informa se os provedores
 são simulados ou reais. Os testes reais continuam opt-in.
 
+`test_dados_simulados.py` cobre UC-21/CT-102–106 e a correção CT-50 com a carga
+real do script e os endpoints existentes. Banco e armazenamento são simulados
+por padrão; `--atlas` usa coleções temporárias e transações reais, mantendo a
+mídia simulada. Inclui repetição sem duplicação e preservação das correções.
+
 `test_exclusao_cascata.py` fica na raiz por atravessar quase todos os módulos:
 UC-17 remove obra ou marco com marcos, avanços, mídias, ocorrências, histórico e
 vínculos de trabalhador. Ele traz o próprio cenário e o provedor simulado, e usa
 `transacao_local` nos casos que dependem da transação.
 
-<<<<<<< HEAD
 `test_dados_simulados.py` também fica na raiz: UC-21 atravessa obras, marcos,
 avanços, publicação, correção e as duas cascatas de exclusão. Ele usa a carga de
 `scripts/carregar_dados_demonstracao.py` em vez de semear o acervo simulado por
 conta própria, com provedor simulado e `transacao_local` nos casos de exclusão.
-=======
+
 `trabalhadores/test_manutencao.py` cobre UC-20: correção parcial, substituição e
 retirada de vínculos, entradas inválidas e exclusão. Os casos em que a pessoa era
 responsável por uma ocorrência também usam `transacao_local`, porque a remoção do
 cadastro e a retirada da atribuição são uma só transação.
->>>>>>> uc20
 
 ## Executar
 
