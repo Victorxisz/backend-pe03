@@ -17,7 +17,7 @@ As barras finais abaixo fazem parte dos caminhos atuais. `HEAD` nas consultas,
 | POST | `/construtora/logout/` | Encerrar a sessão |
 | PATCH, DELETE | `/construtora/{construtora_id}` | Alterar ou excluir a própria conta |
 | GET, POST | `/obras` | Listar/filtrar ou cadastrar obras |
-| GET, PATCH | `/obras/{obra_id}` | Consultar ou corrigir dados descritivos |
+| GET, PATCH, DELETE | `/obras/{obra_id}` | Consultar, corrigir dados descritivos ou excluir com os dependentes |
 | PATCH | `/obras/{obra_id}/estado` | Alterar estado com motivo e histórico |
 | GET, POST | `/obras/{obra_id}/marcos` | Listar ou cadastrar marcos |
 | GET | `/obras/{obra_id}/marcos/{marco_id}` | Consultar marco da obra |
@@ -27,7 +27,7 @@ As barras finais abaixo fazem parte dos caminhos atuais. `HEAD` nas consultas,
 | GET, POST | `/obras/{obra_id}/ocorrencias` | Listar ou registrar problemas da obra |
 | GET | `/ocorrencias/{ocorrencia_id}` | Consultar ocorrência e evidências |
 | GET | `/obras/{obra_id}/previa` | Consultar avanços publicados |
-| PATCH | `/marcos/{marco_id}` | Alterar estado do marco com motivo |
+| PATCH, DELETE | `/marcos/{marco_id}` | Alterar estado com motivo ou excluir com os dependentes |
 | GET, POST | `/marcos/{marco_id}/dependencias` | Listar ou criar dependência |
 | DELETE | `/marcos/{marco_id}/dependencias/{dependencia_id}` | Retirar dependência |
 | GET, POST | `/marcos/{marco_id}/avancos` | Listar ou cadastrar avanços com mídias |
@@ -1016,6 +1016,146 @@ Cobrem fotos/vídeos/PDFs, ausência de efeitos antes do DELETE, arquivos
 compartilhados e históricos, autenticação, conflitos de revisão/publicação,
 falhas parciais, retomada após timeout e falhas de finalização no banco.
 Não comprovam persistência no Atlas nem remoção no Cloudinary real.
+
+## UC-17 — excluir obra ou marco com os dependentes (CT-79 a CT-85, CT-100)
+
+`DELETE /obras/{obraId}` e `DELETE /marcos/{marcoId}` exigem a sessão de uma
+construtora ativa e a obra precisa pertencer à conta autenticada. A ordem de
+validação é identificador, existência/vínculo e só então a confirmação: um alvo
+inexistente nunca chega a avaliar o corpo da requisição.
+
+### Protocolo de confirmação com o React
+
+A exclusão é definitiva e leva registros que não têm sentido fora do alvo, por
+isso RN-09 exige aviso antes da perda. A divisão de responsabilidades é:
+
+1. A tela mostra o **nome do alvo** e a **extensão da perda**, usando os dados
+   que já carregou (detalhe da obra, marcos, prévia, ocorrências) ou o corpo da
+   recusa descrita abaixo. **Cancelar não envia DELETE**: o backend não altera
+   nada ao apenas consultar ou abrir a caixa de confirmação.
+2. Confirmar envia `DELETE` com o corpo JSON **`{"confirmar": true}`**.
+
+O campo é obrigatório e validado explicitamente no servidor — o botão escondido
+no React não substitui essa checagem. Qualquer outra forma do corpo (ausente,
+`false`, a string `"true"`, objeto vazio, formulário ou campo extra) responde
+`422` com `codigo="CONFIRMACAO_OBRIGATORIA"`, sem remover nada. Para a interface
+montar o aviso a partir da própria resposta, essa recusa devolve também:
+
+```json
+{
+  "codigo": "CONFIRMACAO_OBRIGATORIA",
+  "campos": ["confirmar"],
+  "alvo": { "tipo": "obra", "id": "...", "nome": "Residencial Aurora" },
+  "perda": {
+    "marcos": 2, "avancos": 2, "publicacoes": 1, "versoes": 1,
+    "exemplos_simulados": 1, "ocorrencias": 1, "aceitacoes": 1, "midias": 6,
+    "mudancas": 1, "estados": 1, "dependencias": 1, "historico": 2,
+    "trabalhadores_desvinculados": 1
+  }
+}
+```
+
+No marco, `alvo` traz também `obra_id` e `perda` não tem as contagens que só
+existem na obra (`marcos`, `mudancas`, `estados`, `trabalhadores_desvinculados`).
+
+### Respostas
+
+- `204`, sem corpo: cascata inteira concluída, inclusive os arquivos no provedor.
+- `400`: identificador inválido; `404`: alvo inexistente, de outra conta ou
+  exclusão já concluída e repetida.
+- `409`: o conjunto mudou durante a operação (`CONFLITO_EXCLUSAO`), outra
+  requisição está limpando o mesmo alvo, ou um registro fora do conjunto ainda
+  aponta para ele (`REFERENCIA_EXTERNA`) — nesse caso nada é removido.
+- `422`: confirmação ausente/inválida, ou referência de mídia inválida
+  (`REFERENCIA_INVALIDA`); o lote é validado antes da primeira escrita.
+- `500`: `EXCLUSAO_NAO_CONCLUIDA` em falha inesperada; a transação não foi
+  confirmada e a mensagem não expõe detalhes internos.
+- `503`: `LIMPEZA_PENDENTE` com a quantidade de arquivos pendentes e o
+  identificador da pendência, ou `EXCLUSAO_INDETERMINADA` quando o commit não
+  pôde ser confirmado. Nenhum dos dois representa sucesso. Nos dois casos a
+  recuperação é repetir o mesmo `DELETE`: se o commit ocorreu, a pendência é
+  retomada e a limpeza continua; se não ocorreu, a cascata é refeita do zero.
+  Nenhum arquivo é removido antes da confirmação da escrita.
+
+### O que a cascata remove
+
+| Alvo | Conjunto removido | Preservado |
+| --- | --- | --- |
+| Obra | marcos, avanços (rascunho e publicado), fato de publicação, versões/correções, mídias e tarefas de limpeza pendentes, diários de upload, ocorrências com evidências e aceitações, histórico de estados/mudanças da obra e dos marcos, exemplos simulados desses avanços, vínculos de dependência entre os marcos | outras obras e seus registros; cadastro dos trabalhadores |
+| Marco | o marco, seus avanços e tudo que vive neles, a trilha de mudanças do marco, as ocorrências vinculadas a ele (política proposta, ver abaixo) | a obra, os outros marcos e seus avanços, as ocorrências sem vínculo com o marco, os vínculos de trabalhadores |
+
+Ao excluir um marco, as relações em que **outros** marcos dependem dele saem
+junto, nos dois sentidos da lista `dependencias_marcos` da obra e na lista
+legada `dependencias` do próprio marco. Os outros marcos permanecem, apenas sem
+a referência ao alvo. Exclusão isolada de mudança já aplicada não é oferecida
+(RN-09); a trilha sai somente com o objeto principal.
+
+### Políticas registradas como proposta, não como decisão fechada
+
+Duas regras estão **implementadas como proposta** e esperam confirmação do
+grupo, registradas em [P-08 e P-09](docs/07-plano-e-decisoes.md#pendências-que-podem-mudar-o-contrato).
+Enquanto isso, CT-82 e CT-100 não devem ser tratados como contrato final:
+
+- **Ocorrência vinculada ao marco** é removida na cascata do marco. A
+  alternativa — manter a ocorrência na obra e apenas limpar seu `marco_id` —
+  já está implementada atrás de `OCORRENCIAS_NA_CASCATA`
+  (`app/marcos/exclusoes.py`) e coberta por teste, para que trocar a política
+  seja uma linha e não uma reescrita. Qualquer das duas sai sem deixar órfão.
+- **Trabalhador** nunca é excluído por um vínculo removido: ao excluir a obra A,
+  apenas o vínculo com A sai da lista `obras`. Cadastro, estado ativo e o
+  vínculo com a obra B permanecem, assim como a ligação com a construtora.
+
+### Consistência no Atlas e pendências duráveis no Cloudinary
+
+A remoção no MongoDB é **uma única transação** (`app/exclusoes.py`): ou o
+conjunto inteiro sai com a pendência registrada, ou nada muda. Dentro dessa
+transação, três verificações rodam antes do commit:
+
+1. As mídias do conjunto são relidas na visão transacional; uma mídia criada
+   entre o mapeamento e a remoção derruba a operação (`409`), porque seu arquivo
+   não estaria no diário.
+2. Depois da remoção, uma varredura conservadora confirma que **nenhum
+   documento restante** cita o alvo ou seus dependentes. O que sobrou é
+   exatamente o lado de fora do conjunto, inclusive os vínculos de trabalhador
+   que a cascata reescreve em vez de apagar. Qualquer menção remanescente
+   aborta a transação em vez de criar uma referência órfã (CT-81).
+3. O diário da pendência é gravado na mesma transação, antes das remoções.
+
+Os arquivos do provedor são tratados **depois** do commit, a partir de
+`tbl_exclusoes_pendentes`: alvo, perda, arquivos da operação, pendentes,
+instante, tentativas e um bloqueio temporário de cinco minutos. Como o conjunto
+já saiu do banco, o teste "este arquivo é usado por outro registro?" consulta o
+que restou e preserva arquivos ainda referenciados fora do conjunto — a
+identidade compara provedor, `public_id`, tipo de recurso e tipo de entrega, sem
+depender da ordem do dicionário. Falha do provedor registra mensagem neutra, sem
+expor credenciais, e mantém o arquivo na lista de pendentes.
+
+Repetir o mesmo `DELETE` retoma a limpeza: o alvo já não existe, mas a pendência
+é localizada pelo tipo e pelo identificador, o bloqueio é renovado e os arquivos
+restantes são processados. Arquivos já confirmados não são removidos de novo, e
+remover um objeto ausente é aceito pelo adaptador Cloudinary — o que recupera
+também timeouts cuja resposta se perdeu. A pendência só é apagada quando a lista
+de pendentes está vazia; enquanto existir, a exclusão **não** está concluída e
+pode ser encontrada em `tbl_exclusoes_pendentes` mesmo após reiniciar o servidor.
+Isso é compensação retomável, não uma transação distribuída entre MongoDB e
+Cloudinary. Não há agendador automático neste cartão.
+
+Para o volume do MVP a varredura de referências percorre as coleções, como na
+exclusão de rascunho; um volume maior exigirá um índice central de referências
+em vez dessa busca e de uma transação tão longa.
+
+```powershell
+.\.venv\Scripts\python -m pytest tests/test_exclusao_cascata.py -v
+.\.venv\Scripts\python -m pytest tests/test_exclusao_cascata.py -v --atlas
+```
+
+Os testes locais usam MongoDB em memória e o provedor de mídia é sempre
+simulado: cobrem confirmação e cancelamento, a cascata completa, ausência de
+órfãos, dependências entre marcos nos dois sentidos, alvo inexistente e
+repetição, falha externa com pendência rastreável e retomada, falha de banco no
+meio da cascata, trabalhador em duas obras e releitura com a aplicação
+recarregada. Não comprovam remoção no Cloudinary real; a persistência no Atlas
+depois de um processo novo exige `--atlas`.
 
 ### Consulta de versões de avanços
 

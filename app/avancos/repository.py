@@ -9,7 +9,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from .revisoes import ConflitoRascunho, filtro_revisao, registrar_alteracao
-from .rascunhos_repository import RepositorioRascunhos
+from .rascunhos_repository import RepositorioRascunhos, diarios_de_limpeza
 
 ESTADO_EXCLUSAO = "exclusao_pendente"
 
@@ -201,10 +201,11 @@ def finalizar_exclusao(avanco_id, token):
 
 
 def _outros_documentos(avanco_id):
-    """Tarefas de limpeza não são consumidores dos arquivos."""
+    """Tarefas de limpeza e diários de exclusão não consomem os arquivos."""
     banco = db.banco_dados
+    diarios = diarios_de_limpeza()
     for nome in banco.list_collection_names():
-        if nome == "tbl_limpezas_midias":
+        if nome in diarios:
             continue
         for documento in banco[nome].find():
             if nome == "tbl_uploads_pendentes" and documento.get("estado") in {"concluida", "limpa"}:
@@ -285,6 +286,42 @@ def listar_avancos(marco_id):
     return list(db.banco_dados["tbl_avancos"].find(
         {"marco_id": marco_id, "estado": {"$ne": ESTADO_EXCLUSAO}}
     ).sort([("data", 1), ("_id", 1)]))
+
+def listar_avancos_de_marcos(marcos, *, session=None):
+    """Inclui rascunhos e avanços reservados para exclusão individual."""
+    return list(db.banco_dados["tbl_avancos"].find(
+        {"marco_id": {"$in": list(marcos)}}, session=session
+    ).sort("_id", 1))
+
+
+def consultar_midias_de_avancos(avancos, *, session=None):
+    """Mídias atuais e as retiradas por edição cuja limpeza não terminou."""
+    ids = list(avancos)
+    atuais = list(db.banco_dados["tbl_midias"].find(
+        {"avanco_id": {"$in": ids}}, session=session
+    ).sort("_id", 1))
+    anteriores = [
+        tarefa["midia"]
+        for tarefa in db.banco_dados["tbl_limpezas_midias"].find(
+            {"avanco_id": {"$in": ids}}, session=session
+        ).sort("_id", 1)
+    ]
+    return atuais + anteriores
+
+
+def remover_avancos(avancos, *, session=None):
+    """Remove avanços com mídias, tarefas de limpeza e diários de upload."""
+    ids = list(avancos)
+    if not ids:
+        return
+    for colecao, filtro in (
+        ("tbl_midias", {"avanco_id": {"$in": ids}}),
+        ("tbl_limpezas_midias", {"avanco_id": {"$in": ids}}),
+        ("tbl_uploads_pendentes", {"avanco_id": {"$in": ids}}),
+        ("tbl_avancos", {"_id": {"$in": ids}}),
+    ):
+        db.banco_dados[colecao].delete_many(filtro, session=session)
+
 
 def buscar_obra(obra_id):
     return db.colecao_obras.find_one({"_id": obra_id}, {"_id": 1})

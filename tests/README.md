@@ -9,6 +9,11 @@ transversais das rotas; `seguranca` cobre a auditoria de segredos.
 Estar nessa pasta não implica rede real: cada arquivo informa se os provedores
 são simulados ou reais. Os testes reais continuam opt-in.
 
+`test_exclusao_cascata.py` fica na raiz por atravessar quase todos os módulos:
+UC-17 remove obra ou marco com marcos, avanços, mídias, ocorrências, histórico e
+vínculos de trabalhador. Ele traz o próprio cenário e o provedor simulado, e usa
+`transacao_local` nos casos que dependem da transação.
+
 ## Executar
 
 ```powershell

@@ -11,6 +11,16 @@ class RepositorioHistorico:
     def inserir_evento(self, evento, *, session=None):
         return self.colecao.insert_one(evento, session=session).inserted_id
 
+    def listar_eventos_dos_alvos(self, ids, *, session=None):
+        return list(self.colecao.find({"alvo.id": {"$in": list(ids)}}, session=session))
+
+    def remover_eventos_dos_alvos(self, ids, *, session=None):
+        """A trilha de um objeto excluído não sobrevive ao objeto (RN-09)."""
+        alvos = list(ids)
+        if not alvos:
+            return
+        self.colecao.delete_many({"alvo.id": {"$in": alvos}}, session=session)
+
     def buscar_obra(self, obra_id):
         return self.banco["tbl_obras"].find_one({"_id": obra_id})
 

@@ -132,7 +132,7 @@ def transacao_local(app, database, monkeypatch, request):
         return executar
 
     for nome in (
-        "find", "find_one", "update_one", "insert_one", "insert_many",
+        "find", "find_one", "update_one", "update_many", "insert_one", "insert_many",
         "delete_many", "delete_one", "find_one_and_update",
     ):
         monkeypatch.setattr(Collection, nome, sem_sessao(getattr(Collection, nome)))

@@ -5,7 +5,9 @@ from flask_jwt_extended import get_jwt_identity
 from pymongo.errors import PyMongoError
 
 from app.auth.permissions import sessao_obrigatoria
+from app.exclusoes import ErroExclusao
 
+from .exclusoes import excluir_marco
 from .service import (
     ErroMarco,
     alterar_estado_marco,
@@ -117,6 +119,26 @@ def excluir_dependencia(marco_id, dependencia_id):
         return _responder_erro_marco(erro)
     except PyMongoError:
         return _responder_erro_banco("Não foi possível remover a dependência")
+    return "", 204
+
+
+@marcos_bp.delete("/marcos/<string:marco_id>")
+@sessao_obrigatoria
+def excluir_marco_e_dependentes(marco_id):
+    """UC-17: só responde 204 com a cascata inteira concluída."""
+    try:
+        excluir_marco(marco_id, request.get_json(silent=True), get_jwt_identity())
+    except ErroExclusao as erro:
+        return jsonify(erro.corpo()), erro.status
+    except PyMongoError:
+        current_app.logger.exception("Falha no banco durante exclusão do marco")
+        return jsonify(mensagem="Não foi possível concluir a exclusão do marco",
+                       codigo="FALHA_NO_BANCO"), 503
+    except Exception:
+        # A transação não foi confirmada; a resposta não pode parecer sucesso.
+        current_app.logger.exception("Falha inesperada durante exclusão do marco")
+        return jsonify(mensagem="Não foi possível concluir a exclusão do marco",
+                       codigo="EXCLUSAO_NAO_CONCLUIDA"), 500
     return "", 204
 
 

@@ -70,11 +70,13 @@ Uma funcionalidade só está concluída quando: (1) segue a regra de domínio; (
 | P-03 | Definir exclusão isolada de um registro histórico já aplicado, se algum dia necessária | Fora do MVP; preservar histórico enquanto objeto principal existir | Após o MVP |
 | P-04 | Resolvida em 30/10: conclusão efetiva automática no servidor | Usar a conclusão para atraso histórico; preservar conclusões anteriores ao reabrir | Confirmada |
 | P-07 | Fixar tamanho máximo, tipos MIME e política de acesso às mídias | Usar valores pequenos no MVP e URLs de acesso restrito/temporário | Antes de F-08 |
+| P-08 | Confirmar se a ocorrência vinculada a um marco sai na cascata do marco ou apenas perde o vínculo | A proposta implementada remove a ocorrência com o marco, trocável em `OCORRENCIAS_NA_CASCATA` (`app/marcos/exclusoes.py`); decidir antes de tratar CT-82 como contrato final | Antes de encerrar F-19 |
+| P-09 | Confirmar a política do trabalhador quando a obra é excluída | A proposta implementada retira apenas o vínculo com a obra, preservando cadastro, estado ativo e os vínculos com as outras obras; nunca excluir o trabalhador por um vínculo removido. Decidir antes de tratar CT-100 como contrato final | Antes de encerrar F-19 |
 
 ## Riscos que merecem atenção cedo
 
 - **Três tipos de mídia em prazo curto:** testar pelo menos um arquivo real de cada tipo no ambiente publicado antes de polir a interface.
-- **Histórico versus exclusão definitiva:** uma exclusão em cascata precisa retirar dados internos e arquivos externos de forma consistente; não expor exclusão isolada de mudança aplicada.
+- **Histórico versus exclusão definitiva:** uma exclusão em cascata precisa retirar dados internos e arquivos externos de forma consistente; não expor exclusão isolada de mudança aplicada. A implementação de UC-17 trata o banco em uma transação e os arquivos como pendência durável e repetível; `204` só aparece com as duas partes concluídas. Ver o [contrato no README](../README.md#uc-17--excluir-obra-ou-marco-com-os-dependentes-ct-79-a-ct-85-ct-100).
 - **Estado da obra:** uma obra pode estar em andamento e atrasada ao mesmo tempo; não gravar tudo num enum único.
 - **API externa sem aval:** uma integração tecnicamente funcional pode não atender à rubrica. Obter resposta do professor enquanto o fluxo principal é construído.
 - **Protótipo visual anterior:** reutilizar padrões de navegação e conteúdo, mas substituir simulações por operações reais e estados de erro/carregamento.

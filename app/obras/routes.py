@@ -5,6 +5,8 @@ from flask_jwt_extended import get_jwt_identity
 from app.auth.permissions import sessao_obrigatoria
 from pymongo.errors import PyMongoError
 
+from app.exclusoes import ErroExclusao
+from .exclusoes import excluir_obra
 from .service import ErroObra, ServicoObras
 
 servico = ServicoObras()
@@ -101,6 +103,25 @@ def corrigir_descricao(obra_id):
         ),
         200,
     )
+
+
+@obras_bp.delete("/<string:obra_id>")
+def excluir_obra_e_dependentes(obra_id):
+    """UC-17: só responde 204 com a cascata inteira concluída."""
+    try:
+        excluir_obra(obra_id, request.get_json(silent=True), get_jwt_identity())
+    except ErroExclusao as erro:
+        return jsonify(erro.corpo()), erro.status
+    except PyMongoError:
+        current_app.logger.exception("Falha no banco durante exclusão da obra")
+        return jsonify(mensagem="Não foi possível concluir a exclusão da obra",
+                       codigo="FALHA_NO_BANCO"), 503
+    except Exception:
+        # A transação não foi confirmada; a resposta não pode parecer sucesso.
+        current_app.logger.exception("Falha inesperada durante exclusão da obra")
+        return jsonify(mensagem="Não foi possível concluir a exclusão da obra",
+                       codigo="EXCLUSAO_NAO_CONCLUIDA"), 500
+    return "", 204
 
 
 @obras_bp.patch("/<string:obra_id>/estado")
