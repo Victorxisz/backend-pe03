@@ -22,6 +22,7 @@ from app.exclusoes import (
 from app.historico.repository import RepositorioHistorico
 from app.ocorrencias.repository import RepositorioOcorrencias
 from app.trabalhadores.repository import RepositorioTrabalhadores
+from app.simulados.repository import RepositorioSimulados
 
 from . import repository
 
@@ -78,11 +79,13 @@ class ServicoExclusaoObra:
             "historico": len(eventos),
             "trabalhadores_desvinculados": len(vinculados),
         }
+        perda["exemplos_simulados"] += RepositorioSimulados().contar({"obra_id": obra_id})
         ids = (obra_id, *marcos, *ids_avancos, *ids_ocorrencias,
                *(midia["_id"] for midia in midias),
                *(midia["_id"] for midia in evidencias))
 
         def remover(sessao):
+            RepositorioSimulados().remover({"obra_id": obra_id}, session=sessao)
             # Relê o conjunto na transação: remove o que pertence à obra no
             # instante do commit, não só o que o mapeamento tinha visto.
             atuais = self.repositorio.ids_dos_marcos(obra_id, session=sessao)

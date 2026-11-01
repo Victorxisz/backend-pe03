@@ -25,6 +25,7 @@ from app.exclusoes import (
 )
 from app.historico.repository import RepositorioHistorico
 from app.ocorrencias.repository import RepositorioOcorrencias
+from app.simulados.repository import RepositorioSimulados
 
 from . import repository
 
@@ -78,11 +79,13 @@ class ServicoExclusaoMarco:
             "historico": len(eventos),
             "dependencias": len(vinculos),
         }
+        perda["exemplos_simulados"] += RepositorioSimulados().contar({"marco_id": marco_id})
         ids = (marco_id, *ids_avancos, *ids_ocorrencias,
                *(midia["_id"] for midia in midias),
                *(midia["_id"] for midia in evidencias))
 
         def remover(sessao):
+            RepositorioSimulados().remover({"marco_id": marco_id}, session=sessao)
             # Relê os avanços na transação: remove o que pertence ao marco no
             # instante do commit, não só o que o mapeamento tinha visto.
             pendentes = self.avancos.listar_avancos_de_marcos([marco_id], session=sessao)
