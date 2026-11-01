@@ -72,6 +72,7 @@ Uma funcionalidade só está concluída quando: (1) segue a regra de domínio; (
 | P-07 | Fixar tamanho máximo, tipos MIME e política de acesso às mídias | Usar valores pequenos no MVP e URLs de acesso restrito/temporário | Antes de F-08 |
 | P-08 | Confirmar se a ocorrência vinculada a um marco sai na cascata do marco ou apenas perde o vínculo | A proposta implementada remove a ocorrência com o marco, trocável em `OCORRENCIAS_NA_CASCATA` (`app/marcos/exclusoes.py`); decidir antes de tratar CT-82 como contrato final | Antes de encerrar F-19 |
 | P-09 | Confirmar a política do trabalhador quando a obra é excluída | A proposta implementada retira apenas o vínculo com a obra, preservando cadastro, estado ativo e os vínculos com as outras obras; nunca excluir o trabalhador por um vínculo removido. Decidir antes de tratar CT-100 como contrato final | Antes de encerrar F-19 |
+| P-10 | Confirmar o destino da atribuição de responsável quando o cadastro do trabalhador é removido | A proposta implementada zera `responsavel_id` e grava `responsavel_anterior` (id, nome, cargo e instante) na mesma transação da remoção: a ocorrência não fica apontando para quem saiu e continua legível. A autoria das decisões (`autor` da ocorrência e de cada aceitação) é a conta da construtora e nunca é tocada, porque o trabalhador não autentica. Retirar só o vínculo de obra (UC-20, `PATCH`) não mexe na atribuição: ausência temporária não deve apagar quem responde | Antes de encerrar F-20 |
 
 ## Riscos que merecem atenção cedo
 

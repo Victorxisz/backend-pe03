@@ -53,6 +53,9 @@ class ServicoOcorrencias:
         item = {campo: documento.get(campo) for campo in (
             "titulo", "descricao", "estado", "obra_id", "marco_id", "responsavel_id", "autor", "data_registro")}
         item["id"] = str(documento["_id"])
+        if documento.get("responsavel_anterior") is not None:
+            # P-10: quem respondia antes de o cadastro ser removido (UC-20).
+            item["responsavel_anterior"] = documento["responsavel_anterior"]
         item["aceitacoes"] = documento.get("aceitacoes", [])
         item["midias"] = [{**midia_para_dict(midia),
                           "conteudo": f"/midias/{midia['_id']}/conteudo"}

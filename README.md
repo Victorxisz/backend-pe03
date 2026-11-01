@@ -89,6 +89,10 @@ do servidor; tentativas de enviá-los no corpo são rejeitadas. `marco_id` e
 deve pertencer à obra. O responsável é o `id` do cadastro de trabalhadores
 (`POST /trabalhadores/obra/{obra_id}/`), com essa obra em `obras` e a construtora
 compatível com a sessão. Não se cria usuário, senha ou novo perfil autenticável.
+Se esse cadastro for removido depois, `responsavel_id` volta a `null` e a
+ocorrência passa a trazer `responsavel_anterior` com quem respondia — ver
+[UC-20](#uc-20--manutenção-e-exclusão-do-trabalhador-ct-96-a-ct-101). A autoria
+registrada em `autor` e nas aceitações é da construtora e não muda.
 
 O envio reutiliza o adaptador Cloudinary e a validação por conteúdo de JPEG,
 PNG, MP4 e PDF. Limites padrão: 10 MiB por foto/documento e 100 MiB por vídeo,
@@ -253,7 +257,8 @@ Caminhos implementados, todos com barra final e sessão de construtora ativa:
   pessoa na interface e indicado no `Location` da criação.
 - `GET /trabalhadores/nome/{nome}/` e `GET /trabalhadores/cargo/{cargo}/` — busca
   parcial, sem distinguir maiúsculas. São filtros e **não** substituem o detalhe por ID.
-- `PATCH` e `DELETE /trabalhadores/{trabalhadorId}/` — manutenção e remoção (UC-20).
+- `PATCH` e `DELETE /trabalhadores/{trabalhadorId}/` — manutenção e remoção, com
+  contrato detalhado em [UC-20](#uc-20--manutenção-e-exclusão-do-trabalhador-ct-96-a-ct-101).
 
 A rota `/obras/{obraId}/trabalhadores` do contrato proposto **não existe**: o
 frontend deve usar os caminhos acima, com a barra final.
@@ -300,6 +305,122 @@ em cenário próprio, com `404` e sem gravação.
 .\.venv\Scripts\python -m pytest tests/trabalhadores/test_persistencia_atlas.py --atlas -v
 ```
 
+## UC-20 — manutenção e exclusão do trabalhador (CT-96 a CT-101)
+
+`PATCH /trabalhadores/{trabalhadorId}/` e `DELETE /trabalhadores/{trabalhadorId}/`
+já existiam; este cartão revisou o contrato das duas e fechou o tratamento das
+referências que sobram quando um cadastro sai. A equipe muda sem recriar a
+pessoa: a correção de dados, a troca de obra e a saída do cadastro são três
+operações distintas. Nenhum fluxo cria senha, token ou sessão de trabalhador.
+
+### Correção parcial dos dados
+
+`PATCH` aceita `nome`, `email`, `telefone`, `cargo` e `obras`, em qualquer
+combinação. **Campo não enviado não é tocado** — nem `ativo`, `data_cadastro` e
+`construtora_id`, que continuam vindo do servidor. A normalização é a mesma do
+cadastro de UC-19, reaproveitada em `validacoes.py`: `nome` e `email` perdem
+espaços nas pontas, `telefone` é gravado somente com dígitos (DDD, 10 ou 11
+dígitos, sem `+55`) e `cargo` é gravado em minúsculas. Uma edição que repete o
+valor atual responde `200` sem alterar nada.
+
+### A lista de obras é substituição, não acréscimo
+
+`obras` é o **conjunto completo** dos vínculos depois da edição: o que não está
+na lista sai. IDs repetidos — inclusive com letras em caixa diferente — colapsam
+em um único vínculo, então não há duplicação. A lista **vazia é permitida**: o
+trabalhador fica temporariamente sem obra, não aparece em nenhuma listagem por
+obra e o detalhe por ID continua respondendo `200`.
+
+Antes de gravar, cada ID é validado como `ObjectId` e cada obra é procurada no
+banco, inclusive a verificação de que pertence à construtora da sessão. Se
+**qualquer** uma faltar, a resposta é `422` com a lista dos ausentes no campo
+`obras` e **nada é gravado** — nem os vínculos válidos, nem os outros campos
+enviados na mesma requisição. Não existe atualização parcial em caso de recusa:
+
+```json
+{ "erro": "Uma ou mais obras não foram encontradas", "obras": ["507f1f77bcf86cd799439011"] }
+```
+
+### Exclusão do cadastro
+
+`DELETE` valida nesta ordem: sessão de construtora ativa, formato do
+identificador, existência e vínculo com a conta autenticada. Excluir o cadastro
+é diferente de retirá-lo de uma obra — o `DELETE` remove a pessoa, e a obra em
+que ela estava permanece intacta.
+
+A confirmação de UC-20 é da interface, não um campo do corpo como em
+[UC-17](#uc-17--excluir-obra-ou-marco-com-os-dependentes-ct-79-a-ct-85-ct-100):
+a tela abre `GET /trabalhadores/{trabalhadorId}/` para nomear quem será
+excluído (nome, cargo e obras) e só envia o `DELETE` se a pessoa confirmar.
+**Cancelar é não enviar o `DELETE`**: a consulta que monta o aviso não grava
+nada, e CT-99 verifica exatamente isso. A resposta de sucesso é `200` com
+
+```json
+{ "mensagem": "Trabalhador excluído com sucesso", "id": "...", "ocorrencias_sem_responsavel": 1 }
+```
+
+### Referências que sobram: responsável de ocorrência (P-10)
+
+Uma ocorrência pode apontar um trabalhador em `responsavel_id`. O tratamento
+adotado separa **atribuição viva** de **autoria histórica**:
+
+| Referência | O que é | Ao remover o cadastro |
+| --- | --- | --- |
+| `responsavel_id` da ocorrência | atribuição viva: quem responde pelo problema | vira `null`, e `responsavel_anterior` guarda `id`, `nome`, `cargo` e `removido_em` |
+| `autor` da ocorrência e de cada aceitação | autoria da decisão registrada | **nunca é tocada**; é a conta da construtora, nunca o trabalhador, que não autentica |
+| a própria ocorrência, suas evidências e aceitações | registro do problema da obra | permanecem; o trabalhador não leva nada consigo |
+
+As duas escritas — zerar a atribuição e remover o cadastro — acontecem na
+**mesma transação**, então não existe janela com a ocorrência apontando para um
+cadastro que já saiu, nem cadastro removido com a atribuição intacta. Se uma
+ocorrência passar a apontar a pessoa durante a remoção, a transação é desfeita e
+a resposta é `409`; repetir o `DELETE` resolve. Quando ninguém aponta a pessoa, a
+remoção é um `delete_one` só — um documento já é atômico e não há transação.
+`ocorrencias_sem_responsavel` na resposta diz quantas ocorrências ficaram sem
+responsável, para a interface avisar quem precisa reatribuir.
+
+**Retirar só o vínculo de obra não desfaz a atribuição.** Um `PATCH` com
+`obras: []` mantém `responsavel_id` como estava: a ausência da obra pode ser
+temporária e apagar quem responde seria perda de informação. Só a remoção do
+cadastro reescreve a atribuição.
+
+A política está registrada como **proposta** em
+[P-10](docs/07-plano-e-decisoes.md#pendências-que-podem-mudar-o-contrato), junto
+de P-08 e P-09; até o grupo confirmar, `responsavel_anterior` não deve ser
+tratado como contrato final.
+
+### Exclusão de obra não elimina o vínculo com outra
+
+A cascata de UC-17 reutiliza a operação de retirada de vínculo
+(`desvincular_obra` em `app/trabalhadores/repository.py`): excluir a obra A tira
+apenas A da lista `obras`, preservando o cadastro, o estado `ativo`, a ligação
+com a construtora e o vínculo com a obra B. A contagem aparece como
+`trabalhadores_desvinculados` no corpo da confirmação de UC-17. A política é
+P-09, também registrada como proposta, e CT-100 roda junto da cascata.
+
+### Respostas
+
+| Situação | Resposta |
+| --- | --- |
+| Edição aplicada, inclusive com `obras: []` | `200` com `mensagem` e `id` |
+| Exclusão aplicada | `200` com `mensagem`, `id` e `ocorrencias_sem_responsavel` |
+| JSON vazio, campo desconhecido, corpo malformado ou campo em formato inválido | `422` com a mensagem do campo; nada gravado |
+| Obra da lista inexistente ou de outra construtora | `422` com `obras` listando os ausentes; nada gravado |
+| Identificador fora do formato `ObjectId` | `400`, dizendo se é o ID da obra ou do trabalhador |
+| Trabalhador inexistente, já excluído ou de outra construtora | `404` `{"erro": "Trabalhador não encontrado"}` |
+| Ocorrência passou a apontar a pessoa durante a remoção | `409`; nada removido, repetir o `DELETE` |
+| Falha no banco | `503`, sem detalhe do driver e sem gravação parcial |
+| Requisição sem sessão válida | `401`, sem alterar nem expor cadastro |
+
+```powershell
+# CT-96 a CT-99 e a política P-10, com banco em memória:
+.\.venv\Scripts\python -m pytest tests/trabalhadores/test_manutencao.py -v
+# CT-101: edição e exclusão relidas em processo e conexão novos:
+.\.venv\Scripts\python -m pytest tests/trabalhadores/test_persistencia_atlas.py --atlas -v
+# CT-100 roda com a cascata de UC-17:
+.\.venv\Scripts\python -m pytest tests/test_exclusao_cascata.py -k ct100 -v
+```
+
 ## Executar os testes
 
 Na pasta `backend-pe03`, usando PowerShell:
@@ -340,6 +461,7 @@ tests/
 │   ├── test_cadastro.py         # CT-90 a CT-93: cadastro, validações e ID da obra
 │   ├── test_consultas.py        # CT-94: listagem por obra, detalhe por ID e filtros
 │   ├── test_rotas.py            # CT-95 e UC-20: edição, exclusão e sessão obrigatória
+│   ├── test_manutencao.py      # CT-96 a CT-99 e P-10: responsável de ocorrência
 │   ├── test_persistencia_atlas.py  # CT-94 com conexão e processo novos
 │   └── test_vinculo_construtora.py # isolamento entre construtoras
 ├── seguranca/
@@ -1103,7 +1225,11 @@ Enquanto isso, CT-82 e CT-100 não devem ser tratados como contrato final:
   seja uma linha e não uma reescrita. Qualquer das duas sai sem deixar órfão.
 - **Trabalhador** nunca é excluído por um vínculo removido: ao excluir a obra A,
   apenas o vínculo com A sai da lista `obras`. Cadastro, estado ativo e o
-  vínculo com a obra B permanecem, assim como a ligação com a construtora.
+  vínculo com a obra B permanecem, assim como a ligação com a construtora. A
+  operação de retirada (`desvincular_obra`) é a mesma reutilizada por UC-20.
+- O caminho inverso — remover o **cadastro** do trabalhador — é UC-20 e tem
+  política própria em P-10: a ocorrência fica sem responsável, sem perder a
+  autoria das decisões já registradas.
 
 ### Consistência no Atlas e pendências duráveis no Cloudinary
 

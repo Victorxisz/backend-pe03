@@ -105,6 +105,76 @@ def test_cadastro_edicao_e_exclusao_persistem_em_nova_conexao(
         assert banco.tbl_obras.find_one({"_id": obra_existente["_id"]}) == obra_existente
 
 
+def test_ct101_edicao_e_exclusao_sobrevivem_ao_reinicio_sem_criar_login(
+    client, headers, database, trabalhador, obra_existente
+):
+    """CT-101: o cadastro removido continua ausente e nunca teve acesso próprio."""
+    # Preparação: cadastro e correção dos dados, como em CT-96.
+    criado = client.post(f"/trabalhadores/obra/{obra_existente['_id']}/",
+                         headers=headers, json=trabalhador)
+    assert criado.status_code == 201
+    identificador = criado.get_json()["id"]
+    caminho = f"/trabalhadores/{identificador}/"
+    assert client.patch(caminho, headers=headers,
+                        json={"cargo": " MESTRE de Obras ", "obras": []}).status_code == 200
+
+    # Execução: a edição é relida em outro processo, antes e depois do DELETE.
+    editado = reler_em_novo_processo(database, caminho)
+    assert client.delete(caminho, headers=headers).status_code == 200
+    removido = reler_em_novo_processo(database, caminho)
+    listagem = reler_em_novo_processo(
+        database, f"/trabalhadores/obra/{obra_existente['_id']}/")
+
+    # Verificação
+    assert editado["status"] == 200
+    assert editado["body"]["cargo"] == "mestre de obras"
+    assert editado["body"]["obras"] == []
+    assert editado["body"]["email"] == trabalhador["email"]
+    assert removido["status"] == 404
+    assert removido["body"] == {"erro": "Trabalhador não encontrado"}
+    assert listagem["status"] == 200 and listagem["body"] == []
+    with conectar_mongo() as fresh:
+        banco = BancoDaExecucao(fresh[database.name], database.prefixo)
+        assert banco.tbl_trabalhadores.find_one({"_id": ObjectId(identificador)}) is None
+        # Nenhum fluxo de trabalhador cria conta, senha ou sessão.
+        assert banco.tbl_construtora.count_documents({"email": trabalhador["email"]}) == 0
+        assert banco.tbl_sessoes_revogadas.count_documents({}) == 0
+        assert "tbl_trabalhadores" not in banco.list_collection_names() or not list(
+            banco.tbl_trabalhadores.find({"senha_hash": {"$exists": True}}))
+
+
+def test_responsavel_removido_sai_da_ocorrencia_em_nova_conexao(
+    client, headers, database, account, pessoa, obra_existente
+):
+    """P-10 no banco real: a atribuição sai, a ocorrência e a autoria ficam."""
+    # Preparação
+    ocorrencia = client.post(
+        f"/obras/{obra_existente['_id']}/ocorrencias", headers=headers,
+        json={"titulo": "Infiltração", "descricao": "Água na parede",
+              "estado": "aberta", "responsavel_id": str(pessoa["_id"])},
+    )
+    assert ocorrencia.status_code == 201
+    ocorrencia_id = ocorrencia.get_json()["id"]
+
+    # Execução
+    exclusao = client.delete(f"/trabalhadores/{pessoa['_id']}/", headers=headers)
+
+    # Verificação
+    assert exclusao.status_code == 200
+    assert exclusao.get_json()["ocorrencias_sem_responsavel"] == 1
+    with conectar_mongo() as fresh:
+        banco = BancoDaExecucao(fresh[database.name], database.prefixo)
+        salva = banco.tbl_ocorrencias.find_one({"_id": ObjectId(ocorrencia_id)})
+        assert salva is not None and salva["responsavel_id"] is None
+        assert salva["responsavel_anterior"]["id"] == str(pessoa["_id"])
+        assert salva["autor"] == str(account["_id"])
+        assert banco.tbl_trabalhadores.find_one({"_id": pessoa["_id"]}) is None
+    relido = reler_em_novo_processo(database, f"/ocorrencias/{ocorrencia_id}")
+    assert relido["status"] == 200
+    assert relido["body"]["responsavel_id"] is None
+    assert relido["body"]["responsavel_anterior"]["nome"] == pessoa["nome"]
+
+
 def test_rejeicao_de_vinculo_inexistente_preserva_banco_real(
     client, headers, database, pessoa
 ):
