@@ -109,6 +109,146 @@ Quando a modalidade for `data_exata`, `entrega` contém somente `modalidade` e
 o fim não pode ser anterior ao início (o mesmo dia é aceito). Todas as datas
 devem ser dias existentes em `AAAA-MM-DD`. Não é permitido misturar as modalidades.
 
+## Atualização de ocorrências — UC-15
+
+`PATCH /ocorrencias/{ocorrenciaId}` exige sessão de construtora ativa e
+`Content-Type: application/json`. O comando separa a edição descritiva da
+transição. A `versao` inteira não negativa vem da consulta atual da ocorrência:
+
+```json
+{
+  "versao": 0,
+  "alteracoes": {"titulo": "Infiltração na fachada"},
+  "transicao": {"estado": "resolvida", "motivo": "Reparo e inspeção concluídos"}
+}
+```
+
+Informe `alteracoes`, `transicao` ou ambos. `alteracoes` aceita somente os campos
+enviados de `titulo`, `descricao`, `marco_id` e `responsavel_id`; deve ser um
+objeto não vazio. Título e descrição exigem texto preenchido. Os vínculos
+opcionais aceitam `null` ou texto vazio para retirada. Marco informado deve
+pertencer à obra; responsável deve ser trabalhador cadastrado, vinculado à
+mesma obra e compatível com a construtora autenticada. Obra, autoria, registro,
+mídias, aceitações e histórico não são editáveis por este comando.
+
+`transicao` exige `estado` e `motivo` preenchido. Os únicos estados permitidos
+são `aberta`, `resolvida` e `sem solução`; qualquer mudança entre eles é
+permitida, inclusive resolução posterior de ocorrência aceita e reabertura.
+Estado não pode ser enviado em `alteracoes` nem na raiz. Autoria, ID e instante
+UTC do evento são gerados pelo servidor. Edição descritiva não muda estado nem
+acrescenta transição. Pedidos válidos sem mudança efetiva retornam o registro
+atual sem novo evento ou incremento de versão; a versão ainda deve coincidir.
+
+Sucesso retorna `200` com a ocorrência atualizada. `GET /ocorrencias/{id}` e a
+lista da obra incluem `versao`, `episodio` e `historico_estados`, em ordem de
+gravação. Cada evento possui `id`, `estado_anterior`, `novo_estado`, `motivo`,
+`autor`, `instante`, `episodio_anterior` e `episodio`. A ordem do array preserva
+a sequência mesmo quando os instantes são iguais. Registros anteriores à UC-15
+começam na versão e episódio `0`, sem inventar eventos históricos.
+
+Estado, edição e append do evento são persistidos em **uma atualização atômica**
+de `tbl_ocorrencias`, condicionada ao estado e à versão lidos. Cada alteração
+efetiva incrementa `versao`. Versão desatualizada ou disputa durante a gravação
+retorna `409`; o cliente deve consultar novamente e reapresentar sua decisão.
+Não há sobrescrita silenciosa nem gravação separada no histórico da obra.
+`episodio` incrementa apenas numa transição de estado; é um identificador de
+contexto da decisão, não um novo estado de negócio.
+
+`aceitacoes` continua sendo o histórico completo e imutável de decisões da
+UC-16. Novas aceitações recebem o `episodio` lido e são anexadas somente se
+esse episódio ainda estiver em `sem solução`. `aceitacoes_do_estado_atual`
+contém somente as decisões desse episódio enquanto o estado for `sem solução`;
+fica vazio após resolver/reabrir ou retornar a `sem solução` em outro episódio.
+Aceitações legadas sem episódio são do episódio `0`. Reenviar a mesma chave
+`Idempotency-Key` com os mesmos textos devolve a decisão original, sem aceitar
+um episódio novo; outro conteúdo com a mesma chave retorna conflito.
+As consultas e o registro de aceitação verificam também o contexto da obra.
+
+IDs malformados retornam `400`; ocorrência, obra ou vínculo não encontrado ou
+inacessível, `404`; formato de corpo não suportado, `415`; dados inválidos,
+`422`; falha de banco, `503`. Uma rejeição do banco mantém todos os valores
+anteriores. Em timeout de resultado desconhecido, consulte antes de tentar
+novamente: a atualização inteira pode ter sido confirmada; estado e trilha
+nunca são gravados separadamente. Os erros não anunciam sucesso.
+
+Testes CT-69 a CT-73 e CT-03:
+`python -m pytest tests/test_atualizacao_ocorrencias.py -q`.
+Os cenários `-m atlas --atlas` comprovam a disputa entre duas requisições no
+MongoDB real e a releitura de transições e aceitações em outro processo, usando
+somente as coleções temporárias isoladas da execução.
+
+## Aceitar ocorrência sem solução — UC-16
+
+`POST /ocorrencias/{ocorrenciaId}/aceitacoes` recebe `application/json` e exige
+sessão de construtora ativa. A ocorrência e seu contexto devem existir e estar
+acessíveis. Ocorrência sem vínculo com obra também retorna `404`, tanto no
+detalhe quanto no registro e na consulta de aceitações. O corpo aceita somente:
+
+```json
+{
+  "justificativa": "Limitação técnica constatada; manteremos acompanhamento.",
+  "medida_compensatoria": null
+}
+```
+
+`justificativa` deve ser texto não vazio. `medida_compensatoria` pode ser omitida
+ou `null`; quando informada como texto, deve estar preenchida. Os textos são
+aparados. ID da aceitação, autoria da conta autenticada, instante UTC em `data`
+e episódio são gerados pelo servidor; campos enviados para forjá-los são
+rejeitados. Uma aceitação é uma nova decisão, sem mudar `estado`, título,
+descrição, versão, mídia ou histórico de transições da ocorrência.
+
+O backend usa a ocorrência lida na validação como contexto esperado da escrita.
+A aceitação é anexada atomicamente em `aceitacoes`, condicionada a `estado:
+sem solução` e ao mesmo `episodio`. Se uma transição acontecer nesse intervalo,
+inclusive resolver e retornar a `sem solução`, a decisão antiga não é gravada
+no episódio novo. Uma disputa pode terminar com a aceitação antes da resolução,
+preservada como histórica, ou com `409` após a resolução. Nenhum quarto estado
+é criado. Novas decisões em `aberta` ou `resolvida` retornam `409`.
+
+**Reenvio:** a interface deve gerar uma `Idempotency-Key` para cada confirmação
+explícita e reutilizá-la em todo retry, inclusive após timeout ou reinício.
+Use UUID ou outra chave de 1 a 128 caracteres ASCII, começando por letra ou
+número; os demais caracteres podem incluir `.`, `_`, `:` e `-`. Cabeçalho
+presente mas vazio ou inválido retorna `422`, sem criar uma decisão.
+
+A primeira gravação retorna `201`. Mesma chave, mesmos textos normalizados e
+mesma autoria retornam `200` com a decisão original, incluindo o mesmo ID e
+instante, sem duplicar. Mesma chave com outro conteúdo retorna `409`; nenhuma
+aceitação anterior é sobrescrita. Uma decisão nova exige chave nova. Sem o
+cabeçalho, cada POST válido representa uma decisão nova, inclusive se o texto
+for igual; não use essa modalidade para retries automáticos.
+
+Repetir uma chave antiga após resolver ou reabrir devolve a decisão histórica,
+sem aceitar o estado atual nem um episódio novo. Isso é uma consulta do
+resultado anterior, sem escrita; uma chave nova ainda exige estado atual
+`sem solução`. O filtro de chave na própria atualização do documento impede
+duplicação também em requisições simultâneas. Chaves distintas preservam as
+duas decisões válidas em vez de substituir uma pela outra.
+
+`GET /ocorrencias/{ocorrenciaId}/aceitacoes` retorna um array de decisões em
+ordem de gravação, vazio quando nenhuma foi registrada. Cada nova aceitação
+contém `id`, `justificativa`, `autor`, `data`, `episodio` e, quando informados,
+`medida_compensatoria` e `chave_reenvio`. O POST inclui `Location` para essa
+consulta. Registros antigos sem ID/episódio mantêm seus dados originais; não se
+inventam autoria ou instantes. O detalhe da ocorrência também devolve todas
+as `aceitacoes` históricas e, separadamente, `aceitacoes_do_estado_atual`.
+Resolver/reabrir preserva o array histórico, sem reaplicar decisões antigas.
+
+IDs inválidos retornam `400`; ocorrência/contexto inexistente ou inacessível,
+`404`; estado/episódio incompatível ou chave usada com outro conteúdo, `409`;
+formato não suportado, `415`; campos/chave inválidos, `422`; banco indisponível,
+`503`. A leitura com falha não devolve lista vazia. Um timeout pode ocorrer
+depois da gravação; reenviar a mesma chave confirma o resultado sem duplicar.
+Respostas são protegidas por sessão e `Cache-Control: private, no-store`.
+
+CT-74 a CT-78, CT-73, autenticação e falhas:
+`python -m pytest tests/test_aceitacao_ocorrencias.py -q`.
+Persistência em outro processo e concorrência no MongoDB real:
+`python -m pytest tests/test_aceitacao_ocorrencias.py -m atlas --atlas -q`.
+Os testes reais usam e removem apenas as coleções temporárias isoladas da
+execução; UC-16 não precisa de chamadas ao serviço de mídia.
+
 ## Segurança e configuração
 
 - Manter URI do Atlas, segredos da sessão, credenciais da API externa e credenciais de AWS em variáveis de ambiente do servidor; nunca no código React, no Git ou em exemplos reais.

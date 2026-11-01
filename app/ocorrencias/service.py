@@ -1,22 +1,20 @@
 """Cadastro, consulta e aceitação formal das ocorrências de uma obra."""
 
-from datetime import datetime, timezone
-
 from bson import ObjectId
-from bson.errors import InvalidId
 from pymongo.errors import PyMongoError, WriteError
 
 from app.avancos.acesso_midias import midia_para_dict
 from app.avancos.midias import ServicoMidias, ResultadoPersistenciaIndeterminado
 from app.avancos.operacoes import OperacaoUpload
-from app.dominio.comum import ErroDominio
+from app.dominio.comum import ErroDominio, Relogio
 from app.serializacao import serializar
 from .repository import (
+    ChaveReenvioIncompativel,
     EstadoOcorrenciaIncompativel,
     OcorrenciaNaoEncontrada,
     RepositorioOcorrencias,
 )
-from .validacoes import validar_aceitacao, validar_cadastro
+from .validacoes import validar_aceitacao, validar_cadastro, validar_atualizacao, validar_chave_reenvio
 
 
 class ErroOcorrencia(Exception):
@@ -28,7 +26,7 @@ class ErroOcorrencia(Exception):
 class ServicoOcorrencias:
     def __init__(self, repositorio=None, relogio=None):
         self.repositorio = repositorio or RepositorioOcorrencias()
-        self.relogio = relogio
+        self.relogio = relogio if relogio is not None else Relogio()
 
     def _id(self, valor, campo):
         if not isinstance(valor, str) or not ObjectId.is_valid(valor):
@@ -54,6 +52,13 @@ class ServicoOcorrencias:
             "titulo", "descricao", "estado", "obra_id", "marco_id", "responsavel_id", "autor", "data_registro")}
         item["id"] = str(documento["_id"])
         item["aceitacoes"] = documento.get("aceitacoes", [])
+        item["versao"] = documento.get("versao", 0)
+        item["episodio"] = documento.get("episodio", 0)
+        item["historico_estados"] = documento.get("historico_estados", [])
+        item["aceitacoes_do_estado_atual"] = [
+            aceitacao for aceitacao in item["aceitacoes"]
+            if documento.get("estado") == "sem solução"
+            and aceitacao.get("episodio", 0) == item["episodio"]]
         item["midias"] = [{**midia_para_dict(midia),
                           "conteudo": f"/midias/{midia['_id']}/conteudo"}
                          for midia in documento.get("midias", [])]
@@ -73,7 +78,7 @@ class ServicoOcorrencias:
         except ErroDominio as erro:
             raise ErroOcorrencia(str(erro), 422, erro.campos) from erro
         documento = {"_id": ObjectId(), "obra_id": obra_id, "autor": autor,
-                     "data_registro": self.relogio.agora() if self.relogio else datetime.now(timezone.utc),
+                     "data_registro": self.relogio.agora(),
                      **{campo: dados[campo] for campo in ("titulo", "descricao", "estado")},
                      "marco_id": None, "responsavel_id": None, "aceitacoes": [], "midias": []}
         if dados.get("marco_id") not in (None, ""):
@@ -133,36 +138,75 @@ class ServicoOcorrencias:
         self._contexto(item, autor)
         return self._representar(item)
 
-    def aceitar(self, ocorrencia_id, dados, autor, chave_reenvio=None):
+    def atualizar(self, ocorrencia_id, dados, autor):
+        identificador = self._id(ocorrencia_id, "ocorrencia_id")
         try:
-            validar_aceitacao(dados)
+            alteracoes, transicao = validar_atualizacao(dados)
         except ErroDominio as erro:
             raise ErroOcorrencia(str(erro), 422, erro.campos) from erro
+        anterior = self.repositorio.buscar(identificador)
+        if anterior is None:
+            raise ErroOcorrencia("Ocorrência não encontrada", 404, ["ocorrencia_id"])
+        self._contexto(anterior, autor)
+        if anterior.get("versao", 0) != dados["versao"]:
+            raise ErroOcorrencia("A ocorrência foi alterada; consulte novamente antes de salvar", 409, ["versao"])
+        for campo in ("marco_id", "responsavel_id"):
+            if campo in alteracoes:
+                alteracoes[campo] = (None if alteracoes[campo] in (None, "")
+                                     else self._id(alteracoes[campo], campo))
+        self._contexto({**anterior, **alteracoes}, autor)
+        if alteracoes.get("responsavel_id") is not None:
+            self._responsavel(alteracoes["responsavel_id"], anterior["obra_id"], autor)
+        campos = {campo: valor for campo, valor in alteracoes.items() if anterior.get(campo) != valor}
+        evento = None
+        if transicao is not None and transicao["estado"] != anterior["estado"]:
+            instante = self.relogio.agora()
+            evento = {"id": str(ObjectId()), "estado_anterior": anterior["estado"],
+                      "novo_estado": transicao["estado"], "motivo": transicao["motivo"],
+                      "autor": autor, "instante": instante,
+                      "episodio_anterior": anterior.get("episodio", 0),
+                      "episodio": anterior.get("episodio", 0) + 1}
+            campos["estado"] = transicao["estado"]
+        if not campos:
+            return self._representar(anterior)
+        salvo = self.repositorio.atualizar(anterior, campos, evento)
+        if salvo is None:
+            raise ErroOcorrencia("A ocorrência foi alterada; consulte novamente antes de salvar", 409, ["versao"])
+        return self._representar(salvo)
+
+    def aceitar(self, ocorrencia_id, dados, autor, chave_reenvio=None):
+        oid = self._id(ocorrencia_id, "ocorrenciaId")
         try:
-            oid = ObjectId(ocorrencia_id)
-        except (InvalidId, TypeError):
-            raise ErroOcorrencia("ID da ocorrência inválido", 400, ["ocorrenciaId"]) from None
+            validar_aceitacao(dados)
+            validar_chave_reenvio(chave_reenvio)
+        except ErroDominio as erro:
+            raise ErroOcorrencia(str(erro), 422, erro.campos) from erro
         if not isinstance(autor, str) or not autor:
             raise ErroOcorrencia("Conta autenticada inválida", 401)
-        agora = self.relogio.agora() if self.relogio else datetime.now(timezone.utc)
-        documento = {"justificativa": dados["justificativa"].strip(), "autor": autor, "data": agora}
-        if dados.get("medida_compensatoria") is not None:
-            documento["medida_compensatoria"] = dados["medida_compensatoria"].strip()
-        try:
-            salvo, repetida = self.repositorio.aceitar(oid, documento, chave_reenvio)
-        except OcorrenciaNaoEncontrada:
-            raise ErroOcorrencia("Ocorrência não encontrada", 404, ["ocorrenciaId"]) from None
-        except EstadoOcorrenciaIncompativel:
-            raise ErroOcorrencia("Somente ocorrência sem solução pode ser aceita", 409, ["estado"]) from None
-        item = serializar(salvo.get("aceitacoes", [])[-1])
-        return item, repetida
-
-    def listar_aceitacoes(self, ocorrencia_id):
-        try:
-            oid = ObjectId(ocorrencia_id)
-        except (InvalidId, TypeError):
-            raise ErroOcorrencia("ID da ocorrência inválido", 400, ["ocorrenciaId"]) from None
         ocorrencia = self.repositorio.buscar(oid)
         if ocorrencia is None:
             raise ErroOcorrencia("Ocorrência não encontrada", 404, ["ocorrenciaId"])
+        self._contexto(ocorrencia, autor)
+        agora = self.relogio.agora()
+        documento = {"id": str(ObjectId()), "justificativa": dados["justificativa"].strip(), "autor": autor, "data": agora}
+        if dados.get("medida_compensatoria") is not None:
+            documento["medida_compensatoria"] = dados["medida_compensatoria"].strip()
+        try:
+            salvo, repetida = self.repositorio.aceitar(oid, documento, chave_reenvio, esperado=ocorrencia)
+        except OcorrenciaNaoEncontrada:
+            raise ErroOcorrencia("Ocorrência não encontrada", 404, ["ocorrenciaId"]) from None
+        except EstadoOcorrenciaIncompativel:
+            raise ErroOcorrencia("A ocorrência deve continuar sem solução no mesmo episódio; consulte novamente", 409, ["estado"]) from None
+        except ChaveReenvioIncompativel:
+            raise ErroOcorrencia("Esta chave de reenvio já identifica outra decisão; use uma nova chave", 409, ["Idempotency-Key"]) from None
+        item = serializar(salvo.get("aceitacoes", [])[-1])
+        return item, repetida
+
+    def listar_aceitacoes(self, ocorrencia_id, autor=None):
+        oid = self._id(ocorrencia_id, "ocorrenciaId")
+        ocorrencia = self.repositorio.buscar(oid)
+        if ocorrencia is None:
+            raise ErroOcorrencia("Ocorrência não encontrada", 404, ["ocorrenciaId"])
+        if autor is not None:
+            self._contexto(ocorrencia, autor)
         return serializar(ocorrencia.get("aceitacoes", []))

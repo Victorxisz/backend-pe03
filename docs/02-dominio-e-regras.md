@@ -94,4 +94,4 @@ Estes nomes descrevem fatos que devem aparecer no histórico; **não exigem even
 
 ## Organização implementada
 
-Ver [modelo com POO e decisões de 30/10](13-modelo-poo.md). Ao excluir marco, suas ocorrências também são excluídas; responsáveis são trabalhadores. Os fluxos de ocorrência e exclusão completa continuam pendentes de implementação.
+Ver [modelo com POO e decisões de 30/10](13-modelo-poo.md). Ao excluir marco, suas ocorrências também são excluídas; responsáveis são trabalhadores. Cadastro, edição, transições e aceitações de ocorrência estão implementados; a exclusão completa continua pendente. O [contrato UC-15](05-arquitetura-e-contratos.md#atualização-de-ocorrências--uc-15) distingue aceitações históricas das decisões do episódio atual.

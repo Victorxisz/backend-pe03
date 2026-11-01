@@ -1,8 +1,7 @@
 """Rotas de cadastro, consulta e aceitação de ocorrências."""
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, jsonify, request
 from flask_jwt_extended import get_jwt_identity
-from pymongo.errors import PyMongoError
 
 from app.auth.permissions import sessao_obrigatoria
 from app.avancos.midias import ErroMidia, ResultadoPersistenciaIndeterminado
@@ -69,29 +68,27 @@ def consultar_ocorrencia(ocorrencia_id):
     return jsonify(servico.consultar(ocorrencia_id, get_jwt_identity()))
 
 
+@ocorrencias_bp.patch("/ocorrencias/<string:ocorrencia_id>")
+@sessao_obrigatoria
+def atualizar_ocorrencia(ocorrencia_id):
+    if not request.is_json:
+        raise ErroOcorrencia("Use application/json para atualizar a ocorrência", 415, ["corpo"])
+    return jsonify(servico.atualizar(ocorrencia_id, request.get_json(silent=True), get_jwt_identity()))
+
+
 @ocorrencias_bp.post("/ocorrencias/<string:ocorrenciaId>/aceitacoes")
 @sessao_obrigatoria
 def registrar_aceitacao(ocorrenciaId):
-    try:
-        item, repetida = servico.aceitar(
-            ocorrenciaId, request.get_json(silent=True), get_jwt_identity(),
-            request.headers.get("Idempotency-Key"),
-        )
-    except ErroOcorrencia as erro:
-        return _erro(erro)
-    except PyMongoError:
-        current_app.logger.exception("Falha ao registrar aceitação da ocorrência")
-        return jsonify(mensagem="Não foi possível registrar a aceitação"), 500
-    return jsonify(item), 200 if repetida else 201
+    if not request.is_json:
+        raise ErroOcorrencia("Use application/json para registrar a aceitação", 415, ["corpo"])
+    item, repetida = servico.aceitar(
+        ocorrenciaId, request.get_json(silent=True), get_jwt_identity(),
+        request.headers.get("Idempotency-Key"),
+    )
+    return jsonify(item), 200 if repetida else 201, {"Location": request.path}
 
 
 @ocorrencias_bp.get("/ocorrencias/<string:ocorrenciaId>/aceitacoes")
 @sessao_obrigatoria
 def consultar_aceitacoes(ocorrenciaId):
-    try:
-        return jsonify(servico.listar_aceitacoes(ocorrenciaId)), 200
-    except ErroOcorrencia as erro:
-        return _erro(erro)
-    except PyMongoError:
-        current_app.logger.exception("Falha ao consultar aceitações da ocorrência")
-        return jsonify(mensagem="Não foi possível consultar as aceitações"), 500
+    return jsonify(servico.listar_aceitacoes(ocorrenciaId, get_jwt_identity())), 200
