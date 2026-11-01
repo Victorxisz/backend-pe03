@@ -63,6 +63,11 @@ def _representar(documento):
     return representacao
 
 
+def representar_publicado(documento):
+    """Mesma leitura da prévia, reaproveitada pelo painel simulado de UC-21."""
+    return _representar(documento)
+
+
 def consultar_previa(obra_id):
     identificador = _id_obra(obra_id)
     if repository.buscar_obra(identificador) is None:

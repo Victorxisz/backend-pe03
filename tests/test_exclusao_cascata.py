@@ -244,7 +244,8 @@ def test_ct79_aviso_identifica_obra_e_extensao_da_perda(client, headers, databas
     assert corpo["alvo"]["tipo"] == "obra" and corpo["alvo"]["id"] == str(cenario.obra)
     assert corpo["perda"] == {
         "marcos": 2, "avancos": 2, "publicacoes": 1, "versoes": 1, "exemplos_simulados": 1,
-        "ocorrencias": 1, "aceitacoes": 1, "midias": 6, "mudancas": 1, "estados": 1,
+        "feedbacks_simulados": 0, "ocorrencias": 1, "aceitacoes": 1, "midias": 6,
+        "mudancas": 1, "estados": 1,
         "dependencias": 1, "historico": 2, "trabalhadores_desvinculados": 1,
     }
     assert snapshot(database) == antes
@@ -456,7 +457,8 @@ def test_ct82_aviso_do_marco_mostra_dependencia_e_nao_remove_nada(
                              "obra_id": str(cenario.obra)}
     assert corpo["perda"] == {
         "avancos": 2, "publicacoes": 1, "versoes": 1, "exemplos_simulados": 1,
-        "ocorrencias": 1, "aceitacoes": 1, "midias": 6, "historico": 1, "dependencias": 1,
+        "feedbacks_simulados": 0, "ocorrencias": 1, "aceitacoes": 1, "midias": 6,
+        "historico": 1, "dependencias": 1,
     }
     assert snapshot(database) == antes
 

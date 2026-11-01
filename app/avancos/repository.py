@@ -8,6 +8,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+from app.simulados.repository import remover_dos_avancos as remover_simulados_dos_avancos
+
 from .revisoes import ConflitoRascunho, filtro_revisao, registrar_alteracao
 from .rascunhos_repository import RepositorioRascunhos, diarios_de_limpeza
 
@@ -197,6 +199,8 @@ def finalizar_exclusao(avanco_id, token):
     # se alguma escrita falhar, inclusive depois de remover os metadados.
     db.banco_dados["tbl_midias"].delete_many({"avanco_id": avanco_id})
     db.banco_dados["tbl_limpezas_midias"].delete_many({"avanco_id": avanco_id})
+    # UC-18 com UC-21: o exemplo simulado ligado a esta atualização sai com ela.
+    remover_simulados_dos_avancos([avanco_id])
     return db.banco_dados["tbl_avancos"].delete_one(filtro).deleted_count == 1
 
 
@@ -310,7 +314,11 @@ def consultar_midias_de_avancos(avancos, *, session=None):
 
 
 def remover_avancos(avancos, *, session=None):
-    """Remove avanços com mídias, tarefas de limpeza e diários de upload."""
+    """Remove avanços com mídias, tarefas de limpeza e diários de upload.
+
+    Os exemplos simulados dependentes saem na cascata do alvo (obra ou marco),
+    que também remove os exemplos ligados ao próprio alvo.
+    """
     ids = list(avancos)
     if not ids:
         return

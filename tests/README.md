@@ -14,6 +14,11 @@ UC-17 remove obra ou marco com marcos, avanços, mídias, ocorrências, históri
 vínculos de trabalhador. Ele traz o próprio cenário e o provedor simulado, e usa
 `transacao_local` nos casos que dependem da transação.
 
+`test_dados_simulados.py` também fica na raiz: UC-21 atravessa obras, marcos,
+avanços, publicação, correção e as duas cascatas de exclusão. Ele usa a carga de
+`scripts/carregar_dados_demonstracao.py` em vez de semear o acervo simulado por
+conta própria, com provedor simulado e `transacao_local` nos casos de exclusão.
+
 ## Executar
 
 ```powershell

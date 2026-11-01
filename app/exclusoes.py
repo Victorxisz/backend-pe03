@@ -292,6 +292,11 @@ def resumo_dos_avancos(avancos):
     }
 
 
+def resumo_dos_simulados(feedbacks):
+    """Exemplos pré-carregados de UC-21 que só existem no alvo removido."""
+    return {"feedbacks_simulados": len(feedbacks)}
+
+
 def resumo_das_ocorrencias(ocorrencias):
     return {
         "ocorrencias": len(ocorrencias),

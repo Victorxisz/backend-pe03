@@ -1,8 +1,9 @@
 """Cascata de exclusão de um marco (UC-17, F-19, RN-09, CA-09).
 
 O marco leva seus avanços, publicações, versões, mídias, a trilha de mudanças
-de estado e os exemplos simulados desses avanços. A obra e os outros marcos
-permanecem: deles sai apenas o vínculo de dependência que apontava para o alvo.
+de estado e os exemplos simulados de UC-21 ligados ao marco ou às suas
+atualizações. O exemplo ligado à obra permanece, porque a obra permanece: dela
+e dos outros marcos sai apenas o vínculo de dependência que apontava para o alvo.
 
 Política pendente de confirmação (ver `docs/07-plano-e-decisoes.md`, P-08): a
 ocorrência vinculada ao marco é removida com ele. É a proposta implementada,
@@ -21,10 +22,12 @@ from app.exclusoes import (
     exigir_confirmacao,
     resumo_das_ocorrencias,
     resumo_dos_avancos,
+    resumo_dos_simulados,
     retomar_pendencia,
 )
 from app.historico.repository import RepositorioHistorico
 from app.ocorrencias.repository import RepositorioOcorrencias
+from app.simulados.repository import RepositorioSimulados, filtro_do_conjunto
 
 from . import repository
 
@@ -33,11 +36,13 @@ OCORRENCIAS_NA_CASCATA = True
 
 
 class ServicoExclusaoMarco:
-    def __init__(self, repositorio=None, avancos=None, ocorrencias=None, historico=None):
+    def __init__(self, repositorio=None, avancos=None, ocorrencias=None, historico=None,
+                 simulados=None):
         self.repositorio = repositorio if repositorio is not None else repository
         self.avancos = avancos if avancos is not None else avancos_repository
         self.ocorrencias = ocorrencias if ocorrencias is not None else RepositorioOcorrencias()
         self.historico = historico if historico is not None else RepositorioHistorico()
+        self.simulados = simulados if simulados is not None else RepositorioSimulados()
 
     def excluir(self, marco_id, dados, autor):
         """Valida sessão, alvo, vínculo com a obra e confirmação antes de remover."""
@@ -70,22 +75,31 @@ class ServicoExclusaoMarco:
             elo for elo in obra.get("dependencias_marcos", [])
             if marco_id in (elo.get("marco_id"), elo.get("depende_de_id"))
         ]
+        # UC-21: sai o exemplo do marco e o das suas atualizações (CT-106).
+        feedbacks = self.simulados.listar_do_conjunto(
+            filtro_do_conjunto(marcos=[marco_id], avancos=ids_avancos))
 
         perda = {
             **resumo_dos_avancos(avancos),
             **resumo_das_ocorrencias(ocorrencias),
+            **resumo_dos_simulados(feedbacks),
             "midias": len(midias) + len(evidencias),
             "historico": len(eventos),
             "dependencias": len(vinculos),
         }
         ids = (marco_id, *ids_avancos, *ids_ocorrencias,
                *(midia["_id"] for midia in midias),
-               *(midia["_id"] for midia in evidencias))
+               *(midia["_id"] for midia in evidencias),
+               *(exemplo["_id"] for exemplo in feedbacks))
 
         def remover(sessao):
             # Relê os avanços na transação: remove o que pertence ao marco no
             # instante do commit, não só o que o mapeamento tinha visto.
             pendentes = self.avancos.listar_avancos_de_marcos([marco_id], session=sessao)
+            self.simulados.remover_do_conjunto(
+                filtro_do_conjunto(marcos=[marco_id],
+                                   avancos=[avanco["_id"] for avanco in pendentes]),
+                session=sessao)
             self.avancos.remover_avancos(
                 [avanco["_id"] for avanco in pendentes], session=sessao)
             if OCORRENCIAS_NA_CASCATA:

@@ -5,9 +5,12 @@ A organização atual com POO e as decisões de 30/10 estão em
 
 ## Rotas existentes
 
-Inventário conferido no `url_map` da aplicação: **48 operações de negócio**.
+Inventário conferido no `url_map` da aplicação: **51 operações de negócio**.
 As barras finais abaixo fazem parte dos caminhos atuais. `HEAD` nas consultas,
 `OPTIONS` automático e a rota técnica `/static/{filename}` não entram na contagem.
+Também ficam fora os quatro métodos de escrita registrados em
+`/obras/{obra_id}/feedback-simulado` apenas para recusar interação (UC-21): o
+`url_map` tem 55 entradas sem `HEAD`/`OPTIONS`, das quais 4 são recusas.
 
 | Métodos | Caminho | Finalidade |
 | --- | --- | --- |
@@ -27,6 +30,7 @@ As barras finais abaixo fazem parte dos caminhos atuais. `HEAD` nas consultas,
 | GET, POST | `/obras/{obra_id}/ocorrencias` | Listar ou registrar problemas da obra |
 | GET | `/ocorrencias/{ocorrencia_id}` | Consultar ocorrência e evidências |
 | GET | `/obras/{obra_id}/previa` | Consultar avanços publicados |
+| GET | `/obras/{obra_id}/feedback-simulado` | Consultar exemplos simulados de comprador e engenheiro (somente leitura) |
 | PATCH, DELETE | `/marcos/{marco_id}` | Alterar estado com motivo ou excluir com os dependentes |
 | GET, POST | `/marcos/{marco_id}/dependencias` | Listar ou criar dependência |
 | DELETE | `/marcos/{marco_id}/dependencias/{dependencia_id}` | Retirar dependência |
@@ -1048,9 +1052,9 @@ montar o aviso a partir da própria resposta, essa recusa devolve também:
   "alvo": { "tipo": "obra", "id": "...", "nome": "Residencial Aurora" },
   "perda": {
     "marcos": 2, "avancos": 2, "publicacoes": 1, "versoes": 1,
-    "exemplos_simulados": 1, "ocorrencias": 1, "aceitacoes": 1, "midias": 6,
-    "mudancas": 1, "estados": 1, "dependencias": 1, "historico": 2,
-    "trabalhadores_desvinculados": 1
+    "exemplos_simulados": 1, "feedbacks_simulados": 0, "ocorrencias": 1,
+    "aceitacoes": 1, "midias": 6, "mudancas": 1, "estados": 1,
+    "dependencias": 1, "historico": 2, "trabalhadores_desvinculados": 1
   }
 }
 ```
@@ -1081,8 +1085,8 @@ existem na obra (`marcos`, `mudancas`, `estados`, `trabalhadores_desvinculados`)
 
 | Alvo | Conjunto removido | Preservado |
 | --- | --- | --- |
-| Obra | marcos, avanços (rascunho e publicado), fato de publicação, versões/correções, mídias e tarefas de limpeza pendentes, diários de upload, ocorrências com evidências e aceitações, histórico de estados/mudanças da obra e dos marcos, exemplos simulados desses avanços, vínculos de dependência entre os marcos | outras obras e seus registros; cadastro dos trabalhadores |
-| Marco | o marco, seus avanços e tudo que vive neles, a trilha de mudanças do marco, as ocorrências vinculadas a ele (política proposta, ver abaixo) | a obra, os outros marcos e seus avanços, as ocorrências sem vínculo com o marco, os vínculos de trabalhadores |
+| Obra | marcos, avanços (rascunho e publicado), fato de publicação, versões/correções, mídias e tarefas de limpeza pendentes, diários de upload, ocorrências com evidências e aceitações, histórico de estados/mudanças da obra e dos marcos, avanços com origem simulada e os exemplos de comprador de UC-21 ligados à obra, aos marcos ou às atualizações, vínculos de dependência entre os marcos | outras obras e seus registros; cadastro dos trabalhadores |
+| Marco | o marco, seus avanços e tudo que vive neles, a trilha de mudanças do marco, as ocorrências vinculadas a ele (política proposta, ver abaixo), os exemplos de UC-21 ligados ao marco ou às suas atualizações | a obra, os outros marcos e seus avanços, as ocorrências sem vínculo com o marco, os exemplos ligados à obra, os vínculos de trabalhadores |
 
 Ao excluir um marco, as relações em que **outros** marcos dependem dele saem
 junto, nos dois sentidos da lista `dependencias_marcos` da obra e na lista
@@ -1230,3 +1234,136 @@ Execute com banco em memória e armazenamento simulado:
 `python -m pytest tests/historico/test_consultas.py tests/integracao/test_historico.py -q`.
 O teste de integração produz decisões e correções pelas rotas reais, confere a
 sequência após reiniciar a aplicação e não usa a base de demonstração.
+
+## UC-21 — dados simulados do comprador e do engenheiro (CT-102 a CT-106)
+
+`F-17`, `F-18`, `RN-10` e `CA-08`. Os exemplos de avaliação, compreensão e
+dúvida do comprador, e o avanço atribuído a um engenheiro, existem para mostrar
+como a informação seria contextualizada no futuro. São **pré-carregados** e
+apresentados como simulação: não representam comentários reais e não criam
+perfil, login ou formulário para esses participantes.
+
+### Consulta
+
+`GET /obras/{obraId}/feedback-simulado` exige sessão da construtora e é somente
+de leitura. A resposta traz `simulado: true`, `somente_leitura: true` e um
+`aviso` em texto, para a interface marcar a origem sem depender de convenção
+própria:
+
+```json
+{
+  "obra": { "id": "...", "nome": "Residencial Aurora", "cliente": "Família Andrade (cliente fictício)" },
+  "simulado": true,
+  "somente_leitura": true,
+  "aviso": "Exemplos simulados, pré-carregados para demonstração. ...",
+  "filtros_aplicados": { "marco_id": "..." },
+  "feedbacks": [
+    {
+      "id": "...", "simulado": true, "somente_leitura": true, "interacao_real": false,
+      "tipo": "compreensao", "exemplo": "compreensao-marco",
+      "origem": { "simulado": true, "perfil": "comprador", "nome": "Helena Marques",
+                  "identidade": "ficticia", "autenticado": false,
+                  "procedencia": "carga_demonstracao",
+                  "cliente_referencia": "Família Andrade (cliente fictício)" },
+      "alvo": { "tipo": "marco", "id": "...", "obra_id": "...", "marco_id": "...",
+                "avanco_id": null, "rotulo": "Fundação" },
+      "conteudo": { "nivel": "parcial", "comentario": "..." },
+      "registrado_em": "2030-10-14T12:00:00+00:00"
+    }
+  ],
+  "avancos_simulados": [ { "id": "...", "simulado": true, "origem_simulada": { "perfil": "engenheiro", "...": "..." },
+                           "autor_original": "simulado:engenheiro:rafael-nogueira",
+                           "sessao_do_engenheiro": false, "versoes": 2,
+                           "editado_pela_construtora": true, "comparacao": "/avancos/.../versoes",
+                           "correcao": { "...": "..." } } ],
+  "totais": { "avaliacao": 1, "compreensao": 2, "duvida": 2, "feedbacks": 5, "avancos_simulados": 1 }
+}
+```
+
+`alvo.tipo` é `obra`, `marco` ou `atualizacao` (um avanço da obra); `rotulo` é o
+texto de contexto já pronto para a tela. `tipo` do exemplo é `avaliacao`,
+`compreensao` ou `duvida`.
+
+### Filtros
+
+| Parâmetro | Efeito |
+| --- | --- |
+| `tipo` | `avaliacao`, `compreensao` ou `duvida`; filtra só os exemplos do comprador |
+| `alvo` | `obra`, `marco` ou `atualizacao`; filtra só os exemplos do comprador |
+| `marco_id` | exemplos cujo **alvo é esse marco** e avanços simulados desse marco |
+| `avanco_id` | exemplos cujo **alvo é essa atualização** e o avanço simulado correspondente |
+| `secao` | `comprador` ou `engenheiro`; pede apenas uma das listas |
+
+O vínculo é exato: `marco_id` não devolve os exemplos da obra nem os das
+atualizações daquele marco, e `avanco_id` não devolve os do marco. É isso que
+mantém cada exemplo apenas no contexto a que pertence (CT-103). `tipo` e `alvo`
+descrevem o exemplo do comprador e não restringem `avancos_simulados`; para
+pedir uma lista só, use `secao`.
+
+Respostas: `400 ID_INVALIDO` para identificador malformado; `404
+OBRA_NAO_ENCONTRADA`; `404 ALVO_FORA_DA_OBRA` quando `marco_id`/`avanco_id` não
+pertence à obra — a consulta não confirma a existência de um alvo de fora nem
+mistura contextos; `404 ALVO_FORA_DO_MARCO` quando os dois filtros discordam;
+`422 FILTRO_DESCONHECIDO` ou `422 FILTRO_INVALIDO` para parâmetro ou valor fora
+da lista, em vez de ignorar o filtro em silêncio. Obra sem exemplos devolve
+`feedbacks: []` e `avancos_simulados: []`. Um exemplo cujo alvo deixou de
+existir não é apresentado: ele é contado em `exemplos_inconsistentes`.
+
+### Não existe interação real
+
+`POST`, `PUT`, `PATCH` e `DELETE` no mesmo caminho respondem `405` com
+`codigo="INTERACAO_NAO_DISPONIVEL"`, `Allow: GET, HEAD, OPTIONS` e nenhuma
+escrita. Não há rota de cadastro, login ou envio de mensagem para comprador ou
+engenheiro, e o autor do exemplo (`simulado:engenheiro:...`) não é um
+identificador de sessão válido (CT-104, CT-105).
+
+### Avanço do engenheiro e correção pela construtora
+
+O avanço simulado é um avanço publicado comum com o campo `origem_simulada`,
+lido pela mesma função da prévia. Quando a construtora o corrige por
+`PATCH /avancos/{id}` (UC-11), a origem e `autor_original` permanecem; a
+correção registra autor da construtora, motivo, instante, campos alterados e o
+conteúdo anterior. O painel expõe `editado`, `editado_pela_construtora`,
+`versoes` e `comparacao` apontando para `GET /avancos/{id}/versoes`, o mesmo
+nome usado pelo histórico de UC-13 (CT-50).
+
+Um exemplo de engenheiro que ainda não foi publicado aparece com o `estado` real
+e com as evidências lidas do acervo, na mesma forma pública do snapshot. Um
+avanço reservado para exclusão não é listado.
+
+### Carga de demonstração
+
+Os exemplos entram por procedimento, não por formulário:
+
+```bash
+# A obra e o marco são criados antes pelo produto (UC-02 e UC-05).
+python scripts/carregar_dados_demonstracao.py --obra <obraId>
+
+# Adotar um avanço publicado já existente como exemplo do engenheiro:
+python scripts/carregar_dados_demonstracao.py --obra <obraId> --avanco <avancoId>
+
+# Sem enviar foto ao provedor (o avanço resultante não pode ser corrigido):
+python scripts/carregar_dados_demonstracao.py --obra <obraId> --sem-midia --json
+```
+
+A carga grava em `tbl_feedback_simulado` com a chave natural
+`(obra_id, exemplo)` e índice único, e reconhece o avanço do engenheiro por
+`origem_simulada.exemplo`. Reexecutar não duplica nada, não remove dados alheios
+ao cenário e preserva um avanço já corrigido pela construtora, com autoria e
+versões intactas. Sem `--avanco`, o exemplo do engenheiro é criado com uma foto
+de placeholder enviada pelo provedor configurado; sem provedor, o relatório diz
+que esse exemplo ficou de fora e por quê. Com `--avanco`, a autoria anterior do
+registro adotado é preservada em `origem_simulada.autor_anterior`.
+
+### Exclusão dos dependentes
+
+Os exemplos saem com o objeto que contextualizam (RN-09): a cascata de obra e de
+marco de UC-17 os remove na mesma transação e informa a contagem em
+`perda.feedbacks_simulados`; a exclusão de um rascunho (UC-18) remove o exemplo
+ligado àquela atualização. Excluir o marco preserva os exemplos da obra. A
+varredura de referências órfãs da cascata reprova a operação se algum exemplo
+sobrevivesse ao alvo (CT-106).
+
+Testes: `python -m pytest tests/test_dados_simulados.py -q`. Usam a própria
+carga, MongoDB em memória com rollback local e Cloudinary simulado; a marcação
+visual é validada com o frontend.

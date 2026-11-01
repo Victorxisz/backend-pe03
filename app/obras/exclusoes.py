@@ -1,9 +1,10 @@
 """Cascata de exclusão de uma obra (UC-17, F-19, RN-09, CA-09).
 
 A obra leva marcos, avanços, publicações, versões, mídias, mudanças,
-ocorrências com históricos/aceitações e os exemplos simulados que só existem
-nesses avanços. Trabalhador não é excluído: perde apenas o vínculo com esta
-obra. A mecânica durável da remoção fica em :mod:`app.exclusoes`.
+ocorrências com históricos/aceitações e os exemplos simulados de UC-21 ligados
+à obra, aos seus marcos ou às suas atualizações. Trabalhador não é excluído:
+perde apenas o vínculo com esta obra. A mecânica durável da remoção fica em
+:mod:`app.exclusoes`.
 """
 
 from bson import ObjectId
@@ -17,10 +18,12 @@ from app.exclusoes import (
     exigir_confirmacao,
     resumo_das_ocorrencias,
     resumo_dos_avancos,
+    resumo_dos_simulados,
     retomar_pendencia,
 )
 from app.historico.repository import RepositorioHistorico
 from app.ocorrencias.repository import RepositorioOcorrencias
+from app.simulados.repository import RepositorioSimulados, filtro_do_conjunto
 from app.trabalhadores.repository import RepositorioTrabalhadores
 
 from . import repository
@@ -30,12 +33,13 @@ TIPO = "obra"
 
 class ServicoExclusaoObra:
     def __init__(self, repositorio=None, avancos=None, ocorrencias=None,
-                 historico=None, trabalhadores=None):
+                 historico=None, trabalhadores=None, simulados=None):
         self.repositorio = repositorio if repositorio is not None else repository
         self.avancos = avancos if avancos is not None else avancos_repository
         self.ocorrencias = ocorrencias if ocorrencias is not None else RepositorioOcorrencias()
         self.historico = historico if historico is not None else RepositorioHistorico()
         self.trabalhadores = trabalhadores if trabalhadores is not None else RepositorioTrabalhadores()
+        self.simulados = simulados if simulados is not None else RepositorioSimulados()
 
     def excluir(self, obra_id, dados, autor):
         """Valida sessão, alvo e confirmação antes de qualquer remoção."""
@@ -66,11 +70,16 @@ class ServicoExclusaoObra:
         evidencias = [midia for item in ocorrencias for midia in item.get("midias", [])]
         eventos = self.historico.listar_eventos_dos_alvos([obra_id, *marcos])
         vinculados = self.trabalhadores.vinculados_a_obra(obra_id)
+        # UC-21: o exemplo simulado da obra, de um marco ou de uma atualização
+        # não pode sobreviver ao objeto que ele contextualiza (RN-09, CT-106).
+        feedbacks = self.simulados.listar_do_conjunto(
+            filtro_do_conjunto(obra_id=obra_id, marcos=marcos, avancos=ids_avancos))
 
         perda = {
             "marcos": len(marcos),
             **resumo_dos_avancos(avancos),
             **resumo_das_ocorrencias(ocorrencias),
+            **resumo_dos_simulados(feedbacks),
             "midias": len(midias) + len(evidencias),
             "mudancas": len(obra.get("historico_mudancas", [])),
             "estados": len(obra.get("historico_estados", [])),
@@ -80,13 +89,18 @@ class ServicoExclusaoObra:
         }
         ids = (obra_id, *marcos, *ids_avancos, *ids_ocorrencias,
                *(midia["_id"] for midia in midias),
-               *(midia["_id"] for midia in evidencias))
+               *(midia["_id"] for midia in evidencias),
+               *(exemplo["_id"] for exemplo in feedbacks))
 
         def remover(sessao):
             # Relê o conjunto na transação: remove o que pertence à obra no
             # instante do commit, não só o que o mapeamento tinha visto.
             atuais = self.repositorio.ids_dos_marcos(obra_id, session=sessao)
             pendentes = self.avancos.listar_avancos_de_marcos(atuais, session=sessao)
+            self.simulados.remover_do_conjunto(
+                filtro_do_conjunto(obra_id=obra_id, marcos=atuais,
+                                   avancos=[avanco["_id"] for avanco in pendentes]),
+                session=sessao)
             self.avancos.remover_avancos(
                 [avanco["_id"] for avanco in pendentes], session=sessao)
             self.ocorrencias.remover(
