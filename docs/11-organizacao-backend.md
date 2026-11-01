@@ -33,6 +33,7 @@ backend/
 | `app/__init__.py` | Monta a aplicação e registra seus módulos. | Conectar as rotas de obras e marcos ao Flask. |
 | `app/config.py` | Lê configurações do ambiente, sem guardar segredos no código. | Ler `MONGODB_URI` e a chave de sessão. |
 | `app/database.py` | Centraliza a conexão com o MongoDB Atlas. | Disponibilizar a coleção de obras aos módulos. |
+| `app/exclusoes.py` | Mecanismo compartilhado da exclusão em cascata: transação no banco e limpeza externa retomável. | Excluir obra e marco sem duplicar a regra entre os dois módulos. |
 | `app/auth/` | Controla entrada, saída e proteção das requisições. | Recusar criação de obra sem a sessão da construtora. |
 | `app/obras/` | Cuida dos dados e regras da obra. | Criar uma casa com data exata ou intervalo de entrega. |
 | `app/marcos/` | Cuida dos marcos e suas dependências. | Registrar que “Alvenaria depende de Estrutura”. |
@@ -58,6 +59,7 @@ Não é obrigatório criar todos estes arquivos antes de haver código para eles
 | `validacoes.py` | Confere o formato e a validade dos dados recebidos. | Rejeitar intervalo de entrega com fim anterior ao início. |
 | `service.py` | Aplica as regras do projeto. | Alterar um prazo somente junto do registro do motivo. |
 | `repository.py` | Lê e grava dados no MongoDB. | Salvar ou buscar uma obra pelo identificador. |
+| `exclusoes.py` | Mapeia o conjunto dependente do alvo e orquestra sua remoção. | Excluir a obra com marcos, avanços e ocorrências (UC-17). |
 
 **Caminho de um pedido:** `routes.py → validacoes.py → service.py → repository.py → MongoDB`. Por exemplo: ao criar uma obra, a rota recebe o formulário; a validação confere as datas; o serviço decide como criar a obra; o repositório a salva; a rota devolve o resultado ao React.
 

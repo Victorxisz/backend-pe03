@@ -180,4 +180,4 @@ Executar CT-107/108 se ViaCEP for escolhido; CT-109/110 se Cloudinary Free for e
 - Estados adicionais de ocorrência além de `aberta`, `resolvida` e `sem solução` não foram definidos.
 - Para obra concluída, cálculo histórico de atraso usa a data efetiva automática; conclusão e reabertura são verificadas também em `tests/obras/test_estado.py`.
 - A rota de trabalhadores já existente no repositório cobre parte de CT-90/96/99, mas **não** implica que listagem, autenticação, verificação de obra e cascata já funcionem.
-- Confirmado em 30/10: CT-82 remove as ocorrências do marco. CT-100 preserva o trabalhador vinculado à construtora e às demais obras; a exclusão completa de obra/marco continua pendente de implementação.
+- Registrado em 30/10 e implementado em UC-17 como **proposta**: CT-82 remove as ocorrências do marco e CT-100 preserva o trabalhador vinculado à construtora e às demais obras. As duas políticas aguardam confirmação do grupo em [P-08 e P-09](07-plano-e-decisoes.md); até lá, esses dois resultados esperados não devem ser tratados como contrato final. A cascata de obra/marco está implementada e coberta por `tests/test_exclusao_cascata.py`.

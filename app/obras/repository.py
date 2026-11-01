@@ -20,6 +20,15 @@ class RepositorioObras:
     def consultar_marcos(self, obra_id):
         return list(self.banco["tbl_marcos"].find({"obra_id": obra_id}).sort("_id", 1))
 
+    def ids_dos_marcos(self, obra_id, *, session=None):
+        return [documento["_id"] for documento in self.banco["tbl_marcos"].find(
+            {"obra_id": obra_id}, {"_id": 1}, session=session).sort("_id", 1)]
+
+    def remover_obra(self, obra_id, *, session=None):
+        """Leva os marcos e, embutidos no documento, estados e mudanças da obra."""
+        self.banco["tbl_marcos"].delete_many({"obra_id": obra_id}, session=session)
+        return self.banco["tbl_obras"].delete_one({"_id": obra_id}, session=session).deleted_count
+
     def atualizar_descricao(self, obra_id, campos):
         # Uma única operação atômica; não substitui nem recria o documento.
         return self.banco["tbl_obras"].find_one_and_update(
@@ -45,5 +54,7 @@ salvar_obra = _repositorio.salvar_obra
 buscar_obra_por_id = _repositorio.buscar_obra_por_id
 consultar_obras = _repositorio.consultar_obras
 consultar_marcos = _repositorio.consultar_marcos
+ids_dos_marcos = _repositorio.ids_dos_marcos
+remover_obra = _repositorio.remover_obra
 atualizar_descricao = _repositorio.atualizar_descricao
 salvar_estado_com_historico = _repositorio.salvar_estado_com_historico

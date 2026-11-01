@@ -38,6 +38,29 @@ class RepositorioMarcos:
     def buscar_obra_por_id(self, obra_id):
         return self.banco["tbl_obras"].find_one({"_id": obra_id})
 
+    def remover_marco(self, marco_id, *, session=None):
+        return self.banco["tbl_marcos"].delete_one(
+            {"_id": marco_id}, session=session).deleted_count
+
+    def desvincular_marco(self, obra_id, marco_id, *, session=None):
+        """Retira as relações do alvo preservando os marcos que participavam.
+
+        Um vínculo é removido tanto quando o alvo depende de outro marco quanto
+        quando outro marco depende dele; os dois lados ficam na mesma lista da
+        obra. A lista legada ``dependencias`` do próprio marco também é limpa.
+        """
+        for campo in ("marco_id", "depende_de_id"):
+            self.banco["tbl_obras"].update_one(
+                {"_id": obra_id},
+                {"$pull": {"dependencias_marcos": {campo: marco_id}}},
+                session=session,
+            )
+        self.banco["tbl_marcos"].update_many(
+            {"obra_id": obra_id},
+            {"$pull": {"dependencias": {"$in": [marco_id, str(marco_id)]}}},
+            session=session,
+        )
+
     def substituir_dependencias(self, obra, novos_vinculos):
         filtro = {"_id": obra["_id"]}
         if "dependencias_marcos" in obra:
@@ -140,6 +163,8 @@ inserir_marco = _repositorio.inserir_marco
 buscar_marco = _repositorio.buscar_marco
 buscar_marco_por_id = _repositorio.buscar_marco_por_id
 buscar_obra_por_id = _repositorio.buscar_obra_por_id
+remover_marco = _repositorio.remover_marco
+desvincular_marco = _repositorio.desvincular_marco
 substituir_dependencias = _repositorio.substituir_dependencias
 dependencias_pendentes = _repositorio.dependencias_pendentes
 salvar_estado_com_historico = _repositorio.salvar_estado_com_historico
