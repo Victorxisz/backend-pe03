@@ -5,8 +5,9 @@ import pytest
 
 
 @pytest.fixture
-def ocorrencia(database):
-    documento = {"_id": ObjectId(), "estado": "sem solução", "titulo": "Infiltração"}
+def ocorrencia(database, account):
+    obra_id = database.tbl_obras.insert_one({"nome": "Casa Teste", "autor": str(account["_id"])}).inserted_id
+    documento = {"_id": ObjectId(), "obra_id": obra_id, "estado": "sem solução", "titulo": "Infiltração"}
     database.tbl_ocorrencias.insert_one(documento)
     return documento
 

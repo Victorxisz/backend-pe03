@@ -12,6 +12,10 @@ class EstadoOcorrenciaIncompativel(Exception):
     pass
 
 
+class ChaveReenvioIncompativel(Exception):
+    pass
+
+
 class RepositorioOcorrencias:
     def __init__(self, banco=None):
         self.banco = banco if banco is not None else db.banco_dados
@@ -72,9 +76,42 @@ class RepositorioOcorrencias:
         self.banco["tbl_uploads_pendentes"].update_one(
             {"_id": operacao_id}, {"$set": {"estado": "concluida"}})
 
-    def aceitar(self, ocorrencia_id, aceitacao, chave_reenvio=None):
+    def atualizar(self, anterior, campos, evento=None):
+        filtro = {"_id": anterior["_id"], "estado": anterior["estado"],
+                  "versao": anterior.get("versao", {"$exists": False})}
+        atualizacao = {"$set": campos, "$inc": {"versao": 1}}
+        if evento is not None:
+            atualizacao["$push"] = {"historico_estados": evento}
+            atualizacao["$inc"]["episodio"] = 1
+        # Uma única escrita: estado, edição e append do evento são indivisíveis.
+        return self.banco["tbl_ocorrencias"].find_one_and_update(
+            filtro, atualizacao, return_document=ReturnDocument.AFTER)
+
+    def _reenvio(self, documento, aceitacao, chave):
+        if documento is None or chave is None:
+            return None
+        anterior = next((item for item in documento.get("aceitacoes", [])
+                         if item.get("chave_reenvio") == chave), None)
+        if anterior is not None and any(anterior.get(campo) != aceitacao.get(campo)
+                                        for campo in ("justificativa", "medida_compensatoria", "autor")):
+            raise ChaveReenvioIncompativel()
+        return anterior
+
+    def aceitar(self, ocorrencia_id, aceitacao, chave_reenvio=None, *, esperado=None):
+        anterior = esperado if esperado is not None else self.buscar(ocorrencia_id)
+        if anterior is None:
+            raise OcorrenciaNaoEncontrada()
+        repetida = self._reenvio(anterior, aceitacao, chave_reenvio)
+        if repetida is not None:
+            return {"aceitacoes": [repetida]}, True
+        if anterior.get("estado") != "sem solução":
+            raise EstadoOcorrenciaIncompativel()
+        # A decisão pertence ao episódio lido, inclusive se o estado sair e
+        # voltar a 'sem solução' durante uma requisição concorrente.
+        aceitacao["episodio"] = anterior.get("episodio", 0)
         # Estado no filtro torna a validação e o append uma única operação atômica.
-        filtro = {"_id": ocorrencia_id, "estado": "sem solução"}
+        filtro = {"_id": ocorrencia_id, "estado": "sem solução",
+                  "episodio": anterior.get("episodio", {"$exists": False})}
         if chave_reenvio:
             filtro["aceitacoes.chave_reenvio"] = {"$ne": chave_reenvio}
             aceitacao["chave_reenvio"] = chave_reenvio
@@ -85,14 +122,11 @@ class RepositorioOcorrencias:
         )
         if salvo is not None:
             return salvo, False
-        if chave_reenvio:
-            existente = self.buscar(ocorrencia_id)
-            if existente is not None:
-                anterior = next((a for a in existente.get("aceitacoes", [])
-                                 if a.get("chave_reenvio") == chave_reenvio), None)
-                if anterior is not None:
-                    return {"aceitacoes": [anterior]}, True
-        if self.buscar(ocorrencia_id) is None:
+        existente = self.buscar(ocorrencia_id)
+        repetida = self._reenvio(existente, aceitacao, chave_reenvio)
+        if repetida is not None:
+            return {"aceitacoes": [repetida]}, True
+        if existente is None:
             raise OcorrenciaNaoEncontrada()
         raise EstadoOcorrenciaIncompativel()
 

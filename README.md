@@ -25,7 +25,7 @@ As barras finais abaixo fazem parte dos caminhos atuais. `HEAD` nas consultas,
 | GET | `/mudancas/{mudanca_id}` | Consultar o detalhe de uma mudança |
 | GET, POST | `/ocorrencias/{ocorrenciaId}/aceitacoes` | Consultar ou registrar aceitações |
 | GET, POST | `/obras/{obra_id}/ocorrencias` | Listar ou registrar problemas da obra |
-| GET | `/ocorrencias/{ocorrencia_id}` | Consultar ocorrência e evidências |
+| GET, PATCH | `/ocorrencias/{ocorrencia_id}` | Consultar, editar ou mudar estado com motivo |
 | GET | `/obras/{obra_id}/previa` | Consultar avanços publicados |
 | PATCH, DELETE | `/marcos/{marco_id}` | Alterar estado com motivo ou excluir com os dependentes |
 | GET, POST | `/marcos/{marco_id}/dependencias` | Listar ou criar dependência |
@@ -59,7 +59,17 @@ rota existente nem substituído por endpoints que simulem sucesso.
 
 `tests/infraestrutura/test_rotas_api.py` verifica CORS em todas as operações registradas,
 rejeição de chamadas sem token, conta inativa/perfil incorreto e IDs inválidos.
+Também exige a presença das operações dos UC-01 a UC-16, sem ignorar rotas ausentes.
 Os testes específicos de cada módulo continuam cobrindo suas regras de negócio.
+
+`tests/integracao/test_todas_rotas.py` exercita o fluxo de sucesso de **cada uma
+das 48 operações** e falha se alguma rota registrada ficar sem resposta de
+sucesso no cenário. Inclui autenticação, trabalhadores, publicação, correção,
+mudanças e o ciclo de ocorrências. Também verifica corpos inválidos e igualdade
+da data de registro entre cadastro e releitura, na precisão BSON de milissegundos.
+Por padrão usa banco e mídia simulados. Para o mesmo fluxo com MongoDB real,
+mantendo a mídia simulada e usando somente coleções temporárias:
+`python -m pytest tests/integracao/test_todas_rotas.py --atlas -k "fluxo_de_sucesso or data_de_ocorrencia" -q`.
 
 ## Registrar ocorrências — UC-14
 
@@ -99,8 +109,8 @@ as evidências possuem `ocorrencia_id`, sem publicação nem entrada na prévia.
 
 Ocorrência, vínculos, evidências e aceitações ficam juntos em `tbl_ocorrencias`,
 numa única inserção atômica. `sem solução` começa com `aceitacoes: []`; somente
-a decisão explícita da UC-16 acrescenta uma aceitação. Não existe edição de
-estado por estas rotas. A resposta `201` inclui `Location` para o detalhe.
+a decisão explícita da UC-16 acrescenta uma aceitação. A resposta `201` inclui
+`Location` para o detalhe. A edição e as transições usam o PATCH da UC-15.
 A lista retorna `{"ocorrencias": [...]}`, ordenada por registro decrescente
 e ID crescente em empate. Obra existente sem ocorrências retorna `200` com
 lista vazia; obra inexistente retorna `404`. O detalhe exige obra existente e
@@ -125,6 +135,46 @@ persistência em MongoDB real e nova conexão em outro processo:
 `python -m pytest tests/test_ocorrencias.py -m atlas --atlas -q`.
 Os testes reais usam coleções temporárias, removidas ao final; o armazenamento
 continua simulado nesses cenários, sem upload no Cloudinary real.
+
+## Atualizar, resolver e reabrir ocorrências — UC-15
+
+`PATCH /ocorrencias/{id}` recebe JSON com `versao` consultada e os objetos
+`alteracoes` (título, descrição e vínculos opcionais) e/ou `transicao` (estado e
+motivo obrigatório). Edição preserva estado; transições aceitam somente `aberta`,
+`resolvida` e `sem solução`. O detalhe e a lista expõem `historico_estados` em
+ordem de gravação. Estado e evento ficam juntos numa atualização atômica;
+conflitos retornam `409` para nova consulta e decisão explícita.
+
+As aceitações permanecem em `aceitacoes`, como fatos históricos. O campo
+`aceitacoes_do_estado_atual` identifica somente decisões aplicáveis ao episódio
+atual de `sem solução`; resolver ou reabrir não apaga nem reaplica uma aceitação.
+O [contrato completo](docs/05-arquitetura-e-contratos.md#atualização-de-ocorrências--uc-15)
+documenta exemplos, validações, concorrência, compatibilidade e respostas HTTP.
+
+Testes: `python -m pytest tests/test_atualizacao_ocorrencias.py -q`.
+Persistência em novo processo e concorrência no MongoDB real:
+`python -m pytest tests/test_atualizacao_ocorrencias.py -m atlas --atlas -q`.
+
+## Aceitar ocorrência sem solução — UC-16
+
+`POST /ocorrencias/{id}/aceitacoes` exige sessão ativa, JSON e `justificativa`
+preenchida. `medida_compensatoria` é opcional e pode ser `null`. ID, conta autora
+e instante vêm do servidor. A gravação exige estado `sem solução` no mesmo
+episódio validado, preserva o estado e acrescenta uma decisão ao histórico.
+`GET` no mesmo recurso devolve as decisões, incluindo após resolver/reabrir.
+
+Gere uma `Idempotency-Key` por confirmação e preserve-a nos retries: mesmo
+conteúdo e chave retornam a decisão original (`200`); chave nova cria decisão
+(`201`); a mesma chave com outro conteúdo retorna `409`. Sem cabeçalho, cada
+POST é uma nova decisão. Aceitação antiga permanece histórica, sem ser
+reaplicada a um episódio novo. Falhas de banco retornam `503`; com timeout,
+reutilize a mesma chave para confirmar sem duplicação.
+
+O [contrato UC-16](docs/05-arquitetura-e-contratos.md#aceitar-ocorrência-sem-solução--uc-16)
+detalha campos, formato da chave, concorrência e respostas HTTP.
+Testes: `python -m pytest tests/test_aceitacao_ocorrencias.py -q`.
+MongoDB real e novo processo:
+`python -m pytest tests/test_aceitacao_ocorrencias.py -m atlas --atlas -q`.
 
 ## Linha do tempo publicada — UC-10
 
