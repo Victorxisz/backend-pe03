@@ -28,3 +28,19 @@ class RepositorioTrabalhadores:
 
     def consultar(self, filtro):
         return list(self.trabalhadores.find(filtro))
+
+    def _vinculo(self, obra_id):
+        # Vínculos antigos podem ter sido gravados como ObjectId.
+        return {"$in": [str(obra_id), obra_id]}
+
+    def vinculados_a_obra(self, obra_id, *, session=None):
+        return list(self.trabalhadores.find(
+            {"obras": self._vinculo(obra_id)}, session=session).sort("_id", 1))
+
+    def desvincular_obra(self, obra_id, *, session=None):
+        """Retira só o vínculo: preserva o cadastro e as outras obras (CT-100)."""
+        return self.trabalhadores.update_many(
+            {"obras": self._vinculo(obra_id)},
+            {"$pull": {"obras": self._vinculo(obra_id)}},
+            session=session,
+        ).modified_count

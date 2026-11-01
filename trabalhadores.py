@@ -1,6 +1,6 @@
 """Contrato HTTP dos trabalhadores; regras e persistência ficam em app.trabalhadores."""
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, jsonify, request, url_for
 from flask_jwt_extended import get_jwt_identity
 from pymongo.errors import PyMongoError
 
@@ -32,7 +32,19 @@ def tratar_erro_banco(erro):
 
 @trabalhadores_bp.post("/obra/<string:obra_id>/")
 def cadastrar_trabalhador_em_obra(obra_id):
-    return jsonify(servico.cadastrar(obra_id, request.get_json(silent=True), get_jwt_identity())), 201
+    criado = servico.cadastrar(obra_id, request.get_json(silent=True), get_jwt_identity())
+    resposta = jsonify(criado)
+    resposta.status_code = 201
+    # Endereço do detalhe para a interface abrir o cadastro recém-criado.
+    resposta.headers["Location"] = url_for(
+        "trabalhadores.consultar_trabalhador", trabalhador_id=criado["id"]
+    )
+    return resposta
+
+
+@trabalhadores_bp.get("/<string:trabalhador_id>/")
+def consultar_trabalhador(trabalhador_id):
+    return jsonify(servico.detalhar(trabalhador_id, get_jwt_identity()))
 
 
 @trabalhadores_bp.patch("/<string:trabalhador_id>/")

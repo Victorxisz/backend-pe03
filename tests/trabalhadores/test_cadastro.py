@@ -88,10 +88,46 @@ def test_cadastro_corpo_ausente_ou_malformado(
     assert snapshot(database) == before
 
 
-def test_cadastro_id_obra_invalido(client, headers, database, trabalhador):
+def test_cadastro_retorna_endereco_do_detalhe(
+    client, headers, database, trabalhador, obra_existente, account
+):
+    """CT-90: a criação informa onde abrir o cadastro recém-gravado."""
+    # Preparação
+    obra_id = str(obra_existente["_id"])
+
+    # Execução
+    response = client.post(
+        f"/trabalhadores/obra/{obra_id}/", json=trabalhador, headers=headers
+    )
+
+    # Verificação
+    assert response.status_code == 201
+    identificador = response.get_json()["id"]
+    assert response.headers["Location"] == f"/trabalhadores/{identificador}/"
+    detalhe = client.get(response.headers["Location"], headers=headers)
+    assert detalhe.status_code == 200
+    assert detalhe.get_json() == {
+        "id": identificador, **trabalhador, "obras": [obra_id], "ativo": True,
+        "data_cadastro": "Sun, 20 Oct 2030 12:00:00 GMT",
+        "construtora_id": str(account["_id"]),
+    }
+    listagem = client.get(f"/trabalhadores/obra/{obra_id}/", headers=headers)
+    assert listagem.get_json() == [detalhe.get_json()]
+
+
+# CT-93 nasceu com "código não positivo"; o contrato real é o ObjectId do MongoDB,
+# então a rejeição cobre os identificadores fora desse formato.
+@pytest.mark.parametrize("identificador", [
+    "invalido", "0", "-1", "1", "507f1f77bcf86cd79943901", "507f1f77bcf86cd7994390111",
+    "zzzf1f77bcf86cd799439011", "507f1f77-bcf8-6cd7-9943-9011",
+])
+def test_cadastro_id_obra_invalido(client, headers, database, trabalhador, identificador):
     before = snapshot(database)
-    response = client.post("/trabalhadores/obra/invalido/", json=trabalhador, headers=headers)
+    response = client.post(
+        f"/trabalhadores/obra/{identificador}/", json=trabalhador, headers=headers
+    )
     assert response.status_code == 400
+    assert response.get_json() == {"erro": "ID da obra inválido"}
     assert snapshot(database) == before
 
 

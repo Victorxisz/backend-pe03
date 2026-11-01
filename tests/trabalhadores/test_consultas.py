@@ -76,6 +76,82 @@ def test_busca_obra_retorna_apenas_trabalhadores_vinculados(
     assert snapshot(database) == before
 
 
+def test_detalhe_por_id_retorna_cadastro_completo(client, headers, database, pessoa):
+    """CT-94: o detalhe abre o cadastro sem depender dos filtros."""
+    before = snapshot(database)
+
+    response = client.get(f"/trabalhadores/{pessoa['_id']}/", headers=headers)
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "id": str(pessoa["_id"]), "nome": pessoa["nome"], "email": pessoa["email"],
+        "telefone": pessoa["telefone"], "cargo": pessoa["cargo"],
+        "obras": pessoa["obras"], "ativo": True, "data_cadastro": None,
+    }
+    assert snapshot(database) == before
+
+
+def test_detalhe_atende_trabalhador_sem_vinculo_de_obra(
+    client, headers, database, pessoa, obra_existente
+):
+    """Os filtros por obra não substituem o detalhe por identificador."""
+    database.tbl_trabalhadores.update_one({"_id": pessoa["_id"]}, {"$set": {"obras": []}})
+
+    listagem = client.get(f"/trabalhadores/obra/{obra_existente['_id']}/", headers=headers)
+    detalhe = client.get(f"/trabalhadores/{pessoa['_id']}/", headers=headers)
+
+    assert listagem.status_code == 200
+    assert listagem.get_json() == []
+    assert detalhe.status_code == 200
+    assert detalhe.get_json()["id"] == str(pessoa["_id"])
+    assert detalhe.get_json()["obras"] == []
+
+
+def test_obra_sem_vinculo_nao_apresenta_trabalhador_de_outra(
+    client, headers, database, pessoa, obra_existente
+):
+    outra_obra = database.tbl_obras.insert_one(
+        {k: v for k, v in obra_existente.items() if k != "_id"}
+    ).inserted_id
+    before = snapshot(database)
+
+    vinculada = client.get(f"/trabalhadores/obra/{obra_existente['_id']}/", headers=headers)
+    sem_vinculo = client.get(f"/trabalhadores/obra/{outra_obra}/", headers=headers)
+
+    assert vinculada.status_code == sem_vinculo.status_code == 200
+    assert [item["id"] for item in vinculada.get_json()] == [str(pessoa["_id"])]
+    assert sem_vinculo.get_json() == []
+    detalhe = client.get(f"/trabalhadores/{pessoa['_id']}/", headers=headers)
+    assert str(outra_obra) not in detalhe.get_json()["obras"]
+    assert snapshot(database) == before
+
+
+@pytest.mark.parametrize("estado,status,esperado", [
+    ("id-invalido", 400, {"erro": "ID do trabalhador inválido"}),
+    ("inexistente", 404, {"erro": "Trabalhador não encontrado"}),
+    ("outra-construtora", 404, {"erro": "Trabalhador não encontrado"}),
+])
+def test_detalhe_distingue_id_invalido_de_trabalhador_ausente(
+    client, headers, database, pessoa, estado, status, esperado
+):
+    identificador = str(pessoa["_id"])
+    if estado == "id-invalido":
+        identificador = "invalido"
+    elif estado == "inexistente":
+        identificador = str(ObjectId())
+    else:
+        database.tbl_trabalhadores.update_one(
+            {"_id": pessoa["_id"]}, {"$set": {"construtora_id": str(ObjectId())}}
+        )
+    before = snapshot(database)
+
+    response = client.get(f"/trabalhadores/{identificador}/", headers=headers)
+
+    assert response.status_code == status
+    assert response.get_json() == esperado
+    assert snapshot(database) == before
+
+
 @pytest.mark.parametrize("estado,status,esperado", [
     ("id-invalido", 400, {"erro": "ID da obra inválido"}),
     ("inexistente", 404, {"erro": "Obra não encontrada"}),
@@ -105,20 +181,21 @@ def test_consulta_obra_sem_resultado(
     assert snapshot(database) == before
 
 
-@pytest.mark.parametrize("path,collection,durante_iteracao", [
-    ("/trabalhadores/nome/João/", "colecao_trabalhadores", False),
-    ("/trabalhadores/nome/João/", "colecao_trabalhadores", True),
-    ("/trabalhadores/cargo/pedreiro/", "colecao_trabalhadores", False),
-    ("/trabalhadores/cargo/pedreiro/", "colecao_trabalhadores", True),
-    ("/trabalhadores/obra/{obra}/", "colecao_trabalhadores", False),
-    ("/trabalhadores/obra/{obra}/", "colecao_trabalhadores", True),
-    ("/trabalhadores/obra/{obra}/", "colecao_obras", False),
+@pytest.mark.parametrize("path,collection,operation,durante_iteracao", [
+    ("/trabalhadores/nome/João/", "colecao_trabalhadores", "find", False),
+    ("/trabalhadores/nome/João/", "colecao_trabalhadores", "find", True),
+    ("/trabalhadores/cargo/pedreiro/", "colecao_trabalhadores", "find", False),
+    ("/trabalhadores/cargo/pedreiro/", "colecao_trabalhadores", "find", True),
+    ("/trabalhadores/obra/{obra}/", "colecao_trabalhadores", "find", False),
+    ("/trabalhadores/obra/{obra}/", "colecao_trabalhadores", "find", True),
+    ("/trabalhadores/obra/{obra}/", "colecao_obras", "find_one", False),
+    # Falha no banco é distinta de trabalhador ausente, que responde 404.
+    ("/trabalhadores/{pessoa}/", "colecao_trabalhadores", "find_one", False),
 ])
 def test_falha_de_leitura_retorna_503_sem_expor_detalhes(
     client, headers, database, pessoa, obra_existente, modulo_trabalhadores,
-    monkeypatch, path, collection, durante_iteracao
+    monkeypatch, path, collection, operation, durante_iteracao
 ):
-    operation = "find_one" if collection == "colecao_obras" else "find"
     before = snapshot(database)
 
     def cursor_com_erro():
@@ -132,7 +209,9 @@ def test_falha_de_leitura_retorna_503_sem_expor_detalhes(
 
     with monkeypatch.context() as context:
         context.setattr(getattr(modulo_trabalhadores, collection), operation, falhar)
-        response = client.get(path.format(obra=obra_existente["_id"]), headers=headers)
+        response = client.get(
+            path.format(obra=obra_existente["_id"], pessoa=pessoa["_id"]), headers=headers
+        )
 
     # Inclui a busca por cargo: uma falha do servidor não deve ser 422.
     assert response.status_code == 503

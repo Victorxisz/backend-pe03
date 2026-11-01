@@ -47,9 +47,16 @@ opacos para o cliente; o React não deve depender do formato interno `_id` do Mo
 | `/ocorrencias/{ocorrenciaId}/aceitacoes` | `GET`, `POST` | F-15 |
 | `/obras/{obraId}/previa` | `GET` | F-10; apenas avanços publicados |
 | `/obras/{obraId}/feedback-simulado` | `GET` | F-17; leitura apenas |
-| `/obras/{obraId}/trabalhadores` e `/trabalhadores/{trabalhadorId}` | `GET`, `POST`, `PATCH`, `DELETE` | F-20; a rota existente no código ainda usa outro formato e precisa convergir para o contrato escolhido |
+| `/trabalhadores/obra/{obraId}/` e `/trabalhadores/{trabalhadorId}/` | `GET`, `POST`, `PATCH`, `DELETE` | F-20; caminhos implementados em UC-19/UC-20, com barra final. A proposta `/obras/{obraId}/trabalhadores` **não** foi implementada; o contrato real está no [README](../README.md#trabalhadores-da-obra--uc-19) |
 
 Excluir isoladamente uma mudança já aplicada não integra o MVP; sua exclusão por cascata ocorre somente com o objeto principal e seus dependentes, após confirmação explícita na interface. O servidor deve garantir que uma falha não produza referências órfãs. Ver [decisões](07-plano-e-decisoes.md).
+
+`DELETE /obras/{obraId}` e `DELETE /marcos/{marcoId}` estão implementados em
+UC-17. O contrato — protocolo de confirmação com o React, corpo
+`{"confirmar": true}` validado no servidor, códigos de resposta, o que a cascata
+remove e as pendências de limpeza externa — está no
+[README](../README.md#uc-17--excluir-obra-ou-marco-com-os-dependentes-ct-79-a-ct-85-ct-100).
+Duas políticas da cascata seguem como proposta a confirmar (P-08 e P-09).
 
 ### Convenções compartilhadas
 

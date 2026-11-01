@@ -36,6 +36,25 @@ class RepositorioOcorrencias:
         return self.banco["tbl_ocorrencias"].find({"obra_id": obra_id}).sort(
             [("data_registro", -1), ("_id", 1)])
 
+    def listar_do_conjunto(self, filtro, *, session=None):
+        """Ocorrências removidas junto com a obra ou com o marco vinculado."""
+        return list(self.banco["tbl_ocorrencias"].find(filtro, session=session).sort("_id", 1))
+
+    def desvincular_marco(self, marco_id, *, session=None):
+        """Alternativa de P-08: a ocorrência fica na obra, sem o marco excluído."""
+        return self.banco["tbl_ocorrencias"].update_many(
+            {"marco_id": marco_id}, {"$set": {"marco_id": None}}, session=session,
+        ).modified_count
+
+    def remover(self, ocorrencias, *, session=None):
+        """Leva evidências e aceitações embutidas e os diários de upload."""
+        ids = list(ocorrencias)
+        if not ids:
+            return
+        self.banco["tbl_uploads_pendentes"].delete_many(
+            {"ocorrencia_id": {"$in": ids}}, session=session)
+        self.banco["tbl_ocorrencias"].delete_many({"_id": {"$in": ids}}, session=session)
+
     def inserir(self, documento):
         # Evidências e vínculos são embutidos: uma única escrita atômica,
         # inclusive em MongoDB standalone, sem ocorrência parcial.

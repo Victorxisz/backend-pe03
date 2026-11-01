@@ -8,6 +8,14 @@ import db
 from .revisoes import ConflitoRascunho, registrar_alteracao
 
 
+def diarios_de_limpeza():
+    """Diários de limpeza e de exclusão não são leitores ativos dos arquivos."""
+    # Import tardio: app.exclusoes depende deste repositório para a varredura.
+    from app.exclusoes import COLECAO_PENDENCIAS
+
+    return {"tbl_limpezas_midias", COLECAO_PENDENCIAS}
+
+
 class RepositorioRascunhos:
     def __init__(self, banco=None, cliente=None):
         self.banco = banco if banco is not None else db.banco_dados
@@ -45,7 +53,7 @@ class RepositorioRascunhos:
 
     def _referenciada_por_id(self, midia_id, sessao):
         for nome in self.banco.list_collection_names():
-            if nome in {"tbl_midias", "tbl_limpezas_midias"}:
+            if nome == "tbl_midias" or nome in diarios_de_limpeza():
                 continue
             for documento in self.banco[nome].find({}, session=sessao):
                 if self._contem(documento, ids={str(midia_id)}):
@@ -128,8 +136,9 @@ class RepositorioRascunhos:
             return True  # Referência inválida exige revisão; não autoriza exclusão.
         identidade = tuple(referencia[campo] for campo in campos)
         ids = {str(identificador) for identificador in ids_midias}
+        diarios = diarios_de_limpeza()
         for nome in self.banco.list_collection_names():
-            if nome == "tbl_limpezas_midias":
+            if nome in diarios:
                 continue
             for documento in self.banco[nome].find():
                 if nome == "tbl_uploads_pendentes" and documento["_id"] == operacao_ignorada:

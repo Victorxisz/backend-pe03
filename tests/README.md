@@ -9,6 +9,11 @@ transversais das rotas; `seguranca` cobre a auditoria de segredos.
 Estar nessa pasta não implica rede real: cada arquivo informa se os provedores
 são simulados ou reais. Os testes reais continuam opt-in.
 
+`test_exclusao_cascata.py` fica na raiz por atravessar quase todos os módulos:
+UC-17 remove obra ou marco com marcos, avanços, mídias, ocorrências, histórico e
+vínculos de trabalhador. Ele traz o próprio cenário e o provedor simulado, e usa
+`transacao_local` nos casos que dependem da transação.
+
 ## Executar
 
 ```powershell
@@ -42,6 +47,8 @@ idempotência, falhas de cadastro e integração com exclusão. Os corpos dos te
 e suas parametrizações foram preservados. O cadastro contratual fica em arquivo
 próprio porque também verifica a representação pública e a publicação posterior.
 
-A reorganização manteve 455 funções de teste e 1.142 casos parametrizados.
-A redução de duplicação concentrou-se nas fixtures de banco e armazenamento;
-cenários de erro, segurança e concorrência não foram removidos por quantidade.
+A reorganização manteve as 455 funções de teste e os 1.142 casos parametrizados
+que existiam então; a suíte cresceu depois com os cartões seguintes. A redução de
+duplicação concentrou-se nas fixtures de banco e armazenamento; cenários de erro,
+segurança e concorrência não foram removidos por quantidade. Para conferir o
+inventário atual, use `python -m pytest --collect-only -q`.
