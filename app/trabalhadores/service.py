@@ -87,11 +87,45 @@ class ServicoTrabalhadores:
         return {"mensagem": "Trabalhador atualizado com sucesso", "id": str(identificador)}
 
     def excluir(self, trabalhador_id, autor):
+        """Remove o cadastro; a ocorrência fica sem responsável, nunca pendurada."""
         identificador = self._identificar(trabalhador_id, "do trabalhador")
-        self._exigir_trabalhador(identificador, autor)
-        if not self.repositorio.excluir(identificador):
-            raise ErroTrabalhador({"erro": "Trabalhador não encontrado"}, 404)
-        return {"mensagem": "Trabalhador excluído com sucesso"}
+        documento = self._exigir_trabalhador(identificador, autor)
+        if not self.repositorio.atribuicoes_de_responsavel(identificador):
+            # Documento único: a remoção já é atômica e nada referencia a pessoa.
+            if not self.repositorio.excluir(identificador):
+                raise ErroTrabalhador({"erro": "Trabalhador não encontrado"}, 404)
+            return self._removido(identificador, 0)
+        return self._removido(identificador, self._remover_com_atribuicoes(identificador, documento))
+
+    def _remover_com_atribuicoes(self, identificador, documento):
+        """P-10: zera a atribuição e remove o cadastro na mesma transação.
+
+        A autoria histórica não é tocada: ``autor`` da ocorrência e de cada
+        aceitação é a conta da construtora, nunca o trabalhador, que não
+        autentica. Só a atribuição viva (``responsavel_id``) é reescrita, e
+        ``responsavel_anterior`` guarda quem respondia antes da remoção.
+        """
+        registro = {"id": str(identificador), "nome": documento.get("nome", ""),
+                    "cargo": documento.get("cargo"), "removido_em": self.relogio.agora()}
+
+        def gravar(sessao):
+            desatribuidas = self.repositorio.desatribuir_responsavel(
+                identificador, registro, session=sessao)
+            if not self.repositorio.excluir(identificador, session=sessao):
+                raise ErroTrabalhador({"erro": "Trabalhador não encontrado"}, 404)
+            if self.repositorio.atribuicoes_de_responsavel(identificador, session=sessao):
+                # Atribuição criada durante a remoção ficaria pendurada.
+                raise ErroTrabalhador(
+                    {"erro": "Uma ocorrência passou a apontar este responsável; "
+                             "repita a exclusão"}, 409)
+            return desatribuidas
+
+        with self.repositorio.cliente.start_session() as sessao:
+            return sessao.with_transaction(gravar)
+
+    def _removido(self, identificador, desatribuidas):
+        return {"mensagem": "Trabalhador excluído com sucesso", "id": str(identificador),
+                "ocorrencias_sem_responsavel": desatribuidas}
 
     def filtrar_texto(self, campo, termo, autor):
         termo = termo.strip()

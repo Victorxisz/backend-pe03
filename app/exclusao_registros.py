@@ -115,7 +115,7 @@ def excluir_registro(tipo, valor, dados, autor, *, previa=False):
              else exclusoes.resumo_das_ocorrencias([documento]))
     if tipo == "avanco":
         from app.simulados.repository import RepositorioSimulados
-        perda["exemplos_simulados"] += RepositorioSimulados().contar({"atualizacao_id": identificador})
+        perda["exemplos_simulados"] += RepositorioSimulados().contar({"avanco_id": identificador})
     perda.update(midias=len(midias), historico=len(eventos) + len(documento.get("historico_estados", [])))
     if previa:
         return {"alvo": alvo, "perda": perda}

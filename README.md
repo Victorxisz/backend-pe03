@@ -16,6 +16,9 @@ real no ambiente publicado continuam exigindo validação própria.
 Inventário conferido no `url_map` da aplicação: **58 operações de negócio**.
 As barras finais abaixo fazem parte dos caminhos atuais. `HEAD` nas consultas,
 `OPTIONS` automático e a rota técnica `/static/{filename}` não entram na contagem.
+Também ficam fora os quatro métodos de escrita registrados em
+`/obras/{obra_id}/feedback-simulado` apenas para recusar interação (UC-21): o
+`url_map` tem 59 entradas sem `HEAD`/`OPTIONS`, das quais 4 são recusas.
 
 | Métodos | Caminho | Finalidade |
 | --- | --- | --- |
@@ -38,7 +41,7 @@ As barras finais abaixo fazem parte dos caminhos atuais. `HEAD` nas consultas,
 | GET, PATCH, DELETE | `/ocorrencias/{ocorrencia_id}` | Consultar, editar, mudar estado ou excluir com confirmação |
 | GET | `/ocorrencias/{ocorrencia_id}/exclusao` | Consultar alvo e extensão da perda |
 | GET | `/obras/{obra_id}/previa` | Consultar avanços publicados |
-| GET | `/obras/{obra_id}/feedback-simulado` | Consultar exemplos fictícios no contexto de obra, marco ou atualização |
+| GET | `/obras/{obra_id}/feedback-simulado` | Consultar exemplos simulados de comprador e engenheiro (somente leitura) |
 | PATCH, DELETE | `/marcos/{marco_id}` | Alterar estado com motivo ou excluir com os dependentes |
 | GET, POST | `/marcos/{marco_id}/dependencias` | Listar ou criar dependência |
 | DELETE | `/marcos/{marco_id}/dependencias/{dependencia_id}` | Retirar dependência |
@@ -110,6 +113,10 @@ do servidor; tentativas de enviá-los no corpo são rejeitadas. `marco_id` e
 deve pertencer à obra. O responsável é o `id` do cadastro de trabalhadores
 (`POST /trabalhadores/obra/{obra_id}/`), com essa obra em `obras` e a construtora
 compatível com a sessão. Não se cria usuário, senha ou novo perfil autenticável.
+Se esse cadastro for removido depois, `responsavel_id` volta a `null` e a
+ocorrência passa a trazer `responsavel_anterior` com quem respondia — ver
+[UC-20](#uc-20--manutenção-e-exclusão-do-trabalhador-ct-96-a-ct-101). A autoria
+registrada em `autor` e nas aceitações é da construtora e não muda.
 
 O envio reutiliza o adaptador Cloudinary e a validação por conteúdo de JPEG,
 PNG, MP4 e PDF. Limites padrão: 10 MiB por foto/documento e 100 MiB por vídeo,
@@ -314,7 +321,8 @@ Caminhos implementados, todos com barra final e sessão de construtora ativa:
   pessoa na interface e indicado no `Location` da criação.
 - `GET /trabalhadores/nome/{nome}/` e `GET /trabalhadores/cargo/{cargo}/` — busca
   parcial, sem distinguir maiúsculas. São filtros e **não** substituem o detalhe por ID.
-- `PATCH` e `DELETE /trabalhadores/{trabalhadorId}/` — manutenção e remoção (UC-20).
+- `PATCH` e `DELETE /trabalhadores/{trabalhadorId}/` — manutenção e remoção, com
+  contrato detalhado em [UC-20](#uc-20--manutenção-e-exclusão-do-trabalhador-ct-96-a-ct-101).
 
 A rota `/obras/{obraId}/trabalhadores` do contrato proposto **não existe**: o
 frontend deve usar os caminhos acima, com a barra final.
@@ -370,6 +378,122 @@ em cenário próprio, com `404` e sem gravação.
 .\.venv\Scripts\python -m pytest tests/trabalhadores/test_persistencia_atlas.py --atlas -v
 ```
 
+## UC-20 — manutenção e exclusão do trabalhador (CT-96 a CT-101)
+
+`PATCH /trabalhadores/{trabalhadorId}/` e `DELETE /trabalhadores/{trabalhadorId}/`
+já existiam; este cartão revisou o contrato das duas e fechou o tratamento das
+referências que sobram quando um cadastro sai. A equipe muda sem recriar a
+pessoa: a correção de dados, a troca de obra e a saída do cadastro são três
+operações distintas. Nenhum fluxo cria senha, token ou sessão de trabalhador.
+
+### Correção parcial dos dados
+
+`PATCH` aceita `nome`, `email`, `telefone`, `cargo` e `obras`, em qualquer
+combinação. **Campo não enviado não é tocado** — nem `ativo`, `data_cadastro` e
+`construtora_id`, que continuam vindo do servidor. A normalização é a mesma do
+cadastro de UC-19, reaproveitada em `validacoes.py`: `nome` e `email` perdem
+espaços nas pontas, `telefone` é gravado somente com dígitos (DDD, 10 ou 11
+dígitos, sem `+55`) e `cargo` é gravado em minúsculas. Uma edição que repete o
+valor atual responde `200` sem alterar nada.
+
+### A lista de obras é substituição, não acréscimo
+
+`obras` é o **conjunto completo** dos vínculos depois da edição: o que não está
+na lista sai. IDs repetidos — inclusive com letras em caixa diferente — colapsam
+em um único vínculo, então não há duplicação. A lista **vazia é permitida**: o
+trabalhador fica temporariamente sem obra, não aparece em nenhuma listagem por
+obra e o detalhe por ID continua respondendo `200`.
+
+Antes de gravar, cada ID é validado como `ObjectId` e cada obra é procurada no
+banco, inclusive a verificação de que pertence à construtora da sessão. Se
+**qualquer** uma faltar, a resposta é `422` com a lista dos ausentes no campo
+`obras` e **nada é gravado** — nem os vínculos válidos, nem os outros campos
+enviados na mesma requisição. Não existe atualização parcial em caso de recusa:
+
+```json
+{ "erro": "Uma ou mais obras não foram encontradas", "obras": ["507f1f77bcf86cd799439011"] }
+```
+
+### Exclusão do cadastro
+
+`DELETE` valida nesta ordem: sessão de construtora ativa, formato do
+identificador, existência e vínculo com a conta autenticada. Excluir o cadastro
+é diferente de retirá-lo de uma obra — o `DELETE` remove a pessoa, e a obra em
+que ela estava permanece intacta.
+
+A confirmação de UC-20 é da interface, não um campo do corpo como em
+[UC-17](#uc-17--excluir-obra-ou-marco-com-os-dependentes-ct-79-a-ct-85-ct-100):
+a tela abre `GET /trabalhadores/{trabalhadorId}/` para nomear quem será
+excluído (nome, cargo e obras) e só envia o `DELETE` se a pessoa confirmar.
+**Cancelar é não enviar o `DELETE`**: a consulta que monta o aviso não grava
+nada, e CT-99 verifica exatamente isso. A resposta de sucesso é `200` com
+
+```json
+{ "mensagem": "Trabalhador excluído com sucesso", "id": "...", "ocorrencias_sem_responsavel": 1 }
+```
+
+### Referências que sobram: responsável de ocorrência (P-10)
+
+Uma ocorrência pode apontar um trabalhador em `responsavel_id`. O tratamento
+adotado separa **atribuição viva** de **autoria histórica**:
+
+| Referência | O que é | Ao remover o cadastro |
+| --- | --- | --- |
+| `responsavel_id` da ocorrência | atribuição viva: quem responde pelo problema | vira `null`, e `responsavel_anterior` guarda `id`, `nome`, `cargo` e `removido_em` |
+| `autor` da ocorrência e de cada aceitação | autoria da decisão registrada | **nunca é tocada**; é a conta da construtora, nunca o trabalhador, que não autentica |
+| a própria ocorrência, suas evidências e aceitações | registro do problema da obra | permanecem; o trabalhador não leva nada consigo |
+
+As duas escritas — zerar a atribuição e remover o cadastro — acontecem na
+**mesma transação**, então não existe janela com a ocorrência apontando para um
+cadastro que já saiu, nem cadastro removido com a atribuição intacta. Se uma
+ocorrência passar a apontar a pessoa durante a remoção, a transação é desfeita e
+a resposta é `409`; repetir o `DELETE` resolve. Quando ninguém aponta a pessoa, a
+remoção é um `delete_one` só — um documento já é atômico e não há transação.
+`ocorrencias_sem_responsavel` na resposta diz quantas ocorrências ficaram sem
+responsável, para a interface avisar quem precisa reatribuir.
+
+**Retirar só o vínculo de obra não desfaz a atribuição.** Um `PATCH` com
+`obras: []` mantém `responsavel_id` como estava: a ausência da obra pode ser
+temporária e apagar quem responde seria perda de informação. Só a remoção do
+cadastro reescreve a atribuição.
+
+A política está registrada como **proposta** em
+[P-10](docs/07-plano-e-decisoes.md#pendências-que-podem-mudar-o-contrato), junto
+de P-08 e P-09; até o grupo confirmar, `responsavel_anterior` não deve ser
+tratado como contrato final.
+
+### Exclusão de obra não elimina o vínculo com outra
+
+A cascata de UC-17 reutiliza a operação de retirada de vínculo
+(`desvincular_obra` em `app/trabalhadores/repository.py`): excluir a obra A tira
+apenas A da lista `obras`, preservando o cadastro, o estado `ativo`, a ligação
+com a construtora e o vínculo com a obra B. A contagem aparece como
+`trabalhadores_desvinculados` no corpo da confirmação de UC-17. A política é
+P-09, também registrada como proposta, e CT-100 roda junto da cascata.
+
+### Respostas
+
+| Situação | Resposta |
+| --- | --- |
+| Edição aplicada, inclusive com `obras: []` | `200` com `mensagem` e `id` |
+| Exclusão aplicada | `200` com `mensagem`, `id` e `ocorrencias_sem_responsavel` |
+| JSON vazio, campo desconhecido, corpo malformado ou campo em formato inválido | `422` com a mensagem do campo; nada gravado |
+| Obra da lista inexistente ou de outra construtora | `422` com `obras` listando os ausentes; nada gravado |
+| Identificador fora do formato `ObjectId` | `400`, dizendo se é o ID da obra ou do trabalhador |
+| Trabalhador inexistente, já excluído ou de outra construtora | `404` `{"erro": "Trabalhador não encontrado"}` |
+| Ocorrência passou a apontar a pessoa durante a remoção | `409`; nada removido, repetir o `DELETE` |
+| Falha no banco | `503`, sem detalhe do driver e sem gravação parcial |
+| Requisição sem sessão válida | `401`, sem alterar nem expor cadastro |
+
+```powershell
+# CT-96 a CT-99 e a política P-10, com banco em memória:
+.\.venv\Scripts\python -m pytest tests/trabalhadores/test_manutencao.py -v
+# CT-101: edição e exclusão relidas em processo e conexão novos:
+.\.venv\Scripts\python -m pytest tests/trabalhadores/test_persistencia_atlas.py --atlas -v
+# CT-100 roda com a cascata de UC-17:
+.\.venv\Scripts\python -m pytest tests/test_exclusao_cascata.py -k ct100 -v
+```
+
 ## Executar os testes
 
 Na pasta `backend-pe03`, usando PowerShell:
@@ -410,6 +534,7 @@ tests/
 │   ├── test_cadastro.py         # CT-90 a CT-93: cadastro, validações e ID da obra
 │   ├── test_consultas.py        # CT-94: listagem por obra, detalhe por ID e filtros
 │   ├── test_rotas.py            # CT-95 e UC-20: edição, exclusão e sessão obrigatória
+│   ├── test_manutencao.py      # CT-96 a CT-99 e P-10: responsável de ocorrência
 │   ├── test_persistencia_atlas.py  # CT-94 com conexão e processo novos
 │   └── test_vinculo_construtora.py # isolamento entre construtoras
 ├── seguranca/
@@ -1125,9 +1250,9 @@ montar o aviso a partir da própria resposta, essa recusa devolve também:
   "alvo": { "tipo": "obra", "id": "...", "nome": "Residencial Aurora" },
   "perda": {
     "marcos": 2, "avancos": 2, "publicacoes": 1, "versoes": 1,
-    "exemplos_simulados": 1, "ocorrencias": 1, "aceitacoes": 1, "midias": 6,
-    "mudancas": 1, "estados": 1, "dependencias": 1, "historico": 2,
-    "trabalhadores_desvinculados": 1
+    "exemplos_simulados": 1, "feedbacks_simulados": 0, "ocorrencias": 1,
+    "aceitacoes": 1, "midias": 6, "mudancas": 1, "estados": 1,
+    "dependencias": 1, "historico": 2, "trabalhadores_desvinculados": 1
   }
 }
 ```
@@ -1158,8 +1283,8 @@ existem na obra (`marcos`, `mudancas`, `estados`, `trabalhadores_desvinculados`)
 
 | Alvo | Conjunto removido | Preservado |
 | --- | --- | --- |
-| Obra | marcos, avanços (rascunho e publicado), fato de publicação, versões/correções, mídias e tarefas de limpeza pendentes, diários de upload, ocorrências com evidências e aceitações, histórico de estados/mudanças da obra e dos marcos, exemplos simulados desses avanços, vínculos de dependência entre os marcos | outras obras e seus registros; cadastro dos trabalhadores |
-| Marco | o marco, seus avanços e tudo que vive neles, a trilha de mudanças do marco, as ocorrências vinculadas a ele (política proposta, ver abaixo) | a obra, os outros marcos e seus avanços, as ocorrências sem vínculo com o marco, os vínculos de trabalhadores |
+| Obra | marcos, avanços (rascunho e publicado), fato de publicação, versões/correções, mídias e tarefas de limpeza pendentes, diários de upload, ocorrências com evidências e aceitações, histórico de estados/mudanças da obra e dos marcos, avanços com origem simulada e os exemplos de comprador de UC-21 ligados à obra, aos marcos ou às atualizações, vínculos de dependência entre os marcos | outras obras e seus registros; cadastro dos trabalhadores |
+| Marco | o marco, seus avanços e tudo que vive neles, a trilha de mudanças do marco, as ocorrências vinculadas a ele (política proposta, ver abaixo), os exemplos de UC-21 ligados ao marco ou às suas atualizações | a obra, os outros marcos e seus avanços, as ocorrências sem vínculo com o marco, os exemplos ligados à obra, os vínculos de trabalhadores |
 
 Ao excluir um marco, as relações em que **outros** marcos dependem dele saem
 junto, nos dois sentidos da lista `dependencias_marcos` da obra e na lista
@@ -1180,7 +1305,11 @@ Enquanto isso, CT-82 e CT-100 não devem ser tratados como contrato final:
   seja uma linha e não uma reescrita. Qualquer das duas sai sem deixar órfão.
 - **Trabalhador** nunca é excluído por um vínculo removido: ao excluir a obra A,
   apenas o vínculo com A sai da lista `obras`. Cadastro, estado ativo e o
-  vínculo com a obra B permanecem, assim como a ligação com a construtora.
+  vínculo com a obra B permanecem, assim como a ligação com a construtora. A
+  operação de retirada (`desvincular_obra`) é a mesma reutilizada por UC-20.
+- O caminho inverso — remover o **cadastro** do trabalhador — é UC-20 e tem
+  política própria em P-10: a ocorrência fica sem responsável, sem perder a
+  autoria das decisões já registradas.
 
 ### Consistência no Atlas e pendências duráveis no Cloudinary
 
@@ -1307,7 +1436,141 @@ Execute com banco em memória e armazenamento simulado:
 `python -m pytest tests/historico/test_consultas.py tests/integracao/test_historico.py -q`.
 O teste de integração produz decisões e correções pelas rotas reais, confere a
 sequência após reiniciar a aplicação e não usa a base de demonstração.
-# UC-18 — Exclusão individual de registros
+
+## UC-21 — dados simulados do comprador e do engenheiro (CT-102 a CT-106)
+
+`F-17`, `F-18`, `RN-10` e `CA-08`. Os exemplos de avaliação, compreensão e
+dúvida do comprador, e o avanço atribuído a um engenheiro, existem para mostrar
+como a informação seria contextualizada no futuro. São **pré-carregados** e
+apresentados como simulação: não representam comentários reais e não criam
+perfil, login ou formulário para esses participantes.
+
+### Consulta
+
+`GET /obras/{obraId}/feedback-simulado` exige sessão da construtora e é somente
+de leitura. A resposta traz `simulado: true`, `somente_leitura: true` e um
+`aviso` em texto, para a interface marcar a origem sem depender de convenção
+própria:
+
+```json
+{
+  "obra": { "id": "...", "nome": "Residencial Aurora", "cliente": "Família Andrade (cliente fictício)" },
+  "simulado": true,
+  "somente_leitura": true,
+  "aviso": "Exemplos simulados, pré-carregados para demonstração. ...",
+  "filtros_aplicados": { "marco_id": "..." },
+  "feedbacks": [
+    {
+      "id": "...", "simulado": true, "somente_leitura": true, "interacao_real": false,
+      "tipo": "compreensao", "exemplo": "compreensao-marco",
+      "origem": { "simulado": true, "perfil": "comprador", "nome": "Helena Marques",
+                  "identidade": "ficticia", "autenticado": false,
+                  "procedencia": "carga_demonstracao",
+                  "cliente_referencia": "Família Andrade (cliente fictício)" },
+      "alvo": { "tipo": "marco", "id": "...", "obra_id": "...", "marco_id": "...",
+                "avanco_id": null, "rotulo": "Fundação" },
+      "conteudo": { "nivel": "parcial", "comentario": "..." },
+      "registrado_em": "2030-10-14T12:00:00+00:00"
+    }
+  ],
+  "avancos_simulados": [ { "id": "...", "simulado": true, "origem_simulada": { "perfil": "engenheiro", "...": "..." },
+                           "autor_original": "simulado:engenheiro:rafael-nogueira",
+                           "sessao_do_engenheiro": false, "versoes": 2,
+                           "editado_pela_construtora": true, "comparacao": "/avancos/.../versoes",
+                           "correcao": { "...": "..." } } ],
+  "totais": { "avaliacao": 1, "compreensao": 2, "duvida": 2, "feedbacks": 5, "avancos_simulados": 1 }
+}
+```
+
+`alvo.tipo` é `obra`, `marco` ou `atualizacao` (um avanço da obra); `rotulo` é o
+texto de contexto já pronto para a tela. `tipo` do exemplo é `avaliacao`,
+`compreensao` ou `duvida`.
+
+### Filtros
+
+| Parâmetro | Efeito |
+| --- | --- |
+| `tipo` | `avaliacao`, `compreensao` ou `duvida`; filtra só os exemplos do comprador |
+| `alvo` | `obra`, `marco` ou `atualizacao`; filtra só os exemplos do comprador |
+| `marco_id` | exemplos cujo **alvo é esse marco** e avanços simulados desse marco |
+| `avanco_id` | exemplos cujo **alvo é essa atualização** e o avanço simulado correspondente |
+| `secao` | `comprador` ou `engenheiro`; pede apenas uma das listas |
+
+O vínculo é exato: `marco_id` não devolve os exemplos da obra nem os das
+atualizações daquele marco, e `avanco_id` não devolve os do marco. É isso que
+mantém cada exemplo apenas no contexto a que pertence (CT-103). `tipo` e `alvo`
+descrevem o exemplo do comprador e não restringem `avancos_simulados`; para
+pedir uma lista só, use `secao`.
+
+Respostas: `400 ID_INVALIDO` para identificador malformado; `404
+OBRA_NAO_ENCONTRADA`; `404 ALVO_FORA_DA_OBRA` quando `marco_id`/`avanco_id` não
+pertence à obra — a consulta não confirma a existência de um alvo de fora nem
+mistura contextos; `404 ALVO_FORA_DO_MARCO` quando os dois filtros discordam;
+`422 FILTRO_DESCONHECIDO` ou `422 FILTRO_INVALIDO` para parâmetro ou valor fora
+da lista, em vez de ignorar o filtro em silêncio. Obra sem exemplos devolve
+`feedbacks: []` e `avancos_simulados: []`. Um exemplo cujo alvo deixou de
+existir não é apresentado: ele é contado em `exemplos_inconsistentes`.
+
+### Não existe interação real
+
+`POST`, `PUT`, `PATCH` e `DELETE` no mesmo caminho respondem `405` com
+`codigo="INTERACAO_NAO_DISPONIVEL"`, `Allow: GET, HEAD, OPTIONS` e nenhuma
+escrita. Não há rota de cadastro, login ou envio de mensagem para comprador ou
+engenheiro, e o autor do exemplo (`simulado:engenheiro:...`) não é um
+identificador de sessão válido (CT-104, CT-105).
+
+### Avanço do engenheiro e correção pela construtora
+
+O avanço simulado é um avanço publicado comum com o campo `origem_simulada`,
+lido pela mesma função da prévia. Quando a construtora o corrige por
+`PATCH /avancos/{id}` (UC-11), a origem e `autor_original` permanecem; a
+correção registra autor da construtora, motivo, instante, campos alterados e o
+conteúdo anterior. O painel expõe `editado`, `editado_pela_construtora`,
+`versoes` e `comparacao` apontando para `GET /avancos/{id}/versoes`, o mesmo
+nome usado pelo histórico de UC-13 (CT-50).
+
+Um exemplo de engenheiro que ainda não foi publicado aparece com o `estado` real
+e com as evidências lidas do acervo, na mesma forma pública do snapshot. Um
+avanço reservado para exclusão não é listado.
+
+### Carga de demonstração
+
+Os exemplos entram por procedimento, não por formulário:
+
+```bash
+# A obra e o marco são criados antes pelo produto (UC-02 e UC-05).
+python scripts/carregar_dados_demonstracao.py --obra <obraId>
+
+# Adotar um avanço publicado já existente como exemplo do engenheiro:
+python scripts/carregar_dados_demonstracao.py --obra <obraId> --avanco <avancoId>
+
+# Sem enviar foto ao provedor (o avanço resultante não pode ser corrigido):
+python scripts/carregar_dados_demonstracao.py --obra <obraId> --sem-midia --json
+```
+
+A carga grava em `tbl_feedback_simulado` com a chave natural
+`(obra_id, exemplo)` e índice único, e reconhece o avanço do engenheiro por
+`origem_simulada.exemplo`. Reexecutar não duplica nada, não remove dados alheios
+ao cenário e preserva um avanço já corrigido pela construtora, com autoria e
+versões intactas. Sem `--avanco`, o exemplo do engenheiro é criado com uma foto
+de placeholder enviada pelo provedor configurado; sem provedor, o relatório diz
+que esse exemplo ficou de fora e por quê. Com `--avanco`, a autoria anterior do
+registro adotado é preservada em `origem_simulada.autor_anterior`.
+
+### Exclusão dos dependentes
+
+Os exemplos saem com o objeto que contextualizam (RN-09): a cascata de obra e de
+marco de UC-17 os remove na mesma transação e informa a contagem em
+`perda.feedbacks_simulados`; a exclusão de um rascunho (UC-18) remove o exemplo
+ligado àquela atualização. Excluir o marco preserva os exemplos da obra. A
+varredura de referências órfãs da cascata reprova a operação se algum exemplo
+sobrevivesse ao alvo (CT-106).
+
+Testes: `python -m pytest tests/test_dados_simulados.py -q`. Usam a própria
+carga, MongoDB em memória com rollback local e Cloudinary simulado; a marcação
+visual é validada com o frontend.
+
+## UC-18 — excluir um registro individual
 
 `DELETE /avancos/{id}` também remove avanços publicados. O ramo de rascunho
 continua usando a limpeza e o contrato sem corpo de UC-09. Para publicados e
@@ -1362,99 +1625,3 @@ UC-01 a UC-18. Os testes de UC-09/CT-39 continuam exercitando o mesmo ramo de
 rascunho; UC-17 e UC-18 compartilham as fixtures em `tests/support_exclusoes.py`.
 Integrações Cloudinary reais continuam condicionadas às credenciais exclusivas
 de teste descritas em `tests/README.md`.
-
-## Dados simulados — UC-21
-
-Implementação em `app/simulados/{routes,service,repository}.py`, registrada na
-fábrica `create_app` usada por `api.py`. O produto oferece somente leitura com
-sessão de construtora ativa. Não há cadastro, login ou envio de mensagem pelos
-perfis de comprador e engenheiro.
-
-### Carregar o cenário de demonstração
-
-Configure `.env` conforme `.env.example`, incluindo Atlas com transações e o
-armazenamento Cloudinary. Crie uma obra e um marco dessa obra pelas rotas normais.
-Use uma obra de demonstração, o ID da construtora dona da obra e uma evidência
-fictícia local em um dos formatos aceitos pelo cadastro de avanços.
-Na raiz do backend, execute (substitua os IDs e o caminho):
-
-```powershell
-.\venv\Scripts\python scripts/carregar_dados_demonstracao.py --obra-id ID_OBRA --marco-id ID_MARCO --construtora-id ID_CONSTRUTORA --arquivo "C:\caminho\evidencia-ficticia.png" --data 2026-10-31
-```
-
-A carga cria três feedbacks de obra (avaliação, compreensão e dúvida), uma dúvida
-de marco e uma compreensão de atualização. Cria também um avanço publicado com
-autoria e origem de engenheiro fictício; o arquivo passa pelos serviços normais
-de validação, upload e publicação. Os feedbacks ficam em `tbl_feedback_simulado`;
-o avanço, suas mídias e suas versões usam as coleções existentes.
-
-Para repetir, mantenha os mesmos IDs, data, nome e conteúdo do arquivo.
-A chave de idempotência evita upload/avanço duplicado; IDs determinísticos e
-`$setOnInsert` evitam feedback duplicado. Exemplos, correções anteriores e dados
-alheios ao cenário são preservados. A carga imprime os IDs e não cria usuários.
-
-Os cinco feedbacks são gravados em uma transação. Upload/cadastro, publicação e
-carga de feedbacks são etapas retomáveis: uma falha posterior pode deixar o avanço
-já criado; repetir os mesmos argumentos retoma o cenário. Em erro de commit ou
-limpeza de upload, consulte os diários existentes antes de repetir; não troque a
-chave para contornar uma operação pendente. O comando não é executado ao iniciar
-o servidor e não oferece uma rota pública de carga.
-
-### Contrato para o frontend
-
-| Consulta | Contexto retornado |
-| --- | --- |
-| `GET /obras/{obraId}/feedback-simulado` | Somente exemplos vinculados diretamente à obra |
-| `GET /obras/{obraId}/feedback-simulado?marco_id={marcoId}` | Somente exemplos daquele marco |
-| `GET /obras/{obraId}/feedback-simulado?atualizacao_id={avancoId}` | Somente exemplos daquela atualização publicada |
-
-Os filtros são mutuamente exclusivos, não aceitam repetição nem parâmetros
-extras. A atualização é identificada pelo ID do avanço publicado. O servidor
-valida a obra, o dono e o vínculo do marco/atualização. IDs inválidos retornam
-`400`; alvos inexistentes ou de outra obra retornam `404`; filtros ambíguos ou
-extras retornam `422`. Sem token retorna `401`; perfil incompatível, `403`.
-Sem exemplos retorna `200` com `{"feedbacks": []}`. Métodos de escrita retornam
-`405`. Falha de banco retorna `503` com mensagem neutra.
-
-Exemplo de item dentro de `feedbacks`:
-
-```json
-{
-  "id": "ID_EXEMPLO",
-  "obra_id": "ID_OBRA",
-  "alvo": {"tipo": "marco", "id": "ID_MARCO"},
-  "tipo": "duvida",
-  "texto": "Exemplo: quais atividades faltam para concluir este marco?",
-  "cliente": {"nome": "Comprador fictício — demonstração UC-21", "ficticio": true},
-  "origem": "simulado",
-  "simulado": true
-}
-```
-
-O avanço fictício aparece nas consultas de avanço/publicação e na prévia existente.
-A prévia informa `simulado`, `origem_simulada` e `autor_original`. Depois de uma
-correção normal via `PATCH /avancos/{id}`, também informa
-`editado_pela_construtora`, `ultima_correcao` (autor, instante, motivo, campos e
-texto anterior) e o caminho `versoes`. `GET /avancos/{id}/versoes` preserva toda a
-cadeia, autoria original, alterações e diferenças de texto. A interface deve
-exibir a marca **simulado**, o contexto e a autoria da correção.
-
-Excluir obra, marco ou avanço publicado remove seus feedbacks na mesma transação
-da cascata UC-17/18 e contabiliza esses exemplos no aviso de perda. Excluir um
-marco preserva feedbacks diretamente vinculados à obra; excluir uma atualização
-preserva os feedbacks de obra e marco.
-
-### Verificar
-
-```powershell
-.\venv\Scripts\python -m pytest tests/test_dados_simulados.py --require-routes -q
-.\venv\Scripts\python -m pytest --require-routes -q
-.\venv\Scripts\python -m pytest tests/test_dados_simulados.py tests/integracao/test_todas_rotas.py --atlas --require-routes -q
-```
-
-Os testes UC-21 cobrem CT-102–106, CT-50, repetição após correção, isolamento entre
-obras, rejeições, autenticação e rollback dos feedbacks. Sem `--atlas`, banco e
-transações são simulados. Com `--atlas`, as coleções são temporárias e isoladas;
-o armazenamento de mídia continua simulado. A validação visual e a demonstração
-React → Flask no ambiente publicado permanecem necessárias para o aceite da UC
-completa.

@@ -97,6 +97,15 @@ A publicação preserva verificação de mídia recuperável, snapshot e idempot
 Não alterar os critérios de concorrência ou a compensação dos uploads ao mover
 regras entre classes.
 
+`ServicoSimulados` fica em `app/simulados/` e é somente de leitura (UC-21). O
+repositório desse módulo depende apenas de `db`, para que as cascatas de UC-17 e
+a exclusão de rascunho de UC-18 o importem sem ciclo com `app.avancos`. O avanço
+atribuído a engenheiro simulado continua sendo um avanço comum com
+`origem_simulada`: a leitura reaproveita a representação da prévia e a correção
+pela construtora segue em `ServicoCorrecoes`, sem um fluxo paralelo. Não existe
+serviço de escrita para comprador ou engenheiro; a carga é um procedimento em
+`scripts/carregar_dados_demonstracao.py`.
+
 ## Decisões confirmadas para ocorrências e exclusões
 
 - Ocorrência tem responsável opcional vinculado a `Trabalhador`, além de título,
@@ -122,8 +131,9 @@ aplicação ao estado atual. O contrato está em
 [atualização de ocorrências](05-arquitetura-e-contratos.md#atualização-de-ocorrências--uc-15).
 A exclusão completa de obra/marco está implementada em UC-17, junto com UC-18
 para registros individuais: documentos em transação e limpeza externa retomável.
-A manutenção de trabalhadores em UC-20 retira responsabilidades que perderam
-seu vínculo, sem apagar ocorrências ou histórico. Dados antigos de trabalhadores
+A manutenção de trabalhadores em UC-20 preserva ocorrências e histórico: remover
+o cadastro zera a atribuição viva e guarda quem respondia (P-10), enquanto
+retirar só o vínculo de obra não mexe na atribuição. Dados antigos de trabalhadores
 sem `construtora_id` continuam legíveis pelo comportamento legado; a vinculação
 histórica requer uma migração específica, sem inventar a empresa proprietária.
 

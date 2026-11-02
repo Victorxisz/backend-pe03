@@ -1,4 +1,10 @@
-"""UC-20/RN-08: manutenção de equipe não deixa responsáveis órfãos."""
+"""UC-20/RN-08: manutenção de equipe não deixa responsáveis órfãos.
+
+A política é P-10 (`docs/07-plano-e-decisoes.md`): remover o cadastro zera
+`responsavel_id` e guarda `responsavel_anterior` na mesma transação; retirar só
+o vínculo de obra não mexe na atribuição, porque a ausência pode ser temporária.
+Em nenhum dos dois casos a ocorrência, suas aceitações ou seu histórico saem.
+"""
 
 import pytest
 from bson import ObjectId
@@ -10,6 +16,7 @@ from support_avancos import transacao_local
 
 @pytest.fixture
 def cenario(client, headers, database, pessoa, obra_existente):
+    """Duas obras com uma ocorrência cada, ambas sob a mesma responsável."""
     outra = {**obra_existente, "_id": ObjectId()}
     database.tbl_obras.insert_one(outra)
     database.tbl_trabalhadores.update_one(
@@ -28,36 +35,61 @@ def cenario(client, headers, database, pessoa, obra_existente):
     return outra, ocorrencias
 
 
-@pytest.mark.parametrize("acao", ["excluir", "desvincular", "dados"])
-def test_manutencao_preserva_ocorrencias_e_historico(
-    client, headers, database, pessoa, cenario, transacao_local, acao,
+def test_exclusao_desatribui_as_duas_obras_e_preserva_as_decisoes(
+    client, headers, database, pessoa, cenario, transacao_local,
 ):
-    outra, ocorrencias = cenario
-    caminho = f"/trabalhadores/{pessoa['_id']}/"
-    if acao == "excluir":
-        resposta = client.delete(caminho, headers=headers)
-    else:
-        dados = {"obras": [str(outra["_id"])]} if acao == "desvincular" else {"nome": "Nome corrigido"}
-        resposta = client.patch(caminho, headers=headers, json=dados)
+    """Remover o cadastro alcança toda ocorrência da pessoa, em qualquer obra."""
+    _, ocorrencias = cenario
+    resposta = client.delete(f"/trabalhadores/{pessoa['_id']}/", headers=headers)
     assert resposta.status_code == 200
-    for indice, anterior in enumerate(ocorrencias):
-        remove = acao == "excluir" or acao == "desvincular" and indice == 0
-        esperado = {**anterior, "responsavel_id": None, "versao": anterior.get("versao", 0) + 1} if remove else anterior
-        assert database.tbl_ocorrencias.find_one({"_id": anterior["_id"]}) == esperado
+    assert resposta.json["ocorrencias_sem_responsavel"] == len(ocorrencias)
+    for anterior in ocorrencias:
+        salva = database.tbl_ocorrencias.find_one({"_id": anterior["_id"]})
+        assert salva["responsavel_id"] is None
+        assert salva["responsavel_anterior"]["id"] == str(pessoa["_id"])
+        # Só a atribuição viva muda: autoria, aceitações e histórico ficam.
+        assert {campo: valor for campo, valor in salva.items()
+                if campo not in ("responsavel_id", "responsavel_anterior")} == {
+            campo: valor for campo, valor in anterior.items() if campo != "responsavel_id"}
         consulta = client.get(f"/ocorrencias/{anterior['_id']}", headers=headers)
         assert consulta.status_code == 200
         assert consulta.json["aceitacoes"]
-        if remove:
-            # Um formulário aberto antes da retirada precisa recarregar a versão.
-            conflito = client.patch(f"/ocorrencias/{anterior['_id']}", headers=headers, json={
-                "versao": anterior.get("versao", 0), "alteracoes": {"titulo": "Formulário antigo"}})
-            assert conflito.status_code == 409
 
 
-@pytest.mark.parametrize("acao", ["excluir", "desvincular"])
-def test_falha_de_limpeza_reverte_toda_manutencao(
-    client, headers, database, pessoa, cenario, transacao_local, monkeypatch, acao,
+@pytest.mark.parametrize("dados,caso", [
+    ({"obras": []}, "sem nenhuma obra"),
+    ({"nome": "Nome corrigido"}, "corrigindo só os dados"),
+])
+def test_edicao_nao_mexe_na_atribuicao(
+    client, headers, database, pessoa, cenario, dados, caso,
 ):
+    """P-10: ausência da obra é temporária; apagar quem responde seria perda."""
+    _, ocorrencias = cenario
+    resposta = client.patch(f"/trabalhadores/{pessoa['_id']}/", headers=headers, json=dados)
+    assert resposta.status_code == 200, caso
+    for anterior in ocorrencias:
+        assert database.tbl_ocorrencias.find_one({"_id": anterior["_id"]}) == anterior, caso
+        consulta = client.get(f"/ocorrencias/{anterior['_id']}", headers=headers)
+        assert consulta.status_code == 200
+        assert consulta.json["aceitacoes"]
+
+
+def test_edicao_mantendo_uma_obra_preserva_as_duas_ocorrencias(
+    client, headers, database, pessoa, cenario,
+):
+    """Trocar a lista de obras não é desatribuir: nenhuma ocorrência muda."""
+    outra, ocorrencias = cenario
+    resposta = client.patch(f"/trabalhadores/{pessoa['_id']}/", headers=headers,
+                            json={"obras": [str(outra["_id"])]})
+    assert resposta.status_code == 200
+    for anterior in ocorrencias:
+        assert database.tbl_ocorrencias.find_one({"_id": anterior["_id"]}) == anterior
+
+
+def test_falha_de_limpeza_reverte_toda_a_exclusao(
+    client, headers, database, pessoa, cenario, transacao_local, monkeypatch,
+):
+    """Sem conseguir desatribuir, o cadastro também não sai."""
     antes = snapshot(database)
 
     def falhar(*args, **kwargs):
@@ -66,9 +98,7 @@ def test_falha_de_limpeza_reverte_toda_manutencao(
     with monkeypatch.context() as contexto:
         import trabalhadores
         contexto.setattr(trabalhadores.servico.repositorio.ocorrencias, "update_many", falhar)
-        caminho = f"/trabalhadores/{pessoa['_id']}/"
-        resposta = (client.delete(caminho, headers=headers) if acao == "excluir"
-                    else client.patch(caminho, headers=headers, json={"obras": []}))
+        resposta = client.delete(f"/trabalhadores/{pessoa['_id']}/", headers=headers)
     assert resposta.status_code == 503
     assert snapshot(database) == antes
 
@@ -77,9 +107,14 @@ def test_falha_de_limpeza_reverte_toda_manutencao(
 def test_consistencia_em_transacao_real(client, headers, database, pessoa, cenario):
     outra, ocorrencias = cenario
     resposta = client.patch(f"/trabalhadores/{pessoa['_id']}/", headers=headers,
-                           json={"obras": [str(outra["_id"])]})
+                            json={"obras": [str(outra["_id"])]})
     assert resposta.status_code == 200
-    assert database.tbl_ocorrencias.find_one({"_id": ocorrencias[0]["_id"]})["responsavel_id"] is None
-    assert database.tbl_ocorrencias.find_one({"_id": ocorrencias[1]["_id"]})["responsavel_id"] == pessoa["_id"]
+    # Editar não desatribui, nem na obra que saiu da lista.
+    for anterior in ocorrencias:
+        assert database.tbl_ocorrencias.find_one(
+            {"_id": anterior["_id"]})["responsavel_id"] == pessoa["_id"]
     assert client.delete(f"/trabalhadores/{pessoa['_id']}/", headers=headers).status_code == 200
-    assert database.tbl_ocorrencias.find_one({"_id": ocorrencias[1]["_id"]})["responsavel_id"] is None
+    for anterior in ocorrencias:
+        salva = database.tbl_ocorrencias.find_one({"_id": anterior["_id"]})
+        assert salva["responsavel_id"] is None
+        assert salva["responsavel_anterior"]["id"] == str(pessoa["_id"])

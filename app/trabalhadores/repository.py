@@ -1,7 +1,6 @@
-"""Persistência dos trabalhadores e consulta de obras para seus vínculos."""
+"""Persistência dos trabalhadores, seus vínculos de obra e as atribuições de ocorrência."""
 
 import db
-from bson import ObjectId
 
 
 class RepositorioTrabalhadores:
@@ -24,37 +23,15 @@ class RepositorioTrabalhadores:
         return self.trabalhadores.find_one({"_id": identificador})
 
     def atualizar(self, identificador, campos):
-        def gravar(sessao=None):
-            return self.trabalhadores.update_one(
-                {"_id": identificador}, {"$set": campos}, session=sessao).matched_count
+        """P-10: retirar o vínculo de obra não mexe na atribuição de responsável.
 
-        if "obras" not in campos:
-            return gravar()
-        # Responsabilidade é opcional, mas exige vínculo com a mesma obra.
-        mantidas = [valor for obra in campos["obras"] for valor in (obra, ObjectId(obra))]
-        return self._manter_responsaveis(identificador, gravar, {"obra_id": {"$nin": mantidas}})
+        A ausência da obra pode ser temporária; só a remoção do cadastro
+        reescreve ``responsavel_id``, no serviço, que conduz a transação.
+        """
+        return self.trabalhadores.update_one({"_id": identificador}, {"$set": campos}).matched_count
 
-    def excluir(self, identificador):
-        def gravar(sessao=None):
-            return self.trabalhadores.delete_one({"_id": identificador}, session=sessao).deleted_count
-
-        return self._manter_responsaveis(identificador, gravar)
-
-    def _manter_responsaveis(self, identificador, gravar, contexto=None):
-        filtro = {"responsavel_id": {"$in": [identificador, str(identificador)]}, **(contexto or {})}
-        if self.ocorrencias.find_one(filtro, {"_id": 1}) is None:
-            return gravar()
-
-        def transacao(sessao):
-            resultado = gravar(sessao)
-            if resultado:
-                # Não apaga ocorrências, aceitações nem transições anteriores.
-                self.ocorrencias.update_many(
-                    filtro, {"$set": {"responsavel_id": None}, "$inc": {"versao": 1}}, session=sessao)
-            return resultado
-
-        with self.cliente.start_session() as sessao:
-            return sessao.with_transaction(transacao)
+    def excluir(self, identificador, *, session=None):
+        return self.trabalhadores.delete_one({"_id": identificador}, session=session).deleted_count
 
     def consultar(self, filtro):
         return list(self.trabalhadores.find(filtro))
@@ -72,5 +49,20 @@ class RepositorioTrabalhadores:
         return self.trabalhadores.update_many(
             {"obras": self._vinculo(obra_id)},
             {"$pull": {"obras": self._vinculo(obra_id)}},
+            session=session,
+        ).modified_count
+
+    def atribuicoes_de_responsavel(self, trabalhador_id, *, session=None):
+        """Ocorrências que apontam a pessoa como responsável, em ObjectId ou texto."""
+        return list(self.ocorrencias.find(
+            {"responsavel_id": {"$in": [trabalhador_id, str(trabalhador_id)]}},
+            session=session,
+        ).sort("_id", 1))
+
+    def desatribuir_responsavel(self, trabalhador_id, registro, *, session=None):
+        """P-10: zera a atribuição viva e guarda quem respondia, sem apagar a ocorrência."""
+        return self.ocorrencias.update_many(
+            {"responsavel_id": {"$in": [trabalhador_id, str(trabalhador_id)]}},
+            {"$set": {"responsavel_id": None, "responsavel_anterior": registro}},
             session=session,
         ).modified_count
