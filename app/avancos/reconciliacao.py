@@ -33,7 +33,7 @@ class ServicoReconciliacao:
             return operacao["estado"]
         if operacao["estado"] != "pendente":
             raise ValueError("Estado de operação desconhecido")
-        ocorrencia = operacao.get("tipo") == "ocorrencia"
+        ocorrencia = operacao.get("tipo") in {"ocorrencia", "imagem_projeto"}
         avanco = None if ocorrencia else self.banco["tbl_avancos"].find_one({"_id": operacao["avanco_id"]})
         atualizacao = operacao.get("tipo") in {"edicao", "correcao"}
         legado_correcao = len(operacao_id) == 32 and avanco and avanco.get("estado") == "publicado"
@@ -89,7 +89,7 @@ def main():
         for item in db.banco_dados["tbl_uploads_pendentes"].find(
             {"estado": "pendente"}
         ):
-            print(item["_id"], str(item.get("ocorrencia_id", item.get("avanco_id"))), item["iniciado_em"])
+            print(item["_id"], str(item.get("obra_id", item.get("ocorrencia_id", item.get("avanco_id")))), item["iniciado_em"])
         return
     if not args.servico_parado:
         parser.error("Pare a aplicação e informe --servico-parado")

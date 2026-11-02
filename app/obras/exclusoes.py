@@ -25,6 +25,8 @@ from app.trabalhadores.repository import RepositorioTrabalhadores
 from app.simulados.repository import RepositorioSimulados
 
 from . import repository
+from .imagem_projeto import arquivos_da_obra
+import db
 
 TIPO = "obra"
 
@@ -58,6 +60,9 @@ class ServicoExclusaoObra:
     def mapear(self, obra):
         """Descreve o conjunto dependente e a extensão da perda."""
         obra_id = obra["_id"]
+        if db.banco_dados["tbl_uploads_pendentes"].find_one({"obra_id": obra_id, "estado": "pendente"}):
+            raise ErroExclusao("Há uma imagem em envio ou aguardando reconciliação. Consulte novamente antes de excluir", 409)
+        imagens = arquivos_da_obra(obra_id)
         marcos = self.repositorio.ids_dos_marcos(obra_id)
         avancos = self.avancos.listar_avancos_de_marcos(marcos)
         ids_avancos = [avanco["_id"] for avanco in avancos]
@@ -72,7 +77,7 @@ class ServicoExclusaoObra:
             "marcos": len(marcos),
             **resumo_dos_avancos(avancos),
             **resumo_das_ocorrencias(ocorrencias),
-            "midias": len(midias) + len(evidencias),
+            "midias": len(midias) + len(evidencias) + len(imagens),
             "mudancas": len(obra.get("historico_mudancas", [])),
             "estados": len(obra.get("historico_estados", [])),
             "dependencias": len(obra.get("dependencias_marcos", [])),
@@ -82,9 +87,13 @@ class ServicoExclusaoObra:
         perda["exemplos_simulados"] += RepositorioSimulados().contar({"obra_id": obra_id})
         ids = (obra_id, *marcos, *ids_avancos, *ids_ocorrencias,
                *(midia["_id"] for midia in midias),
-               *(midia["_id"] for midia in evidencias))
+               *(midia["_id"] for midia in evidencias), *(midia["_id"] for midia in imagens))
 
         def remover(sessao):
+            if db.banco_dados["tbl_uploads_pendentes"].find_one({"obra_id": obra_id, "estado": "pendente"}, session=sessao):
+                raise ErroExclusao("Há uma imagem em envio. Aguarde antes de excluir", 409)
+            db.banco_dados["tbl_uploads_pendentes"].delete_many({"obra_id": obra_id}, session=sessao)
+            db.banco_dados["tbl_limpezas_midias"].delete_many({"obra_id": obra_id}, session=sessao)
             RepositorioSimulados().remover({"obra_id": obra_id}, session=sessao)
             # Relê o conjunto na transação: remove o que pertence à obra no
             # instante do commit, não só o que o mapeamento tinha visto.
@@ -106,7 +115,7 @@ class ServicoExclusaoObra:
                 [avanco["_id"] for avanco in pendentes], session=sessao)
             atualizadas = self.ocorrencias.listar_do_conjunto(
                 {"obra_id": obra_id}, session=sessao)
-            return encontradas + [
+            return encontradas + arquivos_da_obra(obra_id, session=sessao) + [
                 midia for item in atualizadas for midia in item.get("midias", [])
             ]
 
@@ -114,7 +123,7 @@ class ServicoExclusaoObra:
             alvo={"tipo": TIPO, "id": obra_id, "nome": obra.get("nome", "Obra")},
             perda=perda,
             ids=ids,
-            midias=tuple(midias + evidencias),
+            midias=tuple(midias + evidencias + imagens),
             remover=remover,
             relistar=relistar,
         )

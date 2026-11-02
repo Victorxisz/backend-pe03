@@ -20,6 +20,14 @@ Cada caso contém objetivo, gatilho, condições, caminho principal, desvios e r
 
 ### UC-02 — Criar obra residencial
 
+Extensão confirmada em 02/11/2026: a construtora pode selecionar uma imagem
+JPEG/PNG opcional de perspectiva do projeto antes da revisão. Sem imagem,
+mantém-se o cadastro JSON; com imagem, o cadastro e sua referência são
+persistidos juntos após upload privado. UC-03 a apresenta como ilustrativa e
+UC-04 oferece substituição/remoção por comando próprio, com controle de
+concorrência. Não é um avanço nem uma mudança de prazo. O contrato está em
+[Imagem do projeto](05-arquitetura-e-contratos.md#imagem-opcional-do-projeto--extensão-de-uc-020304).
+
 **Valor / vínculo:** abrir o histórico único da obra (`F-02`, `RN-01`, `CA-02`). **Gatilho:** “Nova obra”. **Pré-condição:** sessão ativa.
 
 **Fluxo principal:** 1. A construtora escolhe casa ou apartamentos. 2. Informa nome, localização/endereço, descrição, início e um cliente de referência. 3. Escolhe **data exata** ou **intervalo estimado** e preenche somente os campos da modalidade escolhida. 4. Revisa e confirma. 5. O servidor valida, gera ID, data de registro e autoria, salva no Atlas e retorna a obra. 6. A interface abre seu detalhe.

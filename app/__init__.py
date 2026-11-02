@@ -6,13 +6,22 @@ import os
 
 def create_app(config=None):
     from dotenv import load_dotenv
-    from flask import Flask, jsonify
+    from flask import Flask, Request, jsonify
     from flask_cors import CORS
     from flask_jwt_extended import JWTManager
     from pymongo.errors import PyMongoError
 
     load_dotenv(Path(__file__).resolve().parents[1] / ".env")
     application = Flask(__name__)
+    class RequisicaoLimitada(Request):
+        @property
+        def max_content_length(self):
+            geral = super().max_content_length
+            local = self.environ.get("pe03.max_content_length")
+            if local is None:
+                return geral
+            return min(geral, local) if geral is not None else local
+    application.request_class = RequisicaoLimitada
     application.config.update(
         JWT_SECRET_KEY=os.getenv("JWT_SECRET_KEY"),
         CONSTRUTORA_ID=os.getenv("CONSTRUTORA_ID", "").strip(),
@@ -31,6 +40,7 @@ def create_app(config=None):
     from app.auth.routes import sessoes_bp
     from trabalhadores import trabalhadores_bp
     from app.obras.routes import obras_bp
+    from app.obras.imagem_projeto import imagens_bp
     from app.marcos.routes import estado_marcos_bp, marcos_bp
     from app.avancos.midias_routes import midias_bp
     from app.avancos.routes import avancos_bp
@@ -62,6 +72,6 @@ def create_app(config=None):
     bcrypt.init_app(application)
     for blueprint in (trabalhadores_bp, construtora_bp, obras_bp, marcos_bp,
                       estado_marcos_bp, midias_bp, avancos_bp, publicacoes_bp, mudancas_bp,
-                      ocorrencias_bp, historico_bp, sessoes_bp, simulados_bp):
+                      ocorrencias_bp, historico_bp, sessoes_bp, simulados_bp, imagens_bp):
         application.register_blueprint(blueprint)
     return application

@@ -4,6 +4,11 @@ Este catálogo descreve **o que o usuário consegue fazer e por quê**. `P0` com
 
 ## Acesso e visão das obras
 
+Extensão aprovada em 02/11/2026 para F-02/F-03/F-05: imagem opcional do projeto
+na criação e na edição, exibida como perspectiva ilustrativa nos cartões e no
+detalhe. Não é evidência de avanço nem muda o planejamento. Ver o
+[contrato de imagem](05-arquitetura-e-contratos.md#imagem-opcional-do-projeto--extensão-de-uc-020304).
+
 | ID | Prioridade | Funcionalidade | Resultado para a construtora |
 | --- | --- | --- | --- |
 | F-01 | P0 | Entrar e sair com a conta pré-configurada da construtora | Ações ficam atribuídas à construtora autenticada; visitante não vê as obras. |

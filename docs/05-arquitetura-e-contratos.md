@@ -281,3 +281,67 @@ Esses testes cobrem riscos reais do produto; não precisam replicar cada linha d
 ## Refatoração com POO e conclusão de obra
 
 A organização efetiva e o contrato `PATCH /obras/{id}/estado` estão em [modelo com POO](13-modelo-poo.md). A conclusão registra a data do servidor e mantém histórico junto ao estado.
+
+## Imagem opcional do projeto — extensão de UC-02/03/04
+
+Escopo confirmado pelo usuário em 02/11/2026: uma perspectiva ilustrativa por
+obra, opcional, distinta de evidência de avanço/ocorrência. JPEG e PNG são
+validados pelo conteúdo, com decodificação no servidor; SVG, PDF e vídeos não
+são aceitos neste fluxo. O limite de arquivo usa `MIDIA_FOTO_MAX_BYTES`
+(padrão 10 MiB); a requisição multipart é limitada a esse valor mais 64 KiB
+para os dados do formulário. O limite é por requisição, sem mudar a
+configuração global enquanto há outras chamadas em andamento.
+
+O `POST /obras` JSON existente permanece igual e continua rejeitando campos
+desconhecidos, inclusive `imagem_projeto` como URL ou objeto de armazenamento.
+Para criar com imagem, enviar `multipart/form-data` com exatamente um campo
+`cadastro` (texto JSON com os sete campos existentes) e um arquivo
+`imagem_projeto`. Não repetir campos. O servidor valida o cadastro antes do
+upload e grava cadastro e metadados da imagem juntos no documento da obra.
+Sucesso retorna `201`, ID, `Location` e a representação criada.
+
+`GET /obras` e `GET /obras/{id}` incluem `imagem_projeto` somente quando houver
+imagem. O objeto público contém `id`, `nome`, `mime`, `tamanho` e `conteudo`
+(`/obras/{id}/imagem-projeto/{imagem_id}/conteudo`). Referência externa,
+credenciais e URLs assinadas do Cloudinary ficam no servidor. A resposta de
+PATCH descritivo continua parcial, sem aceitar alterações na imagem.
+
+| Operação | Requisição | Sucesso |
+| --- | --- | --- |
+| `PUT /obras/{id}/imagem-projeto` | Multipart com arquivo `imagem_projeto` e texto `imagem_atual` (ID consultado; texto vazio se ainda não houver imagem) | `200` com `{imagem_projeto, limpeza_pendente}` |
+| `DELETE /obras/{id}/imagem-projeto` | JSON `{ "imagem_atual": "ID consultado" }` | `200` com `{imagem_projeto: null, limpeza_pendente}`; não confundir com o `204` da exclusão da obra |
+| `GET /obras/{id}/imagem-projeto/{imagem_id}/conteudo` | Sessão válida da construtora responsável | `200` com bytes JPEG/PNG e `Cache-Control: private, no-store`, `X-Content-Type-Options: nosniff` |
+
+O ID anterior participa da escrita atômica para impedir sobrescrita ou remoção
+de uma substituição concorrente. Conflito retorna `409` e exige nova consulta.
+Obra/arquivo ausente ou inacessível retorna `404`; ID de obra malformado `400`;
+formato de requisição indevido `415`; dados/arquivo inválido `422`; limite
+excedido `413`. Falha de banco conhecida retorna `500`; armazenamento/configuração
+indisponível ou resultado de escrita indeterminado retorna `503`. Não há
+retry automático de escrita nem idempotência do POST de obra.
+
+Os arquivos usam o adaptador Cloudinary existente, com tipo `authenticated`.
+O diário `tbl_uploads_pendentes`, tipo `imagem_projeto`, guarda `obra_id` e a
+referência antes da chamada externa. Rejeição confirmada compensa o upload;
+timeout de escrita mantém o arquivo potencialmente em uso e o diário para
+reconciliação. Consultar a obra/lista antes de repetir. Depois de parar o
+serviço e aguardar os uploads, usar a reconciliação existente:
+
+```powershell
+python -m app.avancos.reconciliacao --listar
+python -m app.avancos.reconciliacao --operacao ID --servico-parado
+python -m app.avancos.reconciliacao --limpezas --servico-parado
+```
+
+Substituição/remoção agenda o arquivo anterior em `tbl_limpezas_midias` antes
+de trocar o vínculo. Arquivos ainda referenciados são preservados. Falha de
+limpeza mantém a tarefa e retorna `limpeza_pendente: true`, sem desfazer a
+imagem atual nem anunciar limpeza completa. A exclusão da obra inclui a
+imagem atual e arquivos anteriores pendentes na cascata durável de UC-17.
+Uploads pendentes bloqueiam essa cascata com `409` até terminar/reconciliar.
+
+Testes: `tests/obras/test_imagem_projeto.py` e o fluxo de todas as 58 operações
+em `tests/integracao/test_todas_rotas.py`. O padrão usa MongoDB e Cloudinary
+simulados. Acesso privado, recuperação em outra aplicação, rejeições,
+concorrência, timeout, compensação, limpeza e cascata são verificados; isso
+não substitui a execução com Atlas e Cloudinary reais no ambiente publicado.

@@ -56,9 +56,17 @@ class ServicoObras:
             ]
 
         obra["alertas"] = self.calcular_alertas(documento)
+        if documento.get("imagem_projeto"):
+            from .imagem_projeto import representar_imagem
+            obra["imagem_projeto"] = representar_imagem(documento["_id"], documento["imagem_projeto"])
         return serializar(obra)
 
     def criar_obra(self, dados, autor):
+        documento = self.preparar_cadastro(dados, autor)
+        self.repositorio.salvar_obra(documento)
+        return self.obra_para_dict(documento)
+
+    def preparar_cadastro(self, dados, autor):
         erro = validar_criacao_obra(dados)
         if erro:
             raise ErroObra(erro["mensagem"], 422, erro["campos"])
@@ -77,8 +85,7 @@ class ServicoObras:
             data_registro=registro,
             estado="planejada",
         )
-        self.repositorio.salvar_obra(documento)
-        return self.obra_para_dict(documento)
+        return documento
 
     def buscar_obra(self, identifier):
         try:

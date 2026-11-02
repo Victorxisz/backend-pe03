@@ -44,6 +44,10 @@ def test_todas_operacoes_possuem_fluxo_de_sucesso(app, client, headers, account,
     chamar("DELETE", "/sessoes/atual", auth=sessao_auth)
 
     obra_id = chamar("POST", "/obras", 201, json=obra).json["id"]
+    imagem = chamar("PUT", f"/obras/{obra_id}/imagem-projeto", data={
+        "imagem_atual": "", "imagem_projeto": (BytesIO(conteudos["png"]), "projeto.png")}).json["imagem_projeto"]
+    chamar("GET", imagem["conteudo"])
+    chamar("DELETE", f"/obras/{obra_id}/imagem-projeto", json={"imagem_atual": imagem["id"]})
     assert chamar("GET", f"/obras/{obra_id}/feedback-simulado").json == {"feedbacks": []}
     chamar("GET", "/obras")
     chamar("GET", f"/obras/{obra_id}")
@@ -120,7 +124,7 @@ def test_todas_operacoes_possuem_fluxo_de_sucesso(app, client, headers, account,
 
     obrigatorias = {(metodo, regra.rule) for regra in app.url_map.iter_rules() if regra.endpoint != "static"
                     for metodo in regra.methods - {"HEAD", "OPTIONS"}}
-    assert len(obrigatorias) == 55
+    assert len(obrigatorias) == 58
     assert obrigatorias <= sucessos, sorted(obrigatorias - sucessos)
 
 
