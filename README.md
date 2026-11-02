@@ -997,6 +997,10 @@ da conta ativa; `DELETE /sessoes/atual` encerra a sessão. As rotas antigas
 cadastro público `/construtora/` retorna `403` quando `CONSTRUTORA_ID` está configurado.
 Sem essa configuração, as rotas antigas de cadastro/login mantêm o comportamento
 anterior para compatibilidade; no MVP de conta única, configure o ID antes da implantação.
+`GET /sessoes/atual` reconhece também os tokens desse login legado quando o ID
+não está configurado, preservando a sessão após recarregar o frontend. Quando
+configurado, o ID continua restringindo o acesso à conta definida; expiração,
+conta inativa e revogação continuam sendo verificadas.
 A renovação usa o mesmo ID de
 sessão e o logout revoga ambos os tokens. A revogação é persistida no banco.
 
