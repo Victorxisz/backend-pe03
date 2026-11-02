@@ -3,6 +3,7 @@
 from unittest.mock import patch
 
 import pytest
+from bson import ObjectId
 from freezegun import freeze_time
 from pymongo.errors import PyMongoError
 
@@ -59,7 +60,8 @@ def test_consulta_id_invalido_ou_ausente(client, headers, identifier, status):
     assert response.get_json()["campos"] == ["id"]
 
 
-def test_falha_consulta_nao_expoe_erro_do_driver(client, headers, database):
+def test_falha_consulta_nao_expoe_erro_do_driver(client, headers, database, account):
+    database.tbl_obras.insert_one({"_id": ObjectId(ID), "autor": str(account["_id"])})
     with patch(
         "app.obras.repository.buscar_obra_por_id", side_effect=PyMongoError("detalhe privado")
     ):

@@ -84,6 +84,7 @@ class ServicoExclusaoObra:
             "marcos": len(marcos),
             **resumo_dos_avancos(avancos),
             **resumo_das_ocorrencias(ocorrencias),
+            **resumo_dos_simulados(feedbacks),
             "midias": len(midias) + len(evidencias) + len(imagens),
             "mudancas": len(obra.get("historico_mudancas", [])),
             "estados": len(obra.get("historico_estados", [])),
@@ -93,14 +94,14 @@ class ServicoExclusaoObra:
         }
         ids = (obra_id, *marcos, *ids_avancos, *ids_ocorrencias,
                *(midia["_id"] for midia in midias),
-               *(midia["_id"] for midia in evidencias), *(midia["_id"] for midia in imagens))
+               *(midia["_id"] for midia in evidencias), *(midia["_id"] for midia in imagens),
+               *(exemplo["_id"] for exemplo in feedbacks))
 
         def remover(sessao):
             if db.banco_dados["tbl_uploads_pendentes"].find_one({"obra_id": obra_id, "estado": "pendente"}, session=sessao):
                 raise ErroExclusao("Há uma imagem em envio. Aguarde antes de excluir", 409)
             db.banco_dados["tbl_uploads_pendentes"].delete_many({"obra_id": obra_id}, session=sessao)
             db.banco_dados["tbl_limpezas_midias"].delete_many({"obra_id": obra_id}, session=sessao)
-            RepositorioSimulados().remover({"obra_id": obra_id}, session=sessao)
             # Relê o conjunto na transação: remove o que pertence à obra no
             # instante do commit, não só o que o mapeamento tinha visto.
             atuais = self.repositorio.ids_dos_marcos(obra_id, session=sessao)
@@ -131,6 +132,7 @@ class ServicoExclusaoObra:
 
         return Conjunto(
             alvo={"tipo": TIPO, "id": obra_id, "nome": obra.get("nome", "Obra")},
+            proprietario_id=str(obra["autor"]),
             perda=perda,
             ids=ids,
             midias=tuple(midias + evidencias + imagens),

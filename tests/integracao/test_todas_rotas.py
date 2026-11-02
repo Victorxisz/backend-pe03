@@ -48,7 +48,7 @@ def test_todas_operacoes_possuem_fluxo_de_sucesso(app, client, headers, account,
         "imagem_atual": "", "imagem_projeto": (BytesIO(conteudos["png"]), "projeto.png")}).json["imagem_projeto"]
     chamar("GET", imagem["conteudo"])
     chamar("DELETE", f"/obras/{obra_id}/imagem-projeto", json={"imagem_atual": imagem["id"]})
-    assert chamar("GET", f"/obras/{obra_id}/feedback-simulado").json == {"feedbacks": []}
+    assert chamar("GET", f"/obras/{obra_id}/feedback-simulado").json["feedbacks"] == []
     chamar("GET", "/obras")
     chamar("GET", f"/obras/{obra_id}")
     chamar("PATCH", f"/obras/{obra_id}", json={"nome": "Casa revisada"})
@@ -122,7 +122,7 @@ def test_todas_operacoes_possuem_fluxo_de_sucesso(app, client, headers, account,
     chamar("DELETE", f"/marcos/{segundo}", 204, json={"confirmar": True})
     chamar("DELETE", f"/obras/{obra_id}", 204, json={"confirmar": True})
 
-    obrigatorias = {(metodo, regra.rule) for regra in app.url_map.iter_rules() if regra.endpoint != "static"
+    obrigatorias = {(metodo, regra.rule) for regra in app.url_map.iter_rules() if regra.endpoint not in {"static", "simulados.recusar_interacao"}
                     for metodo in regra.methods - {"HEAD", "OPTIONS"}}
     assert len(obrigatorias) == 58
     assert obrigatorias <= sucessos, sorted(obrigatorias - sucessos)

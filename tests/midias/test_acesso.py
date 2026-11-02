@@ -25,7 +25,7 @@ CONTEUDO = "/midias/{}/conteudo"
 
 @pytest.fixture
 def avanco(database, obra, account):
-    obra_id = database.tbl_obras.insert_one(obra).inserted_id
+    obra_id = database.tbl_obras.insert_one({**obra, "autor": str(database.tbl_construtora.find_one({"email": "construtora@example.com"})["_id"])}).inserted_id
     marco_id = database.tbl_marcos.insert_one({"obra_id": obra_id, "nome": "Fundação"}).inserted_id
     documento = {"_id": ObjectId(AVANCO_ID), "marco_id": marco_id,
                  "descricao": "Concretagem", "estado": "rascunho", "autor": str(account["_id"])}
@@ -149,7 +149,7 @@ def test_ct31_metadados_nao_expoem_provedor(client, headers, enviar_midia, datab
 def test_ct31_lista_respeita_vinculo_e_recusa_orfa(client, headers, database, avanco, enviar_midia, backend):
     # Preparação
     midia = enviar_midia()
-    outro = database.tbl_avancos.insert_one({"estado": "rascunho"}).inserted_id
+    outro = database.tbl_avancos.insert_one({"estado": "rascunho", "marco_id": avanco["marco_id"]}).inserted_id
     orfa = enviar_midia(avanco_id=ObjectId())
     # Execução
     vizinho = client.get(LISTA.format(outro), headers=headers)
@@ -194,11 +194,12 @@ def test_ct110_falha_cloudinary_diferente_de_midia_inexistente(client, headers, 
 
 
 @pytest.mark.parametrize("metodo,caminho", [("consultar_midias", LISTA), ("buscar_midia_por_id", DETALHE)])
-def test_ct31_falha_banco_sem_expor_conexao(client, headers, database, avanco, metodo, caminho):
+def test_ct31_falha_banco_sem_expor_conexao(client, headers, database, avanco, enviar_midia, metodo, caminho):
     # Preparação
+    identificador = enviar_midia()["_id"] if metodo == "buscar_midia_por_id" else avanco["_id"]
     with patch("app.avancos.repository." + metodo, side_effect=PyMongoError("conexão privada")):
         # Execução
-        response = client.get(caminho.format(avanco["_id"]), headers=headers)
+        response = client.get(caminho.format(identificador), headers=headers)
     # Verificação
     assert response.status_code == 500
     assert response.get_json()["codigo"] == "FALHA_NO_BANCO"

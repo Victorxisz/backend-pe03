@@ -7,7 +7,7 @@ import pytest
 from support import snapshot
 
 
-def test_filtro_atrasada_combina_estado_e_conclusao_historica(client, headers, database, obra):
+def test_filtro_atrasada_combina_estado_e_conclusao_historica(client, headers, database, obra, account):
     ids = []
     for nome, entrega, estado, conclusao in [
         ("Casa atrasada", {"modalidade": "data_exata", "data": "2030-10-19"}, "em andamento", None),
@@ -16,7 +16,7 @@ def test_filtro_atrasada_combina_estado_e_conclusao_historica(client, headers, d
         ("Casa entregue tarde", {"modalidade": "data_exata", "data": "2030-10-10"}, "concluída", "2030-10-11"),
         ("Casa entregue no prazo", {"modalidade": "data_exata", "data": "2030-10-10"}, "concluída", "2030-10-09"),
     ]:
-        documento = {**obra, "nome": nome, "entrega": entrega, "estado": estado}
+        documento = {**obra, "nome": nome, "entrega": entrega, "estado": estado, "autor": str(account["_id"])}
         if conclusao:
             documento["data_conclusao"] = conclusao
         ids.append(str(database.tbl_obras.insert_one(documento).inserted_id))

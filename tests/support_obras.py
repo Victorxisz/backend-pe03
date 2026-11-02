@@ -25,7 +25,7 @@ def seed(database, obra, **changes):
     doc.update(
         _id=ObjectId(ID),
         estado="em andamento",
-        autor="construtora_teste",
+        autor=str((database.tbl_construtora.find_one({"email": "construtora@example.com"}) or {}).get("_id", "construtora_teste")),
         data_registro=datetime(2030, 10, 10, 15, tzinfo=timezone.utc),
     )
     doc.update(changes)

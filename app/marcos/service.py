@@ -173,7 +173,7 @@ class ServicoMarcos:
             if vinculo["marco_id"] != object_id:
                 continue
             destino = self.repositorio.buscar_marco_por_id(vinculo["depende_de_id"])
-            if destino is None:
+            if destino is None or destino.get("obra_id") != obra.get("_id"):
                 continue
             dependencias.append(self._serializar_dependencia(vinculo, marco, destino))
         dependencias.sort(key=lambda item: item["id"])

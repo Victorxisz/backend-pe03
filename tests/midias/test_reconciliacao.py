@@ -119,8 +119,11 @@ def test_correcao_http_falha_e_reconciliacao_limpa_so_upload_novo(
     from app.avancos import repository
     from app.avancos.reconciliacao import reconciliar
     from app.integracoes.armazenamento import ArmazenamentoCloudinary
+    conta = database.tbl_construtora.find_one({'email': 'construtora@example.com'})
+    obra = database.tbl_obras.insert_one({'autor': str(conta['_id'])}).inserted_id
+    marco = database.tbl_marcos.insert_one({'obra_id': obra}).inserted_id
     avanco = database.tbl_avancos.insert_one({
-        'estado': 'publicado', 'autor': 'original', 'data': '2030-01-01',
+        'marco_id': marco, 'estado': 'publicado', 'autor': 'original', 'data': '2030-01-01',
         'descricao': 'Antes', 'revisao': 1,
         'publicacao': {'autor': 'original', 'instante': datetime(2030, 1, 1),
                        'data': '2030-01-01', 'descricao': 'Antes', 'midias': []},

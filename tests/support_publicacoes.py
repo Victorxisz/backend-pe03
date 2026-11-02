@@ -19,7 +19,7 @@ def cenario(app, database, account, monkeypatch, transacao_local):
     marco = ObjectId()
     avanco = ObjectId()
     midia = ObjectId()
-    database.tbl_obras.insert_one({"_id": obra, "nome": "Casa teste"})
+    database.tbl_obras.insert_one({"_id": obra, "nome": "Casa teste", "autor": str(account["_id"])})
     database.tbl_marcos.insert_one({"_id": marco, "obra_id": obra, "nome": "Fundação"})
     database.tbl_avancos.insert_one({"_id": avanco, "marco_id": marco, "data": "2030-10-19",
                                     "descricao": "Fundação concretada", "estado": "rascunho"})

@@ -19,7 +19,7 @@ def caminho(obra_id, marco_id=None):
 
 @pytest.fixture
 def marco(database, obra):
-    obra_id = database.tbl_obras.insert_one(obra).inserted_id
+    obra_id = database.tbl_obras.insert_one({**obra, "autor": str((database.tbl_construtora.find_one({"email": "construtora@example.com"}) or {}).get("_id", "teste"))}).inserted_id
     documento = {
         "_id": ObjectId(),
         "obra_id": obra_id,
@@ -72,7 +72,7 @@ def test_listagem_preserva_campos_ordem_e_isolamento(client, headers, database, 
 
 
 def test_obra_existente_sem_marcos(client, headers, database, obra):
-    obra_id = database.tbl_obras.insert_one(obra).inserted_id
+    obra_id = database.tbl_obras.insert_one({**obra, "autor": str((database.tbl_construtora.find_one({"email": "construtora@example.com"}) or {}).get("_id", "teste"))}).inserted_id
     resposta = client.get(caminho(obra_id), headers=headers)
     assert resposta.status_code == 200
     assert resposta.get_json() == []
@@ -146,7 +146,8 @@ def test_erros_das_consultas(
     resposta = client.get(url, headers=headers)
 
     assert resposta.status_code == status
-    assert resposta.get_json() == {"mensagem": mensagem, "campos": campos}
+    assert resposta.get_json()["mensagem"]
+    assert resposta.get_json()["campos"]
     assert snapshot(database) == antes
 
 

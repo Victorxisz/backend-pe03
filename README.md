@@ -1625,3 +1625,23 @@ UC-01 a UC-18. Os testes de UC-09/CT-39 continuam exercitando o mesmo ramo de
 rascunho; UC-17 e UC-18 compartilham as fixtures em `tests/support_exclusoes.py`.
 Integrações Cloudinary reais continuam condicionadas às credenciais exclusivas
 de teste descritas em `tests/README.md`.
+
+## Isolamento entre construtoras
+
+A lista de obras é filtrada pelo `autor` registrado no cadastro. As rotas que
+consultam ou alteram uma obra, seus marcos, avanços, mídias, publicações,
+ocorrências e histórico conferem a conta autenticada antes da operação. O
+identificador de um recurso de outra conta responde como não encontrado.
+Obras antigas sem `autor` não são acessíveis até que um administrador identifique
+e atribua seu proprietário no banco. Trabalhadores sem `construtora_id` também
+não são expostos automaticamente.
+
+A limpeza externa de exclusões iniciadas após esta alteração registra o
+proprietário no diário e só pode ser retomada pela mesma conta. Diários antigos
+sem proprietário não permitem retomada automática e exigem reconciliação
+administrativa após confirmar a propriedade. Não atribua registros antigos por
+suposição: confirme a conta e faça backup antes de atualizar dados.
+
+Os testes locais de isolamento usam banco em memória; testes com Atlas ou
+Cloudinary reais exigem ambientes e credenciais exclusivas de teste, conforme
+`tests/README.md`.

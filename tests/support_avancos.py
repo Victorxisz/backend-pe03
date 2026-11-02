@@ -61,8 +61,8 @@ def backend(monkeypatch, config):
 
 
 @pytest.fixture
-def marco(database):
-    obra = database.tbl_obras.insert_one({"nome": "Casa fictícia"}).inserted_id
+def marco(database, account):
+    obra = database.tbl_obras.insert_one({"nome": "Casa fictícia", "autor": str(account["_id"])}).inserted_id
     return database.tbl_marcos.insert_one(
         {"obra_id": obra, "nome": "Fundação"}
     ).inserted_id

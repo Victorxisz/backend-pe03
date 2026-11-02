@@ -97,6 +97,7 @@ class Conjunto:
     midias: tuple
     remover: Callable[[Any], None]
     relistar: Callable[[Any], list]
+    proprietario_id: str | None = None
 
 
 def menciona(valor, identificadores):
@@ -132,6 +133,7 @@ class ServicoExclusoes:
         pendencia = {
             "_id": ObjectId(),
             "alvo": dict(conjunto.alvo),
+            "proprietario_id": conjunto.proprietario_id,
             "perda": dict(conjunto.perda),
             "arquivos": arquivos,
             "pendentes": list(arquivos),

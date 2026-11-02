@@ -16,13 +16,19 @@ from support_midias import arquivo, config, conteudos
 from support_avancos import backend, transacao_local
 
 
+def marco_da_conta(database):
+    conta = database.tbl_construtora.find_one({"email": "construtora@example.com"})
+    obra = database.tbl_obras.insert_one({"nome": "Obra", "autor": str(conta["_id"])}).inserted_id
+    return database.tbl_marcos.insert_one({"nome": "Marco", "obra_id": obra}).inserted_id
+
+
 @pytest.fixture
-def publicada(app, database, backend, config, conteudos, transacao_local):
+def publicada(app, database, account, backend, config, conteudos, transacao_local):
     from app.avancos.midias import validar_arquivo
     from app.avancos.acesso_midias import midia_para_dict
     from app.integracoes.armazenamento import ArmazenamentoCloudinary
     obra, marco, avanco, midia = ObjectId(), ObjectId(), ObjectId(), ObjectId()
-    database.tbl_obras.insert_one({'_id': obra, 'nome': 'Obra'})
+    database.tbl_obras.insert_one({'_id': obra, 'nome': 'Obra', 'autor': str(account['_id'])})
     database.tbl_marcos.insert_one({'_id': marco, 'obra_id': obra, 'nome': 'Marco'})
     registro = dict(ArmazenamentoCloudinary().enviar(validar_arquivo(arquivo(conteudos['png'], 'original.png'), config)),
                     _id=midia, avanco_id=avanco, data_envio=datetime(2030, 1, 1))
@@ -59,7 +65,7 @@ def test_correcao_http_com_nova_midia_e_conteudo_recuperavel(
     # Preparação
     from io import BytesIO
     avanco = database.tbl_avancos.insert_one({
-        "estado": "publicado", "autor": "original", "data": "2030-01-01",
+        "marco_id": marco_da_conta(database), "estado": "publicado", "autor": "original", "data": "2030-01-01",
         "descricao": "Antes", "revisao": 1,
         "publicacao": {"autor": "original", "instante": datetime(2030, 1, 1),
                        "data": "2030-01-01", "descricao": "Antes", "midias": []},
@@ -88,7 +94,7 @@ def test_falha_ao_gravar_correcao_remove_upload_e_nao_altera_publicacao(
     from pymongo.errors import PyMongoError
     from app.avancos import repository
     avanco = database.tbl_avancos.insert_one({
-        "estado": "publicado", "autor": "original", "data": "2030-01-01",
+        "marco_id": marco_da_conta(database), "estado": "publicado", "autor": "original", "data": "2030-01-01",
         "descricao": "Antes", "revisao": 1,
         "publicacao": {"autor": "original", "instante": datetime(2030, 1, 1),
                        "data": "2030-01-01", "descricao": "Antes", "midias": []},
@@ -115,7 +121,7 @@ def test_falha_na_compensacao_preserva_diario_para_reconciliacao(
     from pymongo.errors import PyMongoError
     from app.avancos import repository
     avanco = database.tbl_avancos.insert_one({
-        "estado": "publicado", "autor": "original", "data": "2030-01-01",
+        "marco_id": marco_da_conta(database), "estado": "publicado", "autor": "original", "data": "2030-01-01",
         "descricao": "Antes", "revisao": 1,
         "publicacao": {"autor": "original", "instante": datetime(2030, 1, 1),
                        "data": "2030-01-01", "descricao": "Antes", "midias": []},
@@ -150,7 +156,7 @@ def test_midia_selecionada_indisponivel_recusa_correcao(
     database.tbl_midias.insert_one(midia)
     from app.avancos.acesso_midias import midia_para_dict
     publica = {"data": "2030-01-01", "descricao": "Antes", "midias": [midia_para_dict(midia)]}
-    database.tbl_avancos.insert_one({"_id": avanco, "estado": "publicado", "autor": "original",
+    database.tbl_avancos.insert_one({"_id": avanco, "marco_id": marco_da_conta(database), "estado": "publicado", "autor": "original",
         "data": "2030-01-01", "descricao": "Antes", "revisao": 1,
         "publicacao": {**publica, "autor": "original", "instante": datetime(2030, 1, 1)}})
     from unittest.mock import Mock
@@ -199,7 +205,7 @@ def test_ct47_rejeita_sem_mudanca_ou_sem_evidencia(client, headers, database, pu
 
 def test_ct47_registro_antigo_sem_midia_precisa_receber_evidencia(client, headers, database, backend, transacao_local):
     avanco = database.tbl_avancos.insert_one({
-        'estado':'publicado', 'autor':'original', 'data':'2030-01-01', 'descricao':'Antes',
+        'marco_id': marco_da_conta(database), 'estado':'publicado', 'autor':'original', 'data':'2030-01-01', 'descricao':'Antes',
         'publicacao':{'data':'2030-01-01', 'descricao':'Antes', 'midias':[]},
     }).inserted_id
     antes = snapshot(database)

@@ -10,8 +10,18 @@ from support_avancos import backend
 from support_avancos import camadas, transacao_local
 
 
+def marco_proprio(database, marco=None):
+    conta = database.tbl_construtora.find_one({"email": "construtora@example.com"})
+    obra = database.tbl_obras.insert_one({"autor": str(conta["_id"])}).inserted_id
+    return database.tbl_marcos.insert_one({"_id": marco or ObjectId(), "obra_id": obra}).inserted_id
+
+
 def semear_publicacao(database, **campos):
     """Documento mínimo publicado; os testes alteram só a condição examinada."""
+    if "marco_id" not in campos:
+        conta = database.tbl_construtora.find_one({"email": "construtora@example.com"})
+        obra = database.tbl_obras.insert_one({"autor": str(conta["_id"])}).inserted_id
+        campos["marco_id"] = database.tbl_marcos.insert_one({"obra_id": obra}).inserted_id
     conteudo = {"data": "2030-01-01", "descricao": "Texto original", "midias": []}
     documento = {"_id": ObjectId(), "estado": "publicado", "autor": "autor-original",
                  "revisao": 1, **conteudo,
@@ -116,7 +126,7 @@ def test_correcao_com_midia_preserva_consultas_publicacao_e_autoria(
     from copy import deepcopy
     from io import BytesIO
     obra_id, marco_id = ObjectId(), ObjectId()
-    database.tbl_obras.insert_one({"_id": obra_id})
+    database.tbl_obras.insert_one({"_id": obra_id, "autor": str(account["_id"])})
     database.tbl_marcos.insert_one({"_id": marco_id, "obra_id": obra_id, "nome": "Estrutura"})
     documento = semear_publicacao(database, marco_id=marco_id, origem_simulada={"perfil": "engenheiro", "nome": "Engenheira exemplo"},
                                   data_registro=datetime(2030, 1, 1))
@@ -248,8 +258,8 @@ def test_rollback_real_tambem_remove_novas_midias_e_compensa_upload(
 def test_publicacao_sem_correcoes_retorna_snapshot_original(client, headers, database):
     # Preparação
     avanco = ObjectId()
-    marco = ObjectId()
-    documento = {"_id": avanco, "estado": "publicado", "autor": "autor-original",
+    marco = marco_proprio(database)
+    documento = {"_id": avanco, "marco_id": marco, "estado": "publicado", "autor": "autor-original",
                  "descricao": "Texto original", "data": "2030-01-01",
                  "publicacao": {"autor": "publicador", "instante": datetime(2030, 1, 2),
                                 "descricao": "Texto original", "data": "2030-01-01",
@@ -272,7 +282,7 @@ def test_publicacao_sem_correcoes_retorna_snapshot_original(client, headers, dat
 
 def test_avanco_inexistente_e_rascunho_sao_diferentes(client, headers, database):
     # Preparação
-    avanco = database.tbl_avancos.insert_one({"estado": "rascunho"}).inserted_id
+    avanco = database.tbl_avancos.insert_one({"estado": "rascunho", "marco_id": marco_proprio(database)}).inserted_id
 
     # Execução
     inexistente = client.get(f"/avancos/{ObjectId()}/versoes", headers=headers)
@@ -286,7 +296,7 @@ def test_avanco_inexistente_e_rascunho_sao_diferentes(client, headers, database)
 def test_publicacao_alterada_sem_historico_nao_inventa_versoes(client, headers, database):
     # Preparação
     avanco = database.tbl_avancos.insert_one({
-        "estado": "publicado", "descricao": "alterado", "data": "2030-01-01",
+        "marco_id": marco_proprio(database), "estado": "publicado", "descricao": "alterado", "data": "2030-01-01",
         "publicacao": {"descricao": "original", "data": "2030-01-01", "midias": []},
     }).inserted_id
     antes = snapshot(database)
@@ -314,7 +324,7 @@ def test_ct46_ct47_ct50_ct51_cadeia_preexistente_continua_consultavel(client, he
     primeira = {"data": "2030-01-01", "descricao": "Parede branca", "midias": [{"id": "foto-1", "nome": "antes.png"}]}
     segunda = {"data": "2030-01-01", "descricao": "Parede azul", "midias": [{"id": "foto-1", "nome": "antes.png"}]}
     terceira = {"data": "2030-01-02", "descricao": "Parede azul", "midias": [{"id": "foto-2", "nome": "depois.png"}]}
-    database.tbl_avancos.insert_one({"_id": avanco, "estado": "publicado", "autor": "autor inicial",
+    database.tbl_avancos.insert_one({"_id": avanco, "marco_id": marco_proprio(database), "estado": "publicado", "autor": "autor inicial",
         "origem_simulada": True, **terceira,
         "publicacao": {**primeira, "autor": "publicador", "instante": datetime(2030, 1, 1)},
         "correcoes": [{"antes": primeira, "depois": segunda, "autor": "corretor 1", "motivo": "Cor", "instante": datetime(2030, 1, 2)},

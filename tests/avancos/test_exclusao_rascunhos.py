@@ -111,7 +111,7 @@ def test_ct39_sem_midia_nao_exige_credenciais(client, headers, database, cenario
 @pytest.mark.parametrize("estado", ["rascunho", "publicado"])
 def test_ct39_preserva_arquivo_compartilhado(client, headers, database, cenario, estado):
     # Preparação
-    outro = database.tbl_avancos.insert_one({"estado": estado}).inserted_id
+    outro = database.tbl_avancos.insert_one({"estado": estado, "marco_id": cenario.avanco["marco_id"]}).inserted_id
     midia = cenario.adicionar(dono=outro, referencia=cenario.midias[0]["referencia_externa"])
     antes = database.tbl_avancos.find_one({"_id": outro})
     # Execução

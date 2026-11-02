@@ -138,7 +138,7 @@ def excluir_registro(tipo, valor, dados, autor, *, previa=False):
         historico.remover_eventos_dos_alvos([identificador], session=sessao)
 
     exclusoes.aplicar(exclusoes.Conjunto(
-        alvo=alvo, perda=perda,
+        alvo=alvo, perda=perda, proprietario_id=str(autor),
         ids=(identificador, *(m["_id"] for m in midias)), midias=tuple(midias),
         remover=remover, relistar=listar_midias,
     ))

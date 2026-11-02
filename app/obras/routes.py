@@ -69,7 +69,7 @@ def consultar_obra(obra_id):
 @obras_bp.get("")
 def consultar_obras():
     try:
-        obras = listar_obras(request.args)
+        obras = listar_obras(request.args, get_jwt_identity())
     except ErroObra as erro:
         return jsonify(mensagem=str(erro), campos=erro.campos), erro.status
     except PyMongoError:

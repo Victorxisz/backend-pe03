@@ -15,19 +15,20 @@ def trabalhador():
 
 
 @pytest.fixture
-def obra_existente(database, obra):
-    documento = {**obra, "_id": ObjectId("507f1f77bcf86cd799439011")}
+def obra_existente(database, obra, account):
+    documento = {**obra, "_id": ObjectId("507f1f77bcf86cd799439011"), "autor": str(account["_id"])}
     database.tbl_obras.insert_one(documento)
     return documento
 
 
 @pytest.fixture
-def pessoa(database, trabalhador, obra_existente):
+def pessoa(database, trabalhador, obra_existente, account):
     documento = {
         **trabalhador,
         "_id": ObjectId(),
         "obras": [str(obra_existente["_id"])],
         "ativo": True,
+        "construtora_id": str(account["_id"]),
     }
     database.tbl_trabalhadores.insert_one(documento)
     return documento

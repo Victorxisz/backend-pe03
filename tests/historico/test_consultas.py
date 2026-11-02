@@ -160,7 +160,7 @@ def test_consultas_exigem_sessao_e_rejeitam_identificadores_invalidos(client, he
 def test_evento_de_marco_alheio_nao_pertence_ao_historico(client, headers, database, obra):
     # Preparação
     seed(database, obra)
-    alheia = database.tbl_obras.insert_one({"nome": "Outra obra"}).inserted_id
+    alheia = database.tbl_obras.insert_one({"nome": "Outra obra", "autor": str(database.tbl_construtora.find_one({"email": "construtora@example.com"})["_id"])}).inserted_id
     marco = database.tbl_marcos.insert_one({"obra_id": alheia, "estado": "em andamento"}).inserted_id
     evento = _evento("marco", marco, "estado", "a iniciar", "em andamento",
                      datetime(2030, 10, 20, tzinfo=timezone.utc), "Decisão alheia")
