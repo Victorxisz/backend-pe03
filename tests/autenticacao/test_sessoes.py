@@ -99,6 +99,26 @@ def test_ct02_configuracao_ausente_nao_autentica(app, client, account, database)
     assert snapshot(database) == antes
 
 
+def test_login_legado_sem_conta_configurada_restaura_e_revoga_sessao(app, client, account):
+    app.config["CONSTRUTORA_ID"] = ""
+    login = client.post("/construtora/login/", json={
+        "email": account["email"], "senha": "Senha_teste123!",
+    })
+    assert login.status_code == 200
+    headers = {"Authorization": "Bearer " + login.get_json()["access_token"]}
+
+    # Nova consulta HTTP, como no bootstrap após uma recarga sem cache.
+    for _ in range(2):
+        with app.test_client() as fresh:
+            atual = fresh.get("/sessoes/atual", headers=headers)
+        assert atual.status_code == 200
+        assert atual.get_json()["construtora"]["id"] == str(account["_id"])
+        assert "senha_hash" not in atual.get_json()["construtora"]
+
+    assert client.post("/construtora/logout/", headers=headers).status_code == 200
+    assert client.get("/sessoes/atual", headers=headers).status_code == 401
+
+
 @pytest.mark.parametrize("situacao,status", [("ausente", 401), ("expirado", 401), ("outro_tipo", 403)])
 def test_ct01_consultar_sessao_requer_acesso_valido(client, database, account, emitir_headers, situacao, status):
     # Preparação
