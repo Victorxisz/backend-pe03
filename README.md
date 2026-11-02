@@ -5,7 +5,15 @@ A organização atual com POO e as decisões de 30/10 estão em
 
 ## Rotas existentes
 
-Inventário conferido no `url_map` da aplicação: **55 operações de negócio**.
+Nova extensão de obra: [imagem opcional do projeto](docs/05-arquitetura-e-contratos.md#imagem-opcional-do-projeto--extensão-de-uc-020304),
+com upload privado, substituição/remoção e perspectiva ilustrativa na interface.
+
+Verificação local da extensão: 348 testes de obras, mídias, cascata, fluxo de
+todas as rotas e infraestrutura aprovados com MongoDB/Cloudinary simulados;
+11 cenários reais permaneceram opt-in. Upload e recuperação com Cloudinary
+real no ambiente publicado continuam exigindo validação própria.
+
+Inventário conferido no `url_map` da aplicação: **58 operações de negócio**.
 As barras finais abaixo fazem parte dos caminhos atuais. `HEAD` nas consultas,
 `OPTIONS` automático e a rota técnica `/static/{filename}` não entram na contagem.
 Também ficam fora os quatro métodos de escrita registrados em
@@ -21,6 +29,8 @@ Também ficam fora os quatro métodos de escrita registrados em
 | PATCH, DELETE | `/construtora/{construtora_id}` | Alterar ou excluir a própria conta |
 | GET, POST | `/obras` | Listar/filtrar ou cadastrar obras |
 | GET, PATCH, DELETE | `/obras/{obra_id}` | Consultar, corrigir dados descritivos ou excluir com os dependentes |
+| PUT, DELETE | `/obras/{obra_id}/imagem-projeto` | Adicionar/substituir ou remover a perspectiva ilustrativa |
+| GET | `/obras/{obra_id}/imagem-projeto/{imagem_id}/conteudo` | Recuperar a imagem privada com sessão válida |
 | PATCH | `/obras/{obra_id}/estado` | Alterar estado com motivo e histórico |
 | GET, POST | `/obras/{obra_id}/marcos` | Listar ou cadastrar marcos |
 | GET | `/obras/{obra_id}/marcos/{marco_id}` | Consultar marco da obra |
@@ -67,7 +77,7 @@ Também exige a presença das operações dos UC-01 a UC-21, sem ignorar rotas a
 Os testes específicos de cada módulo continuam cobrindo suas regras de negócio.
 
 `tests/integracao/test_todas_rotas.py` exercita o fluxo de sucesso de **cada uma
-das 55 operações** e falha se alguma rota registrada ficar sem resposta de
+das 58 operações** e falha se alguma rota registrada ficar sem resposta de
 sucesso no cenário. Inclui autenticação, trabalhadores, publicação, correção,
 mudanças e o ciclo de ocorrências. Também verifica corpos inválidos e igualdade
 da data de registro entre cadastro e releitura, na precisão BSON de milissegundos.

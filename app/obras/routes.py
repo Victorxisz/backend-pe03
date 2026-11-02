@@ -1,5 +1,7 @@
 """Contrato HTTP do cadastro, consulta e edição de obras."""
 
+import json
+
 from flask import Blueprint, current_app, jsonify, request, url_for
 from flask_jwt_extended import get_jwt_identity
 from app.auth.permissions import sessao_obrigatoria
@@ -8,6 +10,10 @@ from pymongo.errors import PyMongoError
 from app.exclusoes import ErroExclusao
 from .exclusoes import excluir_obra
 from .service import ErroObra, ServicoObras
+from .imagem_projeto import criar_com_imagem, ler_arquivo, erro_imagem
+from app.avancos.midias import ErroMidia, ResultadoPersistenciaIndeterminado
+from app.integracoes.armazenamento import ErroArmazenamento
+from werkzeug.exceptions import RequestEntityTooLarge
 
 servico = ServicoObras()
 buscar_obra = servico.buscar_obra
@@ -16,6 +22,8 @@ editar_descricao = servico.editar_descricao
 listar_obras = servico.listar_obras
 
 obras_bp = Blueprint("obras", __name__, url_prefix="/obras")
+for classe in (ErroMidia, ErroArmazenamento, ResultadoPersistenciaIndeterminado, RequestEntityTooLarge, ValueError):
+    obras_bp.register_error_handler(classe, erro_imagem)
 @obras_bp.before_request
 @sessao_obrigatoria
 def exigir_sessao():
@@ -25,7 +33,15 @@ def exigir_sessao():
 @obras_bp.post("")
 def cadastrar_obra():
     try:
-        obra = criar_obra(request.get_json(silent=True), get_jwt_identity())
+        if request.mimetype == "multipart/form-data":
+            arquivo = ler_arquivo(cadastro=True)
+            try:
+                dados = json.loads(request.form["cadastro"])
+            except (ValueError, TypeError):
+                raise ErroObra("Envie um cadastro JSON válido", 422, ["cadastro"]) from None
+            obra = criar_com_imagem(dados, arquivo, get_jwt_identity())
+        else:
+            obra = criar_obra(request.get_json(silent=True), get_jwt_identity())
     except ErroObra as erro:
         return jsonify(mensagem=str(erro), campos=erro.campos), erro.status
     except PyMongoError:

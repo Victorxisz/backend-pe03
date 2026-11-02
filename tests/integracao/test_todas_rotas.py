@@ -44,10 +44,11 @@ def test_todas_operacoes_possuem_fluxo_de_sucesso(app, client, headers, account,
     chamar("DELETE", "/sessoes/atual", auth=sessao_auth)
 
     obra_id = chamar("POST", "/obras", 201, json=obra).json["id"]
-    # UC-21 é somente leitura e a obra ainda não passou pela carga de demonstração.
-    simulado = chamar("GET", f"/obras/{obra_id}/feedback-simulado").json
-    assert simulado["feedbacks"] == [] and simulado["avancos_simulados"] == []
-    assert simulado["simulado"] and simulado["somente_leitura"]
+    imagem = chamar("PUT", f"/obras/{obra_id}/imagem-projeto", data={
+        "imagem_atual": "", "imagem_projeto": (BytesIO(conteudos["png"]), "projeto.png")}).json["imagem_projeto"]
+    chamar("GET", imagem["conteudo"])
+    chamar("DELETE", f"/obras/{obra_id}/imagem-projeto", json={"imagem_atual": imagem["id"]})
+    assert chamar("GET", f"/obras/{obra_id}/feedback-simulado").json == {"feedbacks": []}
     chamar("GET", "/obras")
     chamar("GET", f"/obras/{obra_id}")
     chamar("PATCH", f"/obras/{obra_id}", json={"nome": "Casa revisada"})
@@ -121,15 +122,9 @@ def test_todas_operacoes_possuem_fluxo_de_sucesso(app, client, headers, account,
     chamar("DELETE", f"/marcos/{segundo}", 204, json={"confirmar": True})
     chamar("DELETE", f"/obras/{obra_id}", 204, json={"confirmar": True})
 
-    registradas = {(metodo, regra.rule) for regra in app.url_map.iter_rules() if regra.endpoint != "static"
-                   for metodo in regra.methods - {"HEAD", "OPTIONS"}}
-    # UC-21 registra os métodos de escrita do painel simulado só para recusar a
-    # interação com 405: não existe fluxo de sucesso para eles, por contrato.
-    recusas = {(metodo, regra) for metodo, regra in registradas
-               if regra.endswith("/feedback-simulado") and metodo != "GET"}
-    assert len(recusas) == 4
-    obrigatorias = registradas - recusas
-    assert len(obrigatorias) == 55
+    obrigatorias = {(metodo, regra.rule) for regra in app.url_map.iter_rules() if regra.endpoint != "static"
+                    for metodo in regra.methods - {"HEAD", "OPTIONS"}}
+    assert len(obrigatorias) == 58
     assert obrigatorias <= sucessos, sorted(obrigatorias - sucessos)
 
 

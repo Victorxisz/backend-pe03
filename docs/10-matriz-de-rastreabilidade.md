@@ -86,7 +86,7 @@ Os 50 ignorados da execução padrão incluem testes de Atlas executados
 separadamente e integrações que exigem credenciais exclusivas.
 
 `--atlas` usa coleções temporárias isoladas, limpas ao terminar. O fluxo
-integrado exige sucesso de cada uma das 55 operações HTTP. Os testes reais
+integrado exige sucesso de cada uma das 58 operações HTTP. Os testes reais
 comprovam persistência após reinício, concorrência e rollback; a mídia desses
 cenários é simulada. Cloudinary real exige `RUN_CLOUDINARY_TESTS=1` e credenciais
 `TEST_CLOUDINARY_*`, ausentes nesta verificação. Upload/recuperação no provedor

@@ -63,6 +63,12 @@ Uma funcionalidade só está concluída quando: (1) segue a regra de domínio; (
 
 ## Pendências que podem mudar o contrato
 
+Extensão confirmada pelo usuário em 02/11/2026: uma obra pode ter uma imagem
+opcional de perspectiva do projeto. Ela é identificada como ilustrativa,
+separada das evidências de execução e das ocorrências. Upload, substituição,
+remoção e acesso privado reaproveitam Cloudinary; o contrato está em
+[Imagem do projeto](05-arquitetura-e-contratos.md#imagem-opcional-do-projeto--extensão-de-uc-020304).
+
 | ID | Decisão necessária | Recomendação para destravar | Prazo sugerido |
 | --- | --- | --- | --- |
 | P-01 | Professor validar o tema e dizer quais APIs externas atendem à exigência | Apresentar Cloudinary para mídia e ViaCEP como alternativa complementar | Antes de integrar mídia |
