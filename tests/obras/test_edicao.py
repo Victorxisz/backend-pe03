@@ -109,9 +109,9 @@ def test_ct16_releitura_http(client, headers, database, obra):
 
 
 @pytest.fixture
-def obra_salva(database, obra):
+def obra_salva(database, obra, account):
     documento = deepcopy(obra)
-    documento.update(_id=ObjectId(ID), estado="em andamento")
+    documento.update(_id=ObjectId(ID), estado="em andamento", autor=str(account["_id"]))
     database.tbl_obras.insert_one(documento)
     return documento
 

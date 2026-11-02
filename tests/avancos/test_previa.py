@@ -31,7 +31,7 @@ def _publicacao(avanco, instante, descricao, marker, autor="autor"):
 def test_previa_apenas_publicados_da_obra_com_mais_recente_primeiro(client, headers, database):
     obra, outra_obra = ObjectId(), ObjectId()
     marco, outro_marco = ObjectId(), ObjectId()
-    database.tbl_obras.insert_many([{"_id": obra}, {"_id": outra_obra}])
+    database.tbl_obras.insert_many([{"_id": obra, "autor": str(database.tbl_construtora.find_one({"email": "construtora@example.com"})["_id"])}, {"_id": outra_obra, "autor": str(database.tbl_construtora.find_one({"email": "construtora@example.com"})["_id"])}])
     database.tbl_marcos.insert_many([
         {"_id": marco, "obra_id": obra}, {"_id": outro_marco, "obra_id": outra_obra},
     ])
@@ -56,7 +56,7 @@ def test_previa_apenas_publicados_da_obra_com_mais_recente_primeiro(client, head
 
 def test_previa_indica_descricao_corrigida_e_obra_sem_publicacoes(client, headers, database):
     obra, marco, avanco = ObjectId(), ObjectId(), ObjectId()
-    database.tbl_obras.insert_one({"_id": obra})
+    database.tbl_obras.insert_one({"_id": obra, "autor": str(database.tbl_construtora.find_one({"email": "construtora@example.com"})["_id"])})
     database.tbl_marcos.insert_one({"_id": marco, "obra_id": obra})
     registro = _publicacao(avanco, datetime(2030, 10, 20, tzinfo=timezone.utc), "Original", marco)
     registro["descricao"] = "Corrigida"
@@ -67,7 +67,7 @@ def test_previa_indica_descricao_corrigida_e_obra_sem_publicacoes(client, header
     assert resposta.json["atualizacoes"][0]["editado"] is True
 
     sem_publicacoes = ObjectId()
-    database.tbl_obras.insert_one({"_id": sem_publicacoes})
+    database.tbl_obras.insert_one({"_id": sem_publicacoes, "autor": str(database.tbl_construtora.find_one({"email": "construtora@example.com"})["_id"])})
     vazia = client.get(f"/obras/{sem_publicacoes}/previa", headers=headers)
     assert vazia.status_code == 200 and vazia.json == {"atualizacoes": []}
 
@@ -77,7 +77,7 @@ def test_previa_indica_descricao_corrigida_e_obra_sem_publicacoes(client, header
 
 def test_previa_obra_existente_sem_publicacoes_retorna_lista_vazia(client, headers, database):
     obra = ObjectId()
-    database.tbl_obras.insert_one({"_id": obra})
+    database.tbl_obras.insert_one({"_id": obra, "autor": str(database.tbl_construtora.find_one({"email": "construtora@example.com"})["_id"])})
     resposta = client.get(f"/obras/{obra}/previa", headers=headers)
     assert resposta.status_code == 200
     assert resposta.json == {"atualizacoes": []}
@@ -85,7 +85,7 @@ def test_previa_obra_existente_sem_publicacoes_retorna_lista_vazia(client, heade
 
 def test_previa_desempata_por_id_sem_usar_data_do_trabalho(client, headers, database):
     obra, marco = ObjectId(), ObjectId()
-    database.tbl_obras.insert_one({"_id": obra})
+    database.tbl_obras.insert_one({"_id": obra, "autor": str(database.tbl_construtora.find_one({"email": "construtora@example.com"})["_id"])})
     database.tbl_marcos.insert_one({"_id": marco, "obra_id": obra})
     ids = [ObjectId(), ObjectId(), ObjectId()]
     instante = datetime(2030, 10, 20, tzinfo=timezone.utc)
@@ -105,7 +105,7 @@ def test_previa_desempata_por_id_sem_usar_data_do_trabalho(client, headers, data
 @pytest.mark.parametrize("alteracao", ["midias", "data", "editado"])
 def test_previa_conteudo_atual_preserva_fato_original(client, headers, database, alteracao):
     obra, marco, avanco = ObjectId(), ObjectId(), ObjectId()
-    database.tbl_obras.insert_one({"_id": obra})
+    database.tbl_obras.insert_one({"_id": obra, "autor": str(database.tbl_construtora.find_one({"email": "construtora@example.com"})["_id"])})
     database.tbl_marcos.insert_one({"_id": marco, "obra_id": obra})
     registro = _publicacao(avanco, datetime(2030, 10, 20, tzinfo=timezone.utc), "Original", marco)
     valores = {"midias": [{"id": str(ObjectId()), "tipo": "foto"}],
@@ -146,13 +146,14 @@ def test_previa_id_invalido(client, headers):
     assert resposta.json["campos"] == ["obra_id"]
 
 
-def test_previa_falha_banco_nao_expoe_detalhes(client, headers, monkeypatch):
+def test_previa_falha_banco_nao_expoe_detalhes(client, headers, database, account, monkeypatch):
     from app.publicacoes import repository
 
     def falhar(*args):
         raise PyMongoError("detalhe interno do banco")
 
+    obra_id = database.tbl_obras.insert_one({"autor": str(account["_id"])}).inserted_id
     monkeypatch.setattr(repository, "buscar_obra", falhar)
-    resposta = client.get(f"/obras/{ObjectId()}/previa", headers=headers)
+    resposta = client.get(f"/obras/{obra_id}/previa", headers=headers)
     assert resposta.status_code == 503
     assert "detalhe interno" not in resposta.get_data(as_text=True)

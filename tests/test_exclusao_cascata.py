@@ -411,6 +411,7 @@ def test_ct84_falha_externa_nao_e_relatada_como_cascata_concluida(
     pendencia = database.tbl_exclusoes_pendentes.find_one({"_id": ObjectId(corpo["pendencia"])})
     assert pendencia["alvo"] == {"tipo": "obra", "id": cenario.obra,
                                  "nome": "Residencial Aurora"}
+    assert pendencia["proprietario_id"] == cenario.autor
     assert len(pendencia["pendentes"]) == 1
     assert pendencia["ultimo_erro"] and pendencia["ultima_falha_em"]
     assert pendencia["token"] is None, "o bloqueio é liberado para a retomada"

@@ -32,9 +32,10 @@ class ServicoMidiasFalso:
 
 
 @pytest.fixture
-def marco(database):
+def marco(database, account):
     identifier = ObjectId()
-    database.tbl_marcos.insert_one({"_id": identifier, "nome": "Fundação"})
+    obra_id = database.tbl_obras.insert_one({"nome": "Casa", "autor": str(account["_id"])}).inserted_id
+    database.tbl_marcos.insert_one({"_id": identifier, "nome": "Fundação", "obra_id": obra_id})
     return str(identifier)
 
 
@@ -99,7 +100,7 @@ def test_ct36_aceita_dias_nao_consecutivos_e_consultas(
 
 
 def test_cadastro_e_publicacao_compartilham_as_mesmas_midias(client, headers, database, marco):
-    obra_id = database.tbl_obras.insert_one({"nome": "Obra de teste"}).inserted_id
+    obra_id = database.tbl_obras.insert_one({"nome": "Obra de teste", "autor": str(database.tbl_construtora.find_one({"email": "construtora@example.com"})["_id"])}).inserted_id
     database.tbl_marcos.update_one({"_id": ObjectId(marco)}, {"$set": {"obra_id": obra_id}})
     with patch("app.avancos.service.ServicoMidias", return_value=ServicoMidiasFalso()):
         cadastro = enviar(client, headers, marco)

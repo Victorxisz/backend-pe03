@@ -16,7 +16,7 @@ def criar_marco(database, estado="a iniciar", dependencias=None, nome="Estrutura
         if dependencias:
             obra_id = database.tbl_marcos.find_one({"_id": dependencias[0]})["obra_id"]
         else:
-            obra_id = database.tbl_obras.insert_one({"nome": "Obra teste"}).inserted_id
+            obra_id = database.tbl_obras.insert_one({"nome": "Obra teste", "autor": str((database.tbl_construtora.find_one({"email": "construtora@example.com"}) or {}).get("_id", "sem-conta"))}).inserted_id
     documento = {
         "obra_id": obra_id,
         "nome": nome,

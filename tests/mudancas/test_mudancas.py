@@ -124,7 +124,8 @@ def test_ct56_ct57_rejeita_entrada_sem_gravar(client, headers, database, obra, a
 
 
 @pytest.mark.parametrize("dados", [None, [], {}, {"alvo": []}])
-def test_corpo_incompleto(client, headers, dados):
+def test_corpo_incompleto(client, headers, database, obra, dados):
+    seed(database, obra)
     assert client.post(PATH, json=dados, headers=headers).status_code == 422
 
 

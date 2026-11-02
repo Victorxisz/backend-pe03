@@ -69,7 +69,10 @@ def test_rascunho_incompleto(client, headers, database, cenario, campo, valor):
     database.tbl_avancos.update_one({"_id": cenario["avanco"]}, {"$set": {campo: valor}})
     antes = snapshot(database)
     r = client.post(cenario["publicar"], headers=headers)
-    assert r.status_code == 422 and campo in r.json["campos"]
+    if campo == "marco_id":
+        assert r.status_code == 404
+    else:
+        assert r.status_code == 422 and campo in r.json["campos"]
     assert snapshot(database) == antes
     cenario["resource"].assert_not_called()
 

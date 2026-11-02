@@ -127,6 +127,7 @@ class ServicoExclusaoMarco:
         return Conjunto(
             alvo={"tipo": TIPO, "id": marco_id, "nome": marco.get("nome", "Marco"),
                   "obra_id": obra_id},
+            proprietario_id=str(obra["autor"]),
             perda=perda,
             ids=ids,
             midias=tuple(midias + evidencias),

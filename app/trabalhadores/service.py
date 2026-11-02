@@ -47,13 +47,13 @@ class ServicoTrabalhadores:
 
     def _exigir_obra(self, identificador, autor):
         obra = self.repositorio.buscar_obra(identificador)
-        if obra is None or (obra.get("autor") and obra["autor"] != autor):
+        if obra is None or (not obra.get("autor") or str(obra["autor"]) != autor):
             raise ErroTrabalhador({"erro": "Obra não encontrada"}, 404)
         return obra
 
     def _exigir_trabalhador(self, identificador, autor):
         documento = self.repositorio.buscar(identificador)
-        if documento is None or (documento.get("construtora_id") and documento["construtora_id"] != autor):
+        if documento is None or (not documento.get("construtora_id") or str(documento["construtora_id"]) != autor):
             raise ErroTrabalhador({"erro": "Trabalhador não encontrado"}, 404)
         return documento
 
@@ -77,7 +77,7 @@ class ServicoTrabalhadores:
         if "obras" in campos:
             existentes = self.repositorio.obras_existentes([ObjectId(valor) for valor in campos["obras"]])
             encontradas = {str(obra["_id"]) for obra in existentes
-                           if not obra.get("autor") or obra["autor"] == autor}
+                           if obra.get("autor") and str(obra["autor"]) == autor}
             ausentes = sorted(set(campos["obras"]) - encontradas)
             if ausentes:
                 raise ErroTrabalhador({"erro": "Uma ou mais obras não foram encontradas", "obras": ausentes}, 422)
@@ -140,4 +140,4 @@ class ServicoTrabalhadores:
 
     def _consultar(self, filtro, autor):
         return [trabalhador_para_dict(documento) for documento in self.repositorio.consultar(filtro)
-                if not documento.get("construtora_id") or documento["construtora_id"] == autor]
+                if documento.get("construtora_id") and str(documento["construtora_id"]) == autor]

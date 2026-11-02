@@ -13,8 +13,8 @@ def caminho(marco_id, dependencia_id=None):
 
 
 @pytest.fixture
-def marcos(database, obra):
-    obra_id = database.tbl_obras.insert_one(obra).inserted_id
+def marcos(database, obra, account):
+    obra_id = database.tbl_obras.insert_one({**obra, "autor": str(database.tbl_construtora.find_one({"email": "construtora@example.com"})["_id"])}).inserted_id
     return tuple(
         database.tbl_marcos.insert_one({
             "obra_id": obra_id,
@@ -107,7 +107,7 @@ def test_ct23_rejeita_relacao_invalida_sem_alterar_grafo(
     adicionar(client, headers, a, b)
     destino = a if cenario == "autorreferencia" else b
     if cenario == "outra_obra":
-        outra_obra = database.tbl_obras.insert_one({"nome": "Outra obra"}).inserted_id
+        outra_obra = database.tbl_obras.insert_one({"nome": "Outra obra", "autor": str(database.tbl_construtora.find_one({"email": "construtora@example.com"})["_id"])}).inserted_id
         database.tbl_marcos.update_one({"_id": c}, {"$set": {"obra_id": outra_obra}})
         destino = c
     antes = snapshot(database)
@@ -266,7 +266,7 @@ def test_obra_inexistente_nao_altera_relacoes(
         url, method=metodo, json={"depende_de_id": str(b)}, headers=headers
     )
     conferir_rejeicao(resposta, 404, database, antes)
-    assert resposta.get_json()["campos"] == ["obra_id"]
+    assert resposta.get_json()["campos"] == ["marco_id"]
 
 
 def test_ct24_revalida_ciclo_apos_gravacao_concorrente(

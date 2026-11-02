@@ -20,9 +20,9 @@ from support_avancos import camadas, transacao_local
 
 
 @pytest.fixture
-def cenario(transacao_local, camadas, database, config, conteudos):
+def cenario(transacao_local, camadas, database, account, config, conteudos):
     obra, marco, avanco = ObjectId(), ObjectId(), ObjectId()
-    database.tbl_obras.insert_one({"_id": obra, "nome": "Obra de teste"})
+    database.tbl_obras.insert_one({"_id": obra, "nome": "Obra de teste", "autor": str(account["_id"])})
     database.tbl_marcos.insert_one({"_id": marco, "obra_id": obra, "nome": "Fundação"})
     database.tbl_avancos.insert_one({
         "_id": avanco, "marco_id": marco, "autor": str(ObjectId()),

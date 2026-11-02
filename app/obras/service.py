@@ -98,7 +98,7 @@ class ServicoObras:
             raise ErroObra("Obra não encontrada", 404, ["id"])
         return self.obra_para_dict(documento)
 
-    def listar_obras(self, parametros):
+    def listar_obras(self, parametros, autor=None):
         permitidos = {"nome", "cliente", "estado", "alerta", "registroDe", "registroAte", "entregaDe", "entregaAte"}
         desconhecidos = sorted(set(parametros) - permitidos)
         if desconhecidos:
@@ -126,6 +126,8 @@ class ServicoObras:
                 raise ErroObra("O fim do filtro não pode ser anterior ao início", 422, [fim])
 
         filtro = {}
+        if autor is not None:
+            filtro["autor"] = {"$in": [autor, ObjectId(autor)]}
 
         for campo in ("nome", "cliente"):
             if campo not in parametros:

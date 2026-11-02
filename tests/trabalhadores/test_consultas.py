@@ -27,6 +27,7 @@ def test_busca_parcial_normaliza_termo_e_ignora_maiusculas(
         "id": str(pessoa["_id"]), "nome": pessoa["nome"], "email": pessoa["email"],
         "telefone": pessoa["telefone"], "cargo": pessoa["cargo"],
         "obras": pessoa["obras"], "ativo": True, "data_cadastro": None,
+        "construtora_id": pessoa["construtora_id"],
     }]
     assert snapshot(database) == before
 
@@ -87,6 +88,7 @@ def test_detalhe_por_id_retorna_cadastro_completo(client, headers, database, pes
         "id": str(pessoa["_id"]), "nome": pessoa["nome"], "email": pessoa["email"],
         "telefone": pessoa["telefone"], "cargo": pessoa["cargo"],
         "obras": pessoa["obras"], "ativo": True, "data_cadastro": None,
+        "construtora_id": pessoa["construtora_id"],
     }
     assert snapshot(database) == before
 

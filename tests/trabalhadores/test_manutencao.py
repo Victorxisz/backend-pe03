@@ -86,7 +86,7 @@ def test_ct97_troca_obra_a_por_b_e_depois_aceita_lista_vazia(
     client, headers, database, pessoa, obra_existente, obra
 ):
     # Preparação
-    obra_b = database.tbl_obras.insert_one(dict(obra)).inserted_id
+    obra_b = database.tbl_obras.insert_one({**obra, "autor": pessoa["construtora_id"]}).inserted_id
     caminho = f"/trabalhadores/{pessoa['_id']}/"
 
     # Execução: substituição explícita e, em seguida, retirada de todos.
@@ -123,7 +123,7 @@ def test_ct97_uma_obra_inexistente_rejeita_a_lista_inteira(
     client, headers, database, pessoa, obra
 ):
     # Preparação
-    obra_b = database.tbl_obras.insert_one(dict(obra)).inserted_id
+    obra_b = database.tbl_obras.insert_one({**obra, "autor": pessoa["construtora_id"]}).inserted_id
     ausente = str(ObjectId())
     antes = snapshot(database)
 
@@ -318,7 +318,7 @@ def test_exclusao_de_outro_trabalhador_nao_toca_na_atribuicao(
     client, headers, database, pessoa, ocorrencia, trabalhador
 ):
     outro = database.tbl_trabalhadores.insert_one(
-        {**trabalhador, "email": "outro@example.com", "obras": [], "ativo": True}).inserted_id
+        {**trabalhador, "email": "outro@example.com", "obras": [], "ativo": True, "construtora_id": pessoa["construtora_id"]}).inserted_id
     resposta = client.delete(f"/trabalhadores/{outro}/", headers=headers)
     assert resposta.status_code == 200
     assert resposta.get_json()["ocorrencias_sem_responsavel"] == 0
