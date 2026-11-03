@@ -21,6 +21,23 @@ from support_exclusoes import (
 # --- CT-79: a confirmação precede qualquer remoção -------------------------
 
 
+@pytest.mark.parametrize("alvo", ["obra", "marco"])
+def test_cascata_preserva_limpeza_de_vinculos_legados(
+    client, headers, database, cenario, transacao_local, alvo
+):
+    colecao = database["tbl_feedback_simulado"]
+    antigo = {"obra_id": cenario.obra, "marco_id": cenario.marco,
+              "avanco_id": cenario.publicado}
+    preservado = {"obra_id": cenario.obra_b, "marco_id": cenario.marco_b,
+                  "avanco_id": cenario.avanco_b}
+    colecao.insert_many([antigo, preservado])
+    caminho = cenario.caminho if alvo == "obra" else cenario.caminho_marco
+    resposta = client.delete(caminho, headers=headers, json={"confirmar": True})
+    assert resposta.status_code == 204
+    assert colecao.find_one({"obra_id": cenario.obra}) is None
+    assert colecao.find_one({"obra_id": cenario.obra_b}) == preservado
+
+
 @routes(("DELETE", OBRAS + "507f1f77bcf86cd799439011"))
 def test_ct79_aviso_identifica_obra_e_extensao_da_perda(client, headers, database, cenario):
     # Preparação

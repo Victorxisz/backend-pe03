@@ -1,9 +1,8 @@
 """Cascata de exclusão de um marco (UC-17, F-19, RN-09, CA-09).
 
 O marco leva seus avanços, publicações, versões, mídias, a trilha de mudanças
-de estado e os exemplos simulados de UC-21 ligados ao marco ou às suas
-atualizações. O exemplo ligado à obra permanece, porque a obra permanece: dela
-e dos outros marcos sai apenas o vínculo de dependência que apontava para o alvo.
+de estado e vínculos legados associados. Da obra e dos outros marcos sai
+apenas o vínculo de dependência que apontava para o alvo.
 
 Decisão confirmada em 30/10/2026: a ocorrência vinculada ao marco é
 removida com ele (CT-82). O modo legado sem cascata não representa a política
@@ -26,7 +25,7 @@ from app.exclusoes import (
 )
 from app.historico.repository import RepositorioHistorico
 from app.ocorrencias.repository import RepositorioOcorrencias
-from app.simulados.repository import RepositorioSimulados, filtro_do_conjunto
+from app.feedback_legado import RepositorioFeedbackLegado, filtro_do_conjunto
 
 from . import repository
 
@@ -41,7 +40,7 @@ class ServicoExclusaoMarco:
         self.avancos = avancos if avancos is not None else avancos_repository
         self.ocorrencias = ocorrencias if ocorrencias is not None else RepositorioOcorrencias()
         self.historico = historico if historico is not None else RepositorioHistorico()
-        self.simulados = simulados if simulados is not None else RepositorioSimulados()
+        self.simulados = simulados if simulados is not None else RepositorioFeedbackLegado()
 
     def excluir(self, marco_id, dados, autor):
         """Valida sessão, alvo, vínculo com a obra e confirmação antes de remover."""
@@ -74,7 +73,7 @@ class ServicoExclusaoMarco:
             elo for elo in obra.get("dependencias_marcos", [])
             if marco_id in (elo.get("marco_id"), elo.get("depende_de_id"))
         ]
-        # UC-21: sai o exemplo do marco e o das suas atualizações (CT-106).
+        # Remove também vínculos legados do marco e de suas atualizações.
         feedbacks = self.simulados.listar_do_conjunto(
             filtro_do_conjunto(marcos=[marco_id], avancos=ids_avancos))
 

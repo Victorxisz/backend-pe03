@@ -79,7 +79,7 @@ def _representar(documento):
 
 
 def representar_publicado(documento):
-    """Mesma leitura da prévia, reaproveitada pelo painel simulado de UC-21."""
+    """Representação de um avanço publicado na prévia."""
     return _representar(documento)
 
 

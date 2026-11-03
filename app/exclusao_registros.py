@@ -114,8 +114,8 @@ def excluir_registro(tipo, valor, dados, autor, *, previa=False):
     perda = (exclusoes.resumo_dos_avancos([documento]) if tipo == "avanco"
              else exclusoes.resumo_das_ocorrencias([documento]))
     if tipo == "avanco":
-        from app.simulados.repository import RepositorioSimulados
-        perda["exemplos_simulados"] += RepositorioSimulados().contar({"avanco_id": identificador})
+        from app.feedback_legado import RepositorioFeedbackLegado
+        perda["exemplos_simulados"] += RepositorioFeedbackLegado().contar({"avanco_id": identificador})
     perda.update(midias=len(midias), historico=len(eventos) + len(documento.get("historico_estados", [])))
     if previa:
         return {"alvo": alvo, "perda": perda}

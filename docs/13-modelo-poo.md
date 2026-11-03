@@ -97,14 +97,7 @@ A publicação preserva verificação de mídia recuperável, snapshot e idempot
 Não alterar os critérios de concorrência ou a compensação dos uploads ao mover
 regras entre classes.
 
-`ServicoSimulados` fica em `app/simulados/` e é somente de leitura (UC-21). O
-repositório desse módulo depende apenas de `db`, para que as cascatas de UC-17 e
-a exclusão de rascunho de UC-18 o importem sem ciclo com `app.avancos`. O avanço
-atribuído a engenheiro simulado continua sendo um avanço comum com
-`origem_simulada`: a leitura reaproveita a representação da prévia e a correção
-pela construtora segue em `ServicoCorrecoes`, sem um fluxo paralelo. Não existe
-serviço de escrita para comprador ou engenheiro; a carga é um procedimento em
-`scripts/carregar_dados_demonstracao.py`.
+A limpeza de vínculos antigos fica em `app/feedback_legado.py`, sem API de consulta ou carga. Isso preserva as exclusões em bancos já utilizados. Metadados de origem em publicações existentes continuam preservados pela correção versionada.
 
 ## Decisões confirmadas para ocorrências e exclusões
 

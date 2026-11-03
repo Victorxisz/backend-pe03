@@ -23,12 +23,11 @@ Esta matriz permite transformar uma dor em issue, implementação, teste e demon
 | Exclusão de obra/marco sem órfãos | F-19 | UC-17 | CT-79–85 | CA-09 |
 | Retirar avanço/ocorrência indevido | F-19 | UC-18 | CT-86–89 | CA-09 |
 | Saber quem participa da obra | F-20 | UC-19, UC-20 | CT-90–101 | CA-10 |
-| Mostrar voz do comprador sem fingir login | F-17, F-18 | UC-21 | CT-102–106 | CA-08 |
 | Requisito de API externa gratuita | F-02 ou F-08 | UC-02 ou UC-08 | CT-107–111 | CA-02 ou CA-04 |
 
 ## Verificação do backend — 01/11/2026
 
-Os 21 UCs têm implementação no backend e cobertura de regra/API. A revisão
+Os 20 UCs têm implementação no backend e cobertura de regra/API. A revisão
 considerou RN-01–10, os critérios de aceite e as decisões confirmadas.
 O aceite visual React/EC2 continua separado, conforme a definição de pronto.
 
@@ -54,7 +53,6 @@ O aceite visual React/EC2 continua separado, conforme a definição de pronto.
 | UC-18 | Exclusão individual, versões, aceitações e mídias | `test_exclusao_registros.py`, `test_exclusao_interface.mjs` |
 | UC-19 | Cadastro/consulta de trabalhadores com obra válida | `trabalhadores/test_cadastro.py`, `trabalhadores/test_consultas.py` |
 | UC-20 | Edição, vínculos, exclusão e responsáveis consistentes | `trabalhadores/test_rotas.py`, `trabalhadores/test_responsaveis.py`, `trabalhadores/test_persistencia_atlas.py` |
-| UC-21 | Carga repetível e leitura de exemplos simulados | `test_dados_simulados.py` |
 
 Correções desta revisão:
 
@@ -65,7 +63,7 @@ Correções desta revisão:
   inválida das ocorrências em transação. Registros, aceitações e histórico são
   preservados. A versão aumenta para impedir gravação de formulários antigos.
   Testes reproduziram a falha anterior e verificam rollback.
-- Inventário obrigatório ampliado para UC-01–21 e documentação desatualizada
+- Inventário obrigatório ampliado para UC-01–20 e documentação desatualizada
   de funções já entregues corrigida.
 
 Comandos usados, na raiz do backend com o ambiente Python ativo:
@@ -73,20 +71,19 @@ Comandos usados, na raiz do backend com o ambiente Python ativo:
 ```powershell
 python -m pytest --require-routes -q -p no:cacheprovider
 python -m pytest -m atlas --atlas --require-routes -q -p no:cacheprovider
-python -m pytest tests/integracao/test_todas_rotas.py tests/integracao/test_historico.py tests/test_dados_simulados.py --atlas --require-routes -q -p no:cacheprovider
+python -m pytest tests/integracao/test_todas_rotas.py tests/integracao/test_historico.py --atlas --require-routes -q -p no:cacheprovider
 python -m pytest tests/trabalhadores/test_responsaveis.py tests/obras/test_filtro_alertas.py --atlas -q -p no:cacheprovider
 node --test tests/test_exclusao_interface.mjs
 ```
 
-Resultados: suíte completa **1.407 aprovados, 50 ignorados, zero falhas**;
-cenários específicos Atlas **38 aprovados, 1 ignorado**; integração HTTP,
-histórico e simulados no Atlas **30 aprovados**; novas regressões no Atlas
+Resultados históricos desta revisão: suíte completa **1.407 aprovados, 50 ignorados, zero falhas**;
+cenários específicos Atlas **38 aprovados, 1 ignorado**; novas regressões no Atlas
 **14 aprovados**; confirmação de exclusão JavaScript **4 aprovados**.
 Os 50 ignorados da execução padrão incluem testes de Atlas executados
 separadamente e integrações que exigem credenciais exclusivas.
 
 `--atlas` usa coleções temporárias isoladas, limpas ao terminar. O fluxo
-integrado exige sucesso de cada uma das 58 operações HTTP. Os testes reais
+integrado exige sucesso de cada uma das 57 operações HTTP atuais. Os testes reais
 comprovam persistência após reinício, concorrência e rollback; a mídia desses
 cenários é simulada. Cloudinary real exige `RUN_CLOUDINARY_TESTS=1` e credenciais
 `TEST_CLOUDINARY_*`, ausentes nesta verificação. Upload/recuperação no provedor
@@ -97,7 +94,7 @@ real e o percurso React/EC2 não são declarados aprovados por esta revisão.
 1. **Primeira trilha:** UC-01, UC-02, UC-03 e UC-05; uma pessoa cria obra/marco no React e os recupera do Atlas pelo Flask.
 2. **Valor central:** UC-08, UC-09 e UC-10; upload real, rascunho e publicação com prévia.
 3. **Confiabilidade:** UC-11 a UC-16; versões, mudanças, histórico e ocorrências.
-4. **Organização complementar:** UC-06, UC-07, UC-19 a UC-21; dependências, trabalhadores e exemplos simulados.
+4. **Organização complementar:** UC-06, UC-07, UC-19 a UC-20; dependências e trabalhadores.
 5. **Fechamento:** UC-17/18, integração externa gratuita aprovada, segurança, EC2 e CT-111.
 
 Cada issue pode citar um UC e seus CTs. O responsável pela interface e o responsável pela API alinham formato de entrada/saída antes de programar; outra pessoa revisa o PR. A issue só fecha com teste realizado e evidência, não apenas com endpoint criado. Se o grupo reduzir escopo por prazo, decidir explicitamente quais `P1` saem, sem apagar critérios P0 em silêncio.

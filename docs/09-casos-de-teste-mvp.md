@@ -78,7 +78,7 @@
 | CT-47 | A/I | Corrigir mídia publicada. | Nova referência funciona; versão anterior permanece rastreável conforme política de retenção da mídia. |
 | CT-48 | A | Tentar correção sem motivo ou sem mudança de conteúdo. | Nenhuma versão nova. |
 | CT-49 | A | Simular falha ao gravar versão. | Publicação anterior intacta; não há versão parcial. |
-| CT-50 | I | Corrigir avanço pré-carregado com autoria simulada de engenheiro. | Mostra origem simulada, “editado pela construtora”, texto anterior e destaque da alteração. |
+| CT-50 | I | Corrigir publicação existente preservando sua autoria. | Mostra autor original, autor da correção, texto anterior e destaque da alteração. |
 | CT-51 | A/I | Corrigir a mesma publicação duas vezes. | Cadeia de versões ordenada; cada anterior permanece acessível. |
 
 ## Mudanças e histórico — UC-12 e UC-13
@@ -150,16 +150,6 @@
 | CT-99 | I/A | Acionar exclusão de trabalhador e cancelar; depois confirmar. | Aviso identifica pessoa; cancelar preserva; confirmar remove cadastro. A ocorrência em que a pessoa era responsável fica sem responsável, sem perder a autoria das decisões (P-10). |
 | CT-100 | A | Excluir obra A de trabalhador ligado a A e B. | Vínculo A removido; cadastro e vínculo B preservados. |
 | CT-101 | A/I | Excluir trabalhador e reiniciar. | Trabalhador continua ausente; nenhum login foi criado para ele. |
-
-## Dados simulados — UC-21
-
-| ID | Camada | Preparação e execução | Resultado esperado |
-| --- | --- | --- | --- |
-| CT-102 | A/I | Abrir exemplos de avaliação, compreensão e dúvida ligados à obra. | Tipos corretos, cliente fictício de referência e marca `simulado`. |
-| CT-103 | A/I | Abrir exemplo ligado a marco e outro à atualização específica. | Cada um aparece só no contexto correspondente. |
-| CT-104 | A/I | Abrir avanço simulado do engenheiro. | Origem simulada explícita; não há sessão de engenheiro. |
-| CT-105 | A | Tentar criar feedback de comprador pela API do MVP. | Não existe endpoint funcional ou recebe negação; não atribui mensagem real ao comprador. |
-| CT-106 | A | Excluir objeto ao qual exemplo estava ligado. | Exemplo dependente removido; nenhuma referência órfã. |
 
 ## API externa e implantação — condicionais
 

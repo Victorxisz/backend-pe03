@@ -6,7 +6,7 @@ Os critérios abaixo descrevem resultados observáveis no navegador e no servido
 
 **Cenário fictício:** a construtora Horizonte entra com sua conta, cria a obra residencial *Residencial Aurora*; planeja os marcos *Fundação*, *Estrutura* e *Alvenaria*; cadastra um trabalhador; registra avanço com foto, vídeo e documento; publica uma atualização; altera o prazo de *Estrutura* com motivo; registra uma ocorrência sem solução e aceita sua condição com justificativa. Após reiniciar a aplicação, a mesma conta consulta o histórico.
 
-O cenário deve usar registros fictícios explicitamente identificados. Um dado de avaliação ou dúvida do comprador pré-carregado pode ser exibido como contexto, mas não deve parecer enviado ao vivo.
+O cenário de demonstração deve usar obras e registros fictícios explicitamente identificados, produzidos pelos fluxos da construtora.
 
 ## Critérios de aceite por entrega
 
@@ -42,7 +42,7 @@ O cenário deve usar registros fictícios explicitamente identificados. Um dado 
 
 - A construtora informa motivo para corrigir uma atualização publicada.
 - A consulta mostra versão atual, anterior, campos alterados, autor e data de cada edição.
-- Se um avanço pré-carregado atribuído ao engenheiro for alterado, a interface sinaliza “editado pela construtora”, exibe o texto anterior e destaca onde ocorreu a alteração.
+- Toda correção preserva autoria original, identifica a construtora responsável pela edição, exibe o texto anterior e destaca onde ocorreu a alteração.
 
 ### CA-06 — Mudança aplicada (`F-12` e `F-13`)
 
@@ -57,16 +57,10 @@ O cenário deve usar registros fictícios explicitamente identificados. Um dado 
 - Para registrar a aceitação de uma ocorrência sem solução, a construtora informa justificativa. A interface mostra quem aceitou e quando. Não exige medida compensatória.
 - A ocorrência permanece consultável após atualizar a página ou reiniciar o servidor.
 
-### CA-08 — Dados simulados (`F-17` e `F-18`)
-
-- Exemplos de avaliação, compreensão e dúvida do comprador são pré-carregados e aparecem associados à obra, ao marco ou a uma atualização específica.
-- Os exemplos são identificados como **simulados** e não podem ser atribuídos a um comprador autenticado.
-- Um avanço de engenheiro simulado pode ser mostrado, mas não existe login ou criação de avanço pelo perfil de engenheiro no MVP.
-
 ### CA-09 — Exclusão definitiva (`F-19`, RN-09)
 
 - Obra e marco podem ser excluídos definitivamente junto com seus registros dependentes. A interface identifica o alvo, informa a perda do histórico e pede confirmação.
-- Cancelar a confirmação não altera dados. Confirmar remove o conjunto e não deixa referências órfãs, inclusive mídias externas e dados simulados associados.
+- Cancelar a confirmação não altera dados. Confirmar remove o conjunto e não deixa referências órfãs, inclusive mídias externas.
 - A exclusão isolada de mudança já aplicada não está definida como ação do MVP; o histórico deve permanecer íntegro enquanto o objeto principal existir.
 
 ### CA-10 — Trabalhadores (`F-20`)
@@ -84,10 +78,10 @@ O cenário deve usar registros fictícios explicitamente identificados. Um dado 
 5. Registro/revisão de avanço e anexos.
 6. Prévia de atualizações publicadas e versões.
 7. Registro e acompanhamento de ocorrência.
-8. Histórico de mudanças e registros simulados do comprador.
+8. Histórico de mudanças.
 
 É aceitável combinar algumas dessas telas em abas ou painéis. O protótipo visual anterior serve como referência para hierarquia e navegação, mas a equipe deve priorizar estados reais da aplicação (vazio, carregando, erro, rascunho e publicado) antes de polimento.
 
 ## Demonstração final e verificação
 
-Executar CA-01 a CA-08 **no endereço implantado em EC2**, com o React chamando o Flask por HTTP. Confirmar a persistência no MongoDB Atlas e uma chamada real à API externa escolhida. A entrega só está pronta quando outra pessoa da equipe consegue repetir o roteiro a partir do README de cada repositório, sem depender do computador de quem desenvolveu.
+Executar CA-01 a CA-07 e CA-09 **no endereço implantado em EC2**, com o React chamando o Flask por HTTP. Confirmar a persistência no MongoDB Atlas e uma chamada real à API externa escolhida. A entrega só está pronta quando outra pessoa da equipe consegue repetir o roteiro a partir do README de cada repositório, sem depender do computador de quem desenvolveu.

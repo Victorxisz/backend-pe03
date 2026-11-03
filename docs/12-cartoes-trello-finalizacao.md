@@ -7,7 +7,7 @@ Revisão do backend em 01/11/2026: consultar o
 Os cartões abaixo preservam o roteiro de implementação; suas descrições de
 pendências anteriores não substituem esse registro de verificação.
 
-São **21 cartões, um para cada caso de uso**, mantendo o foco no backend dos cartões anteriores. As atividades técnicas ficam dentro do caso de uso, inclusive armazenamento e acesso a mídias. Elas não viram cartões de infraestrutura separados.
+São **20 cartões, um para cada caso de uso**, mantendo o foco no backend dos cartões anteriores. As atividades técnicas ficam dentro do caso de uso, inclusive armazenamento e acesso a mídias. Elas não viram cartões de infraestrutura separados.
 
 O modelo preserva **Contexto e cobertura → Arquivos previstos → Fazer → Pronto quando → Testes relacionados → Dependências**, com contexto suficiente para usar cada descrição como prompt de implementação. Os títulos agora usam os identificadores dos casos de uso.
 
@@ -59,7 +59,7 @@ CT-01 a CT-04: entrada, rejeição neutra, proteção das rotas e logout efetivo
 
 **Dependências:**
 
-Configuração JWT e conexão com banco de teste. É a base de autenticação para UC-02 a UC-21.
+Configuração JWT e conexão com banco de teste. É a base de autenticação para UC-02 a UC-20.
 
 ---
 
@@ -403,7 +403,7 @@ UC-01 e UC-08. UC-09 fornece o fluxo de revisão, mas rascunho já válido pode 
 
 **Contexto e cobertura:**
 
-Uma atualização já divulgada pode conter erro, mas corrigi-la não pode apagar o que foi informado antes. A construtora precisa justificar a correção e permitir comparar versões. Quando o original é um exemplo de engenheiro simulado, a origem continua preservada e a nova intervenção é atribuída à construtora.
+Uma atualização já divulgada pode conter erro, mas corrigi-la não pode apagar o que foi informado antes. A construtora precisa justificar a correção e permitir comparar versões. A autoria original continua preservada e a nova intervenção é atribuída à construtora.
 
 Cobre **F-11, RN-06 e CA-05**.
 
@@ -421,7 +421,7 @@ Cobre **F-11, RN-06 e CA-05**.
 - Gravar versão e conteúdo atual de modo consistente, com verificação de revisão para não perder correções simultâneas.
 - Manter arquivos utilizados pelas versões anteriores; limpar somente novos uploads sem uso quando a operação falhar.
 - Implementar `GET /avancos/{avancoId}/versoes` e devolver dados suficientes para comparação de texto/mídia e destaque dos campos alterados.
-- Fazer a prévia refletir a versão vigente e indicar edição. Para original simulado, preservar origem e autoria original e informar a edição pela construtora.
+- Fazer a prévia refletir a versão vigente e indicar edição. Preservar autoria original e informar a edição pela construtora.
 - Publicar o evento de correção no contrato de leitura de UC-13, reaproveitando a versão registrada, sem gerar histórias contraditórias.
 
 **Pronto quando:**
@@ -430,11 +430,11 @@ Uma publicação corrigida mostra a versão atual e permite consultar as anterio
 
 **Testes relacionados:**
 
-CT-46 a CT-51: texto, mídia, motivo/alteração efetiva, falhas, origem simulada e cadeia de versões. CT-50 usa um exemplo preparado conforme UC-21; um registro de teste permite implementar antes da carga completa.
+CT-46 a CT-51: texto, mídia, motivo/alteração efetiva, falhas, autoria original e cadeia de versões. CT-50 verifica preservação de autoria e conteúdo anterior em publicações existentes.
 
 **Dependências:**
 
-UC-01, UC-08 e UC-10. Compartilhar PATCH com UC-09; UC-21 fornece o exemplo integrado de engenheiro simulado.
+UC-01, UC-08 e UC-10. Compartilhar PATCH com UC-09.
 
 ---
 
@@ -646,7 +646,7 @@ Cobre a exclusão em cascata de **F-19, RN-09 e CA-09**.
 
 - Implementar `DELETE /obras/{obraId}` e `DELETE /marcos/{marcoId}`, validando sessão, existência e vínculos antes de qualquer remoção.
 - Documentar o protocolo de confirmação com React. A tela mostra nome e extensão da perda; cancelar não envia DELETE. Se o contrato usar campo de confirmação no servidor, validá-lo explicitamente e cobri-lo em teste.
-- Mapear e remover obra/marco, avanços, publicações, versões, mídias, mudanças, ocorrências e respectivos históricos/aceitações e exemplos simulados dependentes.
+- Mapear e remover obra/marco, avanços, publicações, versões, mídias, mudanças, ocorrências e respectivos históricos/aceitações e vínculos legados dependentes.
 - Ao excluir marco, retirar também relações em que outros marcos dependem dele, preservando esses outros marcos.
 - Alinhar e registrar a política de ocorrência ligada ao marco: a proposta atual é removê-la na cascata. A documentação ainda pede confirmação dessa decisão; não apresentar como decisão já aprovada.
 - Ao excluir obra, remover seu vínculo dos trabalhadores. Preservar cadastro e vínculo B quando a pessoa também pertence a B; a documentação trata essa política como proposta a confirmar. Não excluir o trabalhador globalmente por um vínculo removido.
@@ -663,7 +663,7 @@ CT-79 a CT-85: confirmação, cascata, ausência de órfãos, dependências, ine
 
 **Dependências:**
 
-UC-01 e os módulos dos dados a remover: UC-02, UC-05/06, UC-08/10/11, UC-12/13, UC-14/16, UC-19/20 e UC-21. A implementação pode avançar por conjunto; o aceite exige a cascata completa e as políticas registradas.
+UC-01 e os módulos dos dados a remover: UC-02, UC-05/06, UC-08/10/11, UC-12/13, UC-14/16, UC-19/20. A implementação pode avançar por conjunto; o aceite exige a cascata completa e as políticas registradas.
 
 ---
 
@@ -781,57 +781,13 @@ UC-01, UC-02 e UC-19. UC-17 completa o cenário de exclusão de obra; UC-14 deve
 
 ---
 
-## Cartão 21 — [UC-21] Consultar dados simulados do comprador e do engenheiro
-
-**Backend implementado:** módulo `app/simulados/`, carga em
-`scripts/carregar_dados_demonstracao.py` e testes em `tests/test_dados_simulados.py`.
-Ver [contrato, carga e verificação no README](../README.md#dados-simulados--uc-21).
-A validação visual com o frontend e a demonstração publicada continuam pendentes
-para o aceite completo do cartão.
-
-**Contexto e cobertura:**
-
-O MVP demonstra como avaliações, dúvidas e registros de outros participantes poderiam contextualizar a obra no futuro. Esses exemplos são pré-carregados e precisam ser apresentados como simulação. Não representam comentários reais nem autorizam login de comprador/engenheiro. O avanço do engenheiro simulado pode ser corrigido pela construtora preservando a origem.
-
-Cobre **F-17, F-18, RN-10 e CA-08**.
-
-**Arquivos previstos:**
-
-- Criar `app/simulados/__init__.py`, `routes.py`, `service.py` e `repository.py` como destino proposto para a consulta.
-- Criar `scripts/carregar_dados_demonstracao.py` e `tests/test_dados_simulados.py`; registrar o blueprint em `api.py`.
-- Reutilizar `app/avancos/` e a leitura de prévia/publicação para autoria/origem simulada e correção.
-
-**Fazer:**
-
-- Preparar carga repetível de exemplos fictícios de avaliação, compreensão e dúvida do comprador, ligados a obra, marco ou atualização específica.
-- Preparar avanço atribuído a engenheiro simulado, com campos explícitos de origem, identidade fictícia e vínculos válidos. A carga não deve duplicar exemplos ao ser repetida nem remover dados alheios ao cenário.
-- Implementar `GET /obras/{obraId}/feedback-simulado` com informações de alvo e origem suficientes para a interface apresentar cada exemplo no contexto correto.
-- Documentar filtros/consultas por marco ou atualização, quando necessários. Validar que o alvo pertence à obra; não misturar feedbacks de objetos diferentes.
-- Expor `simulado` de forma inequívoca nas respostas. Para avanço corrigido, preservar autoria original, versões e autoria da construtora na correção.
-- Não criar endpoint funcional para comprador enviar mensagem/avaliação, nem cadastro ou login desses perfis. A carga ocorre por procedimento de demonstração, não por formulário do produto.
-- Integrar remoção dos exemplos à exclusão dos objetos correspondentes em UC-17/18 e retornar lista vazia quando não houver exemplos.
-
-**Pronto quando:**
-
-Cada exemplo aparece somente no contexto vinculado, marcado como simulado, e o avanço do engenheiro mantém essa origem após correção. Reexecutar a carga não duplica dados; excluir o alvo não deixa exemplo órfão.
-
-**Testes relacionados:**
-
-CT-102 a CT-106: tipos/origem, contexto correto, engenheiro simulado, impossibilidade de interação real e exclusão dos dependentes. CT-50 verifica a correção do avanço simulado com UC-11. A marcação visual é validada com o frontend.
-
-**Dependências:**
-
-UC-01, UC-02, UC-05 e UC-08/10 para os objetos de exemplo. UC-11 para a correção integrada; UC-17/18 para verificar a limpeza dos exemplos após exclusão.
-
----
-
 ## Ordem prática para fechar o projeto
 
 1. Revisar a base existente de UC-01 a UC-07 e UC-19/20; resolver os contratos que afetam outros cartões. Existência de implementação não equivale a conclusão validada.
 2. Concluir o fluxo de rascunho UC-08/09 e integrá-lo à publicação UC-10, já existente; em seguida, correção UC-11.
 3. Concluir mudanças UC-12 e sua consulta em UC-13; fechar a data efetiva de conclusão para o cálculo de UC-03.
-4. Concluir ocorrências UC-14/15/16 e carregar os exemplos de UC-21. Esses trabalhos podem avançar em paralelo ao fluxo de publicação quando as dependências correspondentes existirem.
+4. Concluir ocorrências UC-14/15/16. Esses trabalhos podem avançar em paralelo ao fluxo de publicação quando as dependências correspondentes existirem.
 5. Fechar UC-17/18 e os cenários de vínculos de UC-20 com todos os tipos de dependentes presentes; registrar as políticas pendentes antes do aceite.
 6. Executar CT-111 no ambiente publicado e registrar por cartão o resultado, responsável, data e evidência. Priorizar correções de P0 antes de polir os trechos P1 de UC-04/15.
 
-Esta ordem organiza o trabalho dentro dos 21 cartões. Não acrescenta casos de uso ao escopo nem comprova que os CT foram executados nesta revisão.
+Esta ordem organiza o trabalho dentro dos 20 cartões. Não acrescenta casos de uso ao escopo nem comprova que os CT foram executados nesta revisão.

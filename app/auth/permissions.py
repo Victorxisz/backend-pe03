@@ -65,7 +65,7 @@ def _autorizar_recursos(identidade):
     referencias = []
     for chave, valor in args.items():
         if chave in ("obra_id", "marco_id", "avanco_id", "ocorrencia_id", "ocorrenciaId", "midia_id") and not ObjectId.is_valid(valor):
-            if request.blueprint in ("midias", "simulados"):
+            if request.blueprint == "midias":
                 return jsonify(mensagem="Identificador inválido", campos=[chave], codigo="ID_INVALIDO"), 400
             if request.blueprint == "trabalhadores" and chave == "obra_id":
                 return jsonify(erro="ID da obra inválido"), 400
@@ -91,8 +91,6 @@ def _autorizar_recursos(identidade):
     for obra_id in referencias:
         obra = obter("tbl_obras", obra_id)
         if not obra or not obra.get("autor") or str(obra["autor"]) != identidade:
-            if request.blueprint == "simulados":
-                return jsonify(mensagem="Obra não encontrada", campos=["obra_id"], codigo="OBRA_NAO_ENCONTRADA"), 404
             if request.blueprint == "midias":
                 codigo = "MIDIA_NAO_ENCONTRADA" if "midia_id" in args else "AVANCO_NAO_ENCONTRADO"
                 return jsonify(mensagem="Registro não encontrado", codigo=codigo), 404

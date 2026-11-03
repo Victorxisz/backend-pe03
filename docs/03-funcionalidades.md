@@ -30,7 +30,7 @@ detalhe. Não é evidência de avanço nem muda o planejamento. Ver o
 | F-08 | P0 | Registrar avanço em um marco com descrição e foto, vídeo ou documento | Guarda evidência vinculada ao trabalho, com frequência livre. |
 | F-09 | P0 | Editar avanço em rascunho | Permite revisar a informação antes da publicação. |
 | F-10 | P0 | Publicar avanço e consultar prévia da linha do tempo | Mostra exatamente qual informação foi liberada. |
-| F-11 | P0 | Corrigir avanço publicado com versão anterior, autor, data, motivo e campos alterados | Mantém confiança no histórico, inclusive quando a construtora altera um registro simulado do engenheiro. |
+| F-11 | P0 | Corrigir avanço publicado com versão anterior, autor, data, motivo e campos alterados | Mantém confiança no histórico e preserva autoria original e autoria da correção. |
 
 **Dados mínimos do marco:** identificador, obra, nome, descrição, início/fim previstos, estado e zero ou mais dependências. Não há responsável obrigatório nem data real de conclusão no recorte confirmado.
 
@@ -54,15 +54,6 @@ detalhe. Não é evidência de avanço nem muda o planejamento. Ver o
 
 **Trabalhador no MVP:** nome, email, telefone, cargo, estado ativo, data de cadastro, vínculo com a construtora e vínculos com obras. Cadastro, consultas, edição, exclusão e validação de obra existente estão implementados com sessão obrigatória. A manutenção de vínculos retira responsabilidades inválidas de ocorrências, preservando seu histórico. A integração visual deve ser verificada no repositório do frontend.
 
-## Dados simulados e transparência
-
-| ID | Prioridade | Funcionalidade | Resultado para a demonstração |
-| --- | --- | --- | --- |
-| F-17 | P0 | Mostrar exemplos pré-carregados de avaliação, compreensão e dúvida de comprador | Testa se a organização da informação responde a necessidades do cliente, sem implementar seu perfil. |
-| F-18 | P0 | Mostrar avanço pré-carregado atribuído a engenheiro, com indicação das edições feitas pela construtora | Demonstra a futura colaboração e a origem das informações sem fingir interação real. |
-
-Registros simulados devem ter identificação visual e campo de origem no banco (`simulado`), além de vínculo à obra, ao marco ou à atualização específica. **Nenhum** formulário de criação de engenheiro ou comprador é necessário no MVP.
-
 ## Funcionalidades posteriores ao MVP
 
 Estas capacidades pertencem à visão de produto, mas não às entregas `P0` ou `P1`:
@@ -83,6 +74,6 @@ Estas capacidades pertencem à visão de produto, mas não às entregas `P0` ou 
 
 ## Dependências entre funcionalidades
 
-`F-01 → F-02 → F-06 → F-08 → F-10` é a primeira trilha de implementação. `F-12` e `F-14` usam obra e marco já persistidos. `F-11` depende da publicação. `F-17` e `F-18` dependem de dados de exemplo vinculados a registros existentes. `F-19` exige exclusão em cascata confirmada; `F-20` depende da existência da obra. [O plano de entrega](07-plano-e-decisoes.md) transforma essa ordem em checkpoints.
+`F-01 → F-02 → F-06 → F-08 → F-10` é a primeira trilha de implementação. `F-12` e `F-14` usam obra e marco já persistidos. `F-11` depende da publicação. `F-19` exige exclusão em cascata confirmada; `F-20` depende da existência da obra. [O plano de entrega](07-plano-e-decisoes.md) transforma essa ordem em checkpoints.
 
 **Decisão de 30/10/2026:** existe apenas o alerta `atrasada`, derivado da data exata ou do fim do intervalo. A data efetiva de conclusão é automática. Ver [modelo implementado](13-modelo-poo.md).

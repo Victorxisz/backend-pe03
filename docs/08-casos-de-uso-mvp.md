@@ -1,6 +1,6 @@
 # 8. Casos de uso do MVP
 
-**Versão de trabalho: 20/10/2026.** Estes casos descrevem o comportamento esperado, não afirmam que ele já foi implementado. Abrangem apenas o MVP. O ator humano é sempre a **Construtora**, representada por **uma conta funcional**. Comprador, engenheiro e trabalhadores não fazem login. O cliente de referência é único por obra. Dados atribuídos a comprador ou engenheiro são simulados e pré-carregados.
+**Versão de trabalho: 20/10/2026.** Estes casos descrevem o comportamento esperado, não afirmam que ele já foi implementado. Abrangem apenas o MVP. O ator humano é sempre a **Construtora**, representada por **uma conta funcional**. Comprador, engenheiro e trabalhadores não fazem login. O cliente de referência é único por obra. Comprador e engenheiro não possuem fluxo funcional no MVP.
 
 ## Como ler e implementar
 
@@ -106,7 +106,7 @@ concorrência. Não é um avanço nem uma mudança de prazo. O contrato está em
 
 **Fluxo principal:** 1. A interface exibe versão atual. 2. A construtora modifica texto e/ou mídia e informa motivo. 3. O servidor preserva versão anterior, calcula campos alterados e registra nova versão, autoria e instante. 4. A prévia mostra a versão atual com sinal de edição; os detalhes permitem comparar texto anterior e trecho alterado.
 
-**Desvios:** motivo vazio ou nenhuma alteração não cria versão; falha de mídia ou banco não substitui a versão atual; se o registro original era de engenheiro simulado, mostrar “editado pela construtora” sem transformar o engenheiro em usuário real. **Pós-condição:** versão anterior consultável e versão atual consistente. **Testes:** CT-46 a CT-51.
+**Desvios:** motivo vazio ou nenhuma alteração não cria versão; falha de mídia ou banco não substitui a versão atual. Preservar autoria original e identificar a edição pela construtora. **Pós-condição:** versão anterior consultável e versão atual consistente. **Testes:** CT-46 a CT-51.
 
 ## Mudanças, ocorrências e histórico
 
@@ -150,13 +150,13 @@ concorrência. Não é um avanço nem uma mudança de prazo. O contrato está em
 
 **Desvios:** justificativa vazia ou ocorrência em outro estado impede a ação; uma mudança posterior de estado não apaga a aceitação antiga. **Pós-condição:** aceitação persistente e auditável. **Testes:** CT-74 a CT-78.
 
-## Exclusão, trabalhadores e exemplos simulados
+## Exclusão e trabalhadores
 
 ### UC-17 — Excluir obra ou marco com todos os dependentes
 
 **Valor / vínculo:** permitir remoção definitiva sem resíduos invisíveis (`F-19`, `RN-09`, `CA-09`). **Gatilho:** “Excluir obra” ou “Excluir marco”. **Pré-condição:** alvo existente.
 
-**Fluxo principal:** 1. A interface lista o alvo e avisa que marcos, avanços, versões, mudanças, ocorrências vinculadas, mídias e dados simulados dependentes serão perdidos. 2. A construtora confirma explicitamente. 3. O servidor remove o conjunto e trata arquivos externos associados. 4. A interface volta à lista e não apresenta registros órfãos.
+**Fluxo principal:** 1. A interface lista o alvo e avisa que marcos, avanços, versões, mudanças, ocorrências vinculadas e mídias dependentes serão perdidos. 2. A construtora confirma explicitamente. 3. O servidor remove o conjunto e trata arquivos externos associados. 4. A interface volta à lista e não apresenta registros órfãos.
 
 **Desvios:** cancelar mantém tudo; alvo inexistente não remove nada; falha parcial não deve ser reportada como sucesso. Ao excluir um marco, vínculos de dependência em outros marcos da mesma obra também são removidos; ocorrências vinculadas ao marco seguem a política de exclusão de dependentes. **Pós-condição:** alvo e dependentes ausentes. Exclusão isolada de mudança aplicada não é oferecida. **Testes:** CT-79 a CT-85.
 
@@ -183,14 +183,6 @@ concorrência. Não é um avanço nem uma mudança de prazo. O contrato está em
 **Fluxo principal:** 1. A construtora altera campos ou lista de obras às quais o trabalhador está vinculado, podendo deixar a lista vazia; o servidor verifica se obras existem e salva. 2. Para excluir, a interface identifica o trabalhador e pede confirmação. 3. O servidor remove o cadastro e a interface atualiza a listagem.
 
 **Desvios:** ID inválido/inexistente, obra inexistente, campo inválido ou cancelamento não alteram dados; exclusão de obra deve remover o vínculo do trabalhador sem necessariamente apagar seu cadastro se ainda houver outras obras. **Pós-condição:** vínculos consistentes e sem login de trabalhador. **Testes:** CT-96 a CT-101.
-
-### UC-21 — Consultar dados simulados do comprador e do engenheiro
-
-**Valor / vínculo:** demonstrar transparência futura sem fingir interação real (`F-17`, `F-18`, `RN-10`, `CA-08`). **Gatilho:** abrir painel de contexto da obra, marco ou atualização. **Pré-condição:** exemplos foram pré-carregados.
-
-**Fluxo principal:** 1. O servidor devolve avaliação, compreensão ou dúvida simulada do comprador vinculada ao objeto correto, e eventual avanço simulado atribuído ao engenheiro. 2. A interface marca visivelmente `simulado`. 3. Se a construtora corrigiu publicação originada desse exemplo de engenheiro, mostra autoria original, edição pela construtora e texto anterior.
-
-**Desvios:** não há formulário de criação, login ou comentário real desses perfis; dado ausente mostra estado vazio; vínculo a objeto excluído não pode permanecer. **Pós-condição:** somente leitura, sem atribuir ação a pessoa real. **Testes:** CT-102 a CT-106.
 
 ## Integração externa e resultado mínimo
 
