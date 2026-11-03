@@ -467,7 +467,7 @@ A cascata de UC-17 reutiliza a operação de retirada de vínculo
 apenas A da lista `obras`, preservando o cadastro, o estado `ativo`, a ligação
 com a construtora e o vínculo com a obra B. A contagem aparece como
 `trabalhadores_desvinculados` no corpo da confirmação de UC-17. A política é
-P-09, também registrada como proposta, e CT-100 roda junto da cascata.
+P-09, confirmada, e CT-100 roda junto da cascata.
 
 ### Respostas
 
@@ -1230,16 +1230,19 @@ A exclusão é definitiva e leva registros que não têm sentido fora do alvo, p
 isso RN-09 exige aviso antes da perda. A divisão de responsabilidades é:
 
 1. A tela mostra o **nome do alvo** e a **extensão da perda**, usando os dados
-   que já carregou (detalhe da obra, marcos, prévia, ocorrências) ou o corpo da
-   recusa descrita abaixo. **Cancelar não envia DELETE**: o backend não altera
+   de detalhe consultados antes da confirmação e um aviso das categorias
+   afetadas. Não existe GET de impacto: números só podem vir de consultas
+   completas; a prévia publicada não conta todos os avanços e versões.
+   **Cancelar não envia DELETE**: o backend não altera
    nada ao apenas consultar ou abrir a caixa de confirmação.
 2. Confirmar envia `DELETE` com o corpo JSON **`{"confirmar": true}`**.
 
 O campo é obrigatório e validado explicitamente no servidor — o botão escondido
 no React não substitui essa checagem. Qualquer outra forma do corpo (ausente,
 `false`, a string `"true"`, objeto vazio, formulário ou campo extra) responde
-`422` com `codigo="CONFIRMACAO_OBRIGATORIA"`, sem remover nada. Para a interface
-montar o aviso a partir da própria resposta, essa recusa devolve também:
+`422` com `codigo="CONFIRMACAO_OBRIGATORIA"`, sem remover nada. Essa recusa
+devolve também os campos abaixo, mas não deve ser provocada por um DELETE
+para abrir o diálogo, pois cancelar exige ausência de DELETE:
 
 ```json
 {
@@ -1282,7 +1285,7 @@ existem na obra (`marcos`, `mudancas`, `estados`, `trabalhadores_desvinculados`)
 | Alvo | Conjunto removido | Preservado |
 | --- | --- | --- |
 | Obra | marcos, avanços (rascunho e publicado), fato de publicação, versões/correções, mídias e tarefas de limpeza pendentes, diários de upload, ocorrências com evidências e aceitações, histórico de estados/mudanças da obra e dos marcos, avanços com origem simulada e os exemplos de comprador de UC-21 ligados à obra, aos marcos ou às atualizações, vínculos de dependência entre os marcos | outras obras e seus registros; cadastro dos trabalhadores |
-| Marco | o marco, seus avanços e tudo que vive neles, a trilha de mudanças do marco, as ocorrências vinculadas a ele (política proposta, ver abaixo), os exemplos de UC-21 ligados ao marco ou às suas atualizações | a obra, os outros marcos e seus avanços, as ocorrências sem vínculo com o marco, os exemplos ligados à obra, os vínculos de trabalhadores |
+| Marco | o marco, seus avanços e tudo que vive neles, a trilha de mudanças do marco, as ocorrências vinculadas a ele (decisão confirmada em 30/10), os exemplos de UC-21 ligados ao marco ou às suas atualizações | a obra, os outros marcos e seus avanços, as ocorrências sem vínculo com o marco, os exemplos ligados à obra, os vínculos de trabalhadores |
 
 Ao excluir um marco, as relações em que **outros** marcos dependem dele saem
 junto, nos dois sentidos da lista `dependencias_marcos` da obra e na lista
@@ -1290,21 +1293,17 @@ legada `dependencias` do próprio marco. Os outros marcos permanecem, apenas sem
 a referência ao alvo. Exclusão isolada de mudança já aplicada não é oferecida
 (RN-09); a trilha sai somente com o objeto principal.
 
-### Políticas registradas como proposta, não como decisão fechada
+### Políticas confirmadas
 
-Duas regras estão **implementadas como proposta** e esperam confirmação do
-grupo, registradas em [P-08 e P-09](docs/07-plano-e-decisoes.md#pendências-que-podem-mudar-o-contrato).
-Enquanto isso, CT-82 e CT-100 não devem ser tratados como contrato final:
+As regras de [P-08 e P-09](docs/07-plano-e-decisoes.md) integram os contratos
+de CT-82 e CT-100:
 
-- **Ocorrência vinculada ao marco** é removida na cascata do marco. A
-  alternativa — manter a ocorrência na obra e apenas limpar seu `marco_id` —
-  já está implementada atrás de `OCORRENCIAS_NA_CASCATA`
-  (`app/marcos/exclusoes.py`) e coberta por teste, para que trocar a política
-  seja uma linha e não uma reescrita. Qualquer das duas sai sem deixar órfão.
+- **Ocorrência vinculada ao marco** é removida na cascata do marco, conforme
+  decisão de 30/10/2026, incluindo aceitações, histórico e evidências.
 - **Trabalhador** nunca é excluído por um vínculo removido: ao excluir a obra A,
   apenas o vínculo com A sai da lista `obras`. Cadastro, estado ativo e o
   vínculo com a obra B permanecem, assim como a ligação com a construtora. A
-  operação de retirada (`desvincular_obra`) é a mesma reutilizada por UC-20.
+  operação de retirada (`desvincular_obra`) é usada pela cascata da obra.
 - O caminho inverso — remover o **cadastro** do trabalhador — é UC-20 e tem
   política própria em P-10: a ocorrência fica sem responsável, sem perder a
   autoria das decisões já registradas.

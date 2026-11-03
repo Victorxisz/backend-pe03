@@ -76,8 +76,8 @@ remoção e acesso privado reaproveitam Cloudinary; o contrato está em
 | P-03 | Definir exclusão isolada de um registro histórico já aplicado, se algum dia necessária | Fora do MVP; preservar histórico enquanto objeto principal existir | Após o MVP |
 | P-04 | Resolvida em 30/10: conclusão efetiva automática no servidor | Usar a conclusão para atraso histórico; preservar conclusões anteriores ao reabrir | Confirmada |
 | P-07 | Fixar tamanho máximo, tipos MIME e política de acesso às mídias | Usar valores pequenos no MVP e URLs de acesso restrito/temporário | Antes de F-08 |
-| P-08 | Confirmar se a ocorrência vinculada a um marco sai na cascata do marco ou apenas perde o vínculo | A proposta implementada remove a ocorrência com o marco, trocável em `OCORRENCIAS_NA_CASCATA` (`app/marcos/exclusoes.py`); decidir antes de tratar CT-82 como contrato final | Antes de encerrar F-19 |
-| P-09 | Confirmar a política do trabalhador quando a obra é excluída | A proposta implementada retira apenas o vínculo com a obra, preservando cadastro, estado ativo e os vínculos com as outras obras; nunca excluir o trabalhador por um vínculo removido. Decidir antes de tratar CT-100 como contrato final | Antes de encerrar F-19 |
+| P-08 | Resolvida em 30/10: excluir marco remove suas ocorrências | A cascata inclui ocorrências, aceitações, histórico e evidências (CT-82). | Confirmada |
+| P-09 | Confirmada: exclusão de obra preserva trabalhadores | Retirar apenas o vínculo com a obra excluída; preservar cadastro, estado ativo e outras obras (CT-100). | Confirmada |
 | P-10 | Responsável de ocorrência ao retirar vínculo ou excluir trabalhador | Decisão confirmada: retirar uma obra limpa a atribuição apenas nas ocorrências daquela obra; excluir o cadastro limpa as atribuições em todas as obras. A transação preserva `responsavel_anterior`, histórico e aceitações, incrementa a versão da ocorrência e serializa novas atribuições com o cadastro do trabalhador. | Implementada; concorrência e persistência verificadas em coleções temporárias no Atlas |
 
 ## Riscos que merecem atenção cedo
