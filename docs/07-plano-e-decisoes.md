@@ -11,7 +11,7 @@ Esta página é a referência para manter o escopo de **03/11/2026** sob control
 | 24/10 | Marcos com dependências, filtros essenciais, avanço com os três tipos de mídia e publicação visível na prévia | F-04, F-07 a F-10 |
 | 28/10 | Correção versionada, mudança aplicada com histórico e ocorrência com aceitação sem solução | F-11 a F-15 |
 | 30/10 | Fluxo principal completo e integrado no EC2; política de exclusão decidida; congelar novas funcionalidades | CA-01 a CA-07, F-19 |
-| 02/11 | Corrigir falhas, testar o login, persistência, API externa, dados simulados e roteiro de apresentação | CA-01 a CA-10 |
+| 02/11 | Corrigir falhas, testar o login, persistência, API externa e roteiro de apresentação | CA-01 a CA-07 e CA-09 a CA-10 |
 | 03/11 | Demonstração repetível e entrega dos dois repositórios e das credenciais pelo canal exigido | MVP |
 
 As datas são **metas de controle**, não estimativas garantidas. Se o primeiro caminho React → Flask → Atlas não funcionar até 20/10, reduzir itens P1 antes de ampliar telas. Publicar no EC2 cedo o suficiente para descobrir problemas de rede, configuração e arquivos antes da última semana.
@@ -44,7 +44,7 @@ Uma funcionalidade só está concluída quando: (1) segue a regra de domínio; (
 | ID | Decisão | Consequência |
 | --- | --- | --- |
 | D-01 | Uma construtora fictícia, com obras residenciais de casas e apartamentos | Escopo comercial inicial claro; modelo pode evoluir depois. |
-| D-02 | Apenas o perfil da construtora é funcional no MVP, com uma conta | Engenheiro e comprador aparecem como dados simulados, não como logins. |
+| D-02 | Apenas o perfil da construtora é funcional no MVP, com uma conta | Engenheiro e comprador não possuem fluxo funcional. |
 | D-03 | Obra aceita data exata **ou** intervalo estimado de entrega | Prazo precisa ser representado como escolha explícita. |
 | D-04 | Marcos pertencem diretamente à obra; podem depender de outro marco | Sem entidade “etapa” no MVP. |
 | D-05 | Avanço aceita foto, vídeo e documento, sem frequência diária obrigatória | Armazenamento de mídia é parte do fluxo central. |
@@ -53,7 +53,6 @@ Uma funcionalidade só está concluída quando: (1) segue a regra de domínio; (
 | D-08 | Ocorrência pode iniciar aberta ou sem solução e mudar de estado; aceitação sem solução exige justificativa | Registrar quem aceitou e quando. |
 | D-09 | Excluir obra ou marco remove também todos os dependentes, após aviso e confirmação | Implementação deve evitar órfãos e tratar arquivos externos. Mudança aplicada não é excluída isoladamente. |
 | D-10 | Código do React e do Flask ficará em repositórios diferentes; ambos já existem no GitHub | Esta documentação pode ser referenciada pelos dois. |
-| D-11 | Avaliações, compreensão e dúvidas do comprador serão pré-carregadas e associadas à obra, marco ou atualização | Mostrar origem simulada; não implementar comentários reais. |
 | D-12 | Uma obra tem um cliente de referência no MVP | Não criar vínculo de vários compradores nem login de cliente. |
 | D-13 | Crítica e atrasada foram unificadas no único alerta atrasada; ele deriva do prazo vencido | Filtrar ciclo de vida e alertas separadamente. |
 | D-14 | Dependência pendente gera aviso, não bloqueio de conclusão | A decisão de prosseguir fica com a construtora. |

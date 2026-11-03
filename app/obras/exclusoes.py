@@ -1,8 +1,8 @@
 """Cascata de exclusão de uma obra (UC-17, F-19, RN-09, CA-09).
 
 A obra leva marcos, avanços, publicações, versões, mídias, mudanças,
-ocorrências com históricos/aceitações e os exemplos simulados de UC-21 ligados
-à obra, aos seus marcos ou às suas atualizações. Trabalhador não é excluído:
+ocorrências com históricos/aceitações e vínculos legados associados.
+Trabalhador não é excluído:
 perde apenas o vínculo com esta obra. A mecânica durável da remoção fica em
 :mod:`app.exclusoes`.
 """
@@ -23,7 +23,7 @@ from app.exclusoes import (
 )
 from app.historico.repository import RepositorioHistorico
 from app.ocorrencias.repository import RepositorioOcorrencias
-from app.simulados.repository import RepositorioSimulados, filtro_do_conjunto
+from app.feedback_legado import RepositorioFeedbackLegado, filtro_do_conjunto
 from app.trabalhadores.repository import RepositorioTrabalhadores
 
 from . import repository
@@ -41,7 +41,7 @@ class ServicoExclusaoObra:
         self.ocorrencias = ocorrencias if ocorrencias is not None else RepositorioOcorrencias()
         self.historico = historico if historico is not None else RepositorioHistorico()
         self.trabalhadores = trabalhadores if trabalhadores is not None else RepositorioTrabalhadores()
-        self.simulados = simulados if simulados is not None else RepositorioSimulados()
+        self.simulados = simulados if simulados is not None else RepositorioFeedbackLegado()
 
     def excluir(self, obra_id, dados, autor):
         """Valida sessão, alvo e confirmação antes de qualquer remoção."""
@@ -75,8 +75,7 @@ class ServicoExclusaoObra:
         evidencias = [midia for item in ocorrencias for midia in item.get("midias", [])]
         eventos = self.historico.listar_eventos_dos_alvos([obra_id, *marcos])
         vinculados = self.trabalhadores.vinculados_a_obra(obra_id)
-        # UC-21: o exemplo simulado da obra, de um marco ou de uma atualização
-        # não pode sobreviver ao objeto que ele contextualiza (RN-09, CT-106).
+        # Vínculos antigos não podem sobreviver ao objeto removido.
         feedbacks = self.simulados.listar_do_conjunto(
             filtro_do_conjunto(obra_id=obra_id, marcos=marcos, avancos=ids_avancos))
 

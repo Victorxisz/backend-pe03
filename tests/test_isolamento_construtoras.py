@@ -28,7 +28,7 @@ def test_isolamento_de_obras_e_recursos(client, app, database, account, headers,
                  f'/marcos/{marco}/dependencias', f'/avancos/{avanco}', f'/avancos/{avanco}/versoes',
                  f'/midias/{midia}/conteudo', f'/ocorrencias/{ocorrencia}', f'/mudancas/{evento}',
                  f'/obras/{alheia}/mudancas', f'/obras/{alheia}/previa',
-                 f'/obras/{alheia}/feedback-simulado', f'/obras/{alheia}/imagem-projeto/{ObjectId()}/conteudo',
+                   f'/obras/{alheia}/imagem-projeto/{ObjectId()}/conteudo',
                  f'/avancos/{avanco}/publicacoes', f'/avancos/{avanco}/midias',
                  f'/avancos/{avanco}/exclusao', f'/ocorrencias/{ocorrencia}/aceitacoes',
                  f'/ocorrencias/{ocorrencia}/exclusao', f'/trabalhadores/obra/{alheia}/']:

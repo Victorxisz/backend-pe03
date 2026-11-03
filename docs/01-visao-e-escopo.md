@@ -15,14 +15,13 @@ O comprador é beneficiário importante do produto futuro, mas **não terá flux
 - **Cliente que pode contratar o produto:** construtora pequena ou média, inicialmente com obras residenciais de casas e apartamentos.
 - **Usuário funcional do MVP:** uma conta pré-configurada da construtora. Trabalhadores podem ser cadastrados pela construtora, mas não entram no sistema.
 - **Cliente de referência:** um por obra, sem login no MVP.
-- **Participantes representados por dados simulados:** engenheiro e comprador. Dados de avaliação, compreensão e dúvida do comprador são exemplos pré-carregados, nunca apresentados como respostas reais.
 - **Usuários futuros:** comprador, engenheiro, arquiteto, encarregado, pedreiro e outros participantes vinculados à obra.
 
 ## Recorte demonstrável
 
 `criar obra → definir marcos → registrar avanço com foto/vídeo/documento → publicar atualização → registrar mudança e ocorrência com histórico persistente`
 
-O sistema deve permitir listar e filtrar obras, registrar dependências entre marcos, mostrar uma prévia da linha do tempo publicada e consultar o histórico após reiniciar a aplicação. A interface deve deixar claro o que é rascunho, o que foi publicado, o que foi alterado e o que é dado simulado.
+O sistema deve permitir listar e filtrar obras, registrar dependências entre marcos, mostrar uma prévia da linha do tempo publicada e consultar o histórico após reiniciar a aplicação. A interface deve deixar claro o que é rascunho, o que foi publicado, o que foi alterado.
 
 ## O que torna a solução valiosa
 
@@ -37,7 +36,7 @@ Rentabilidade é **hipótese**, não resultado comprovado: no futuro, a cobranç
 
 ## Limites do MVP
 
-**Dentro:** login de uma conta da construtora, cadastro de trabalhadores, obras, marcos, dependências, avanços com três tipos de mídia, publicação, alterações versionadas, ocorrências, visualização de registros simulados do comprador, filtros e persistência no Atlas.
+**Dentro:** login de uma conta da construtora, cadastro de trabalhadores, obras, marcos, dependências, avanços com três tipos de mídia, publicação, alterações versionadas, ocorrências, filtros e persistência no Atlas.
 
 **Fora:** login e ações do comprador ou engenheiro; criação de dados simulados pela interface; chat; comentários do comprador; confirmação de entendimento; integração com WhatsApp; gestão financeira; porcentagem automática de avanço; planejamento de equipe; notificações; gestão completa de contratos e plantas; previsão automática de entrega; aplicativo móvel nativo.
 

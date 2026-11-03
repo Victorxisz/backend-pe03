@@ -9,7 +9,15 @@ def rotas_registradas(app):
     return [regra for regra in app.url_map.iter_rules() if regra.endpoint != "static"]
 
 
-def test_inventario_obrigatorio_uc01_a_uc21(app):
+@pytest.mark.parametrize("metodo", ["GET", "POST", "PUT", "PATCH", "DELETE"])
+def test_rota_descontinuada_nao_expoe_consulta_ou_escrita(client, database, metodo):
+    antes = snapshot(database)
+    resposta = client.open("/obras/507f1f77bcf86cd799439011/feedback-simulado", method=metodo)
+    assert resposta.status_code == 404
+    assert snapshot(database) == antes
+
+
+def test_inventario_obrigatorio_uc01_a_uc20(app):
     """Ausência de uma rota destes UCs falha, sem depender de marker opcional."""
     operacoes = [
         (("POST",), "/construtora/"),
@@ -35,7 +43,6 @@ def test_inventario_obrigatorio_uc01_a_uc21(app):
         (("GET",), "/midias/{id}/conteudo"),
         (("GET", "POST"), "/avancos/{id}/publicacoes"),
         (("GET",), "/obras/{id}/previa"),
-        (("GET",), "/obras/{id}/feedback-simulado"),
         (("GET",), "/avancos/{id}/versoes"),
         (("GET", "POST"), "/obras/{id}/mudancas"),
         (("GET",), "/mudancas/{id}"),
