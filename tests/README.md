@@ -25,9 +25,11 @@ avanços, publicação, correção e as duas cascatas de exclusão. Ele usa a ca
 conta própria, com provedor simulado e `transacao_local` nos casos de exclusão.
 
 `trabalhadores/test_manutencao.py` cobre UC-20: correção parcial, substituição e
-retirada de vínculos, entradas inválidas e exclusão. Os casos em que a pessoa era
-responsável por uma ocorrência também usam `transacao_local`, porque a remoção do
-cadastro e a retirada da atribuição são uma só transação.
+retirada de vínculos, entradas inválidas e exclusão. A retirada de vínculo, a exclusão e a atribuição de responsável usam
+transações. `test_responsaveis.py` cobre a limpeza por obra, versões antigas e
+rollback em memória; com `--atlas`, testa também concorrência entre atribuição
+e retirada ou exclusão em coleções temporárias. `test_persistencia_atlas.py`
+verifica a leitura após reinício com histórico preservado.
 
 ## Executar
 

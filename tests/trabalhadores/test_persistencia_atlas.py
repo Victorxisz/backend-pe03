@@ -36,7 +36,7 @@ def test_cadastro_listado_e_consultado_apos_reinicio(
     """CT-94: listagem e detalhe sobrevivem ao reinício; obra sem vínculo não mostra."""
     # Preparação
     obra_id = str(obra_existente["_id"])
-    outra_obra = database.tbl_obras.insert_one(dict(obra)).inserted_id
+    outra_obra = database.tbl_obras.insert_one({**obra, "autor": obra_existente["autor"]}).inserted_id
 
     # Execução
     criado = client.post(f"/trabalhadores/obra/{obra_id}/", headers=headers, json=trabalhador)
@@ -97,7 +97,7 @@ def test_cadastro_edicao_e_exclusao_persistem_em_nova_conexao(
         )
         assert response.status_code == 200
         assert banco.tbl_trabalhadores.find_one(filtro) == {
-            **salvo, "email": "novo@example.com", "obras": []
+            **salvo, "email": "novo@example.com", "obras": [], "_revisao_vinculos": salvo.get("_revisao_vinculos", 0) + 1
         }
         response = client.delete(f"/trabalhadores/{identificador}/", headers=headers)
         assert response.status_code == 200
@@ -186,3 +186,32 @@ def test_rejeicao_de_vinculo_inexistente_preserva_banco_real(
     assert response.status_code == 422
     with conectar_mongo() as fresh:
         assert snapshot(BancoDaExecucao(fresh[database.name], database.prefixo)) == antes
+
+def test_uc20_limpeza_e_historico_sobrevivem_a_novo_processo(client, headers, database, trabalhador, obra_existente, obra):
+    outra = database.tbl_obras.insert_one({**obra, 'autor': obra_existente['autor']}).inserted_id
+    criada = client.post(f"/trabalhadores/obra/{obra_existente['_id']}/", headers=headers, json=trabalhador)
+    assert criada.status_code == 201
+    pessoa = criada.json['id']
+    assert client.patch(f'/trabalhadores/{pessoa}/', headers=headers, json={
+        'obras': [str(obra_existente['_id']), str(outra)]}).status_code == 200
+    ocorrencias = []
+    for obra_id in (obra_existente['_id'], outra):
+        r = client.post(f'/obras/{obra_id}/ocorrencias', headers=headers, json={
+            'titulo': 'Problema', 'descricao': 'Descrição', 'estado': 'sem solução', 'responsavel_id': pessoa})
+        assert r.status_code == 201
+        assert client.post(f"{r.headers['Location']}/aceitacoes", headers=headers,
+                           json={'justificativa': 'Decisão preservada'}).status_code == 201
+        ocorrencias.append(r.headers['Location'])
+    assert client.patch(f'/trabalhadores/{pessoa}/', headers=headers, json={'obras': [str(outra)]}).status_code == 200
+    primeira = reler_em_novo_processo(database, ocorrencias[0])
+    segunda = reler_em_novo_processo(database, ocorrencias[1])
+    assert primeira['status'] == segunda['status'] == 200
+    assert primeira['body']['responsavel_id'] is None and primeira['body']['responsavel_anterior']['id'] == pessoa
+    assert primeira['body']['versao'] == 1 and primeira['body']['aceitacoes'][0]['justificativa'] == 'Decisão preservada'
+    assert segunda['body']['responsavel_id'] == pessoa and segunda['body']['versao'] == 0
+    removida = client.delete(f'/trabalhadores/{pessoa}/', headers=headers)
+    assert removida.status_code == 200 and removida.json['ocorrencias_sem_responsavel'] == 1
+    relida = reler_em_novo_processo(database, ocorrencias[1])
+    assert relida['status'] == 200 and relida['body']['responsavel_id'] is None
+    assert relida['body']['responsavel_anterior']['id'] == pessoa and relida['body']['versao'] == 1
+    assert relida['body']['aceitacoes'][0]['justificativa'] == 'Decisão preservada'

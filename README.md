@@ -443,24 +443,22 @@ adotado separa **atribuição viva** de **autoria histórica**:
 | `autor` da ocorrência e de cada aceitação | autoria da decisão registrada | **nunca é tocada**; é a conta da construtora, nunca o trabalhador, que não autentica |
 | a própria ocorrência, suas evidências e aceitações | registro do problema da obra | permanecem; o trabalhador não leva nada consigo |
 
-As duas escritas — zerar a atribuição e remover o cadastro — acontecem na
-**mesma transação**, então não existe janela com a ocorrência apontando para um
-cadastro que já saiu, nem cadastro removido com a atribuição intacta. Se uma
-ocorrência passar a apontar a pessoa durante a remoção, a transação é desfeita e
-a resposta é `409`; repetir o `DELETE` resolve. Quando ninguém aponta a pessoa, a
-remoção é um `delete_one` só — um documento já é atômico e não há transação.
-`ocorrencias_sem_responsavel` na resposta diz quantas ocorrências ficaram sem
-responsável, para a interface avisar quem precisa reatribuir.
+Ao retirar uma obra da lista `obras`, a mesma transação atualiza o cadastro e
+limpa `responsavel_id` apenas nas ocorrências dessa obra, registrando
+`responsavel_anterior`. As ocorrências das outras obras não são alteradas. A
+exclusão do trabalhador limpa as atribuições em todas as obras e devolve a
+contagem em `ocorrencias_sem_responsavel`. Histórico, aceitações, autoria e
+mídias permanecem; cada ocorrência afetada tem `versao` incrementada, para
+rejeitar alterações baseadas em uma leitura anterior.
 
-**Retirar só o vínculo de obra não desfaz a atribuição.** Um `PATCH` com
-`obras: []` mantém `responsavel_id` como estava: a ausência da obra pode ser
-temporária e apagar quem responde seria perda de informação. Só a remoção do
-cadastro reescreve a atribuição.
-
-A política está registrada como **proposta** em
-[P-10](docs/07-plano-e-decisoes.md#pendências-que-podem-mudar-o-contrato), junto
-de P-08 e P-09; até o grupo confirmar, `responsavel_anterior` não deve ser
-tratado como contrato final.
+Criar uma ocorrência com responsável ou mudar seu responsável também usa uma
+transação: a gravação disputa uma revisão interna no cadastro do trabalhador
+com as operações de desvinculação e exclusão. Se o vínculo deixou de existir,
+a atribuição é recusada. Um conflito de atualização do trabalhador retorna 409.
+Essas transações exigem MongoDB com suporte a transações, como um replica set.
+O PATCH de trabalhador não recebe versão esperada do cliente; a revisão interna
+protege a gravação concorrente durante a operação, mas não garante detectar uma
+intenção de formulário que já estava obsoleta antes da requisição.
 
 ### Exclusão de obra não elimina o vínculo com outra
 
@@ -469,7 +467,7 @@ A cascata de UC-17 reutiliza a operação de retirada de vínculo
 apenas A da lista `obras`, preservando o cadastro, o estado `ativo`, a ligação
 com a construtora e o vínculo com a obra B. A contagem aparece como
 `trabalhadores_desvinculados` no corpo da confirmação de UC-17. A política é
-P-09, também registrada como proposta, e CT-100 roda junto da cascata.
+P-09, confirmada, e CT-100 roda junto da cascata.
 
 ### Respostas
 
@@ -481,7 +479,7 @@ P-09, também registrada como proposta, e CT-100 roda junto da cascata.
 | Obra da lista inexistente ou de outra construtora | `422` com `obras` listando os ausentes; nada gravado |
 | Identificador fora do formato `ObjectId` | `400`, dizendo se é o ID da obra ou do trabalhador |
 | Trabalhador inexistente, já excluído ou de outra construtora | `404` `{"erro": "Trabalhador não encontrado"}` |
-| Ocorrência passou a apontar a pessoa durante a remoção | `409`; nada removido, repetir o `DELETE` |
+| Trabalhador mudou durante a operação | `409`; nada gravado, consultar novamente |
 | Falha no banco | `503`, sem detalhe do driver e sem gravação parcial |
 | Requisição sem sessão válida | `401`, sem alterar nem expor cadastro |
 
@@ -1305,7 +1303,7 @@ de CT-82 e CT-100:
 - **Trabalhador** nunca é excluído por um vínculo removido: ao excluir a obra A,
   apenas o vínculo com A sai da lista `obras`. Cadastro, estado ativo e o
   vínculo com a obra B permanecem, assim como a ligação com a construtora. A
-  operação de retirada (`desvincular_obra`) é a mesma reutilizada por UC-20.
+  operação de retirada (`desvincular_obra`) é usada pela cascata da obra.
 - O caminho inverso — remover o **cadastro** do trabalhador — é UC-20 e tem
   política própria em P-10: a ocorrência fica sem responsável, sem perder a
   autoria das decisões já registradas.

@@ -19,16 +19,14 @@ class RepositorioTrabalhadores:
     def inserir(self, documento):
         return self.trabalhadores.insert_one(documento).inserted_id
 
-    def buscar(self, identificador):
-        return self.trabalhadores.find_one({"_id": identificador})
+    def buscar(self, identificador, *, session=None):
+        return self.trabalhadores.find_one({"_id": identificador}, session=session)
 
-    def atualizar(self, identificador, campos):
-        """P-10: retirar o vínculo de obra não mexe na atribuição de responsável.
-
-        A ausência da obra pode ser temporária; só a remoção do cadastro
-        reescreve ``responsavel_id``, no serviço, que conduz a transação.
-        """
-        return self.trabalhadores.update_one({"_id": identificador}, {"$set": campos}).matched_count
+    def atualizar(self, identificador, campos, *, esperado=None, session=None):
+        filtro = {"_id": identificador}
+        if esperado is not None:
+            filtro["_revisao_vinculos"] = esperado.get("_revisao_vinculos", {"$exists": False})
+        return self.trabalhadores.update_one(filtro, {"$set": campos, "$inc": {"_revisao_vinculos": 1}}, session=session).matched_count
 
     def excluir(self, identificador, *, session=None):
         return self.trabalhadores.delete_one({"_id": identificador}, session=session).deleted_count
@@ -48,7 +46,7 @@ class RepositorioTrabalhadores:
         """Retira só o vínculo: preserva o cadastro e as outras obras (CT-100)."""
         return self.trabalhadores.update_many(
             {"obras": self._vinculo(obra_id)},
-            {"$pull": {"obras": self._vinculo(obra_id)}},
+            {"$pull": {"obras": self._vinculo(obra_id)}, "$inc": {"_revisao_vinculos": 1}},
             session=session,
         ).modified_count
 
@@ -59,10 +57,14 @@ class RepositorioTrabalhadores:
             session=session,
         ).sort("_id", 1))
 
-    def desatribuir_responsavel(self, trabalhador_id, registro, *, session=None):
+    def desatribuir_responsavel(self, trabalhador_id, registro, *, obras=None, session=None):
         """P-10: zera a atribuição viva e guarda quem respondia, sem apagar a ocorrência."""
+        filtro = {"responsavel_id": {"$in": [trabalhador_id, str(trabalhador_id)]}}
+        if obras is not None:
+            ids = list(obras)
+            filtro["obra_id"] = {"$in": ids + [str(obra) for obra in ids]}
         return self.ocorrencias.update_many(
-            {"responsavel_id": {"$in": [trabalhador_id, str(trabalhador_id)]}},
-            {"$set": {"responsavel_id": None, "responsavel_anterior": registro}},
+            filtro,
+            {"$set": {"responsavel_id": None, "responsavel_anterior": registro}, "$inc": {"versao": 1}},
             session=session,
         ).modified_count

@@ -78,7 +78,7 @@ remoção e acesso privado reaproveitam Cloudinary; o contrato está em
 | P-07 | Fixar tamanho máximo, tipos MIME e política de acesso às mídias | Usar valores pequenos no MVP e URLs de acesso restrito/temporário | Antes de F-08 |
 | P-08 | Resolvida em 30/10: excluir marco remove suas ocorrências | A cascata inclui ocorrências, aceitações, histórico e evidências (CT-82). | Confirmada |
 | P-09 | Confirmada: exclusão de obra preserva trabalhadores | Retirar apenas o vínculo com a obra excluída; preservar cadastro, estado ativo e outras obras (CT-100). | Confirmada |
-| P-10 | Confirmar o destino da atribuição de responsável quando o cadastro do trabalhador é removido | A proposta implementada zera `responsavel_id` e grava `responsavel_anterior` (id, nome, cargo e instante) na mesma transação da remoção: a ocorrência não fica apontando para quem saiu e continua legível. A autoria das decisões (`autor` da ocorrência e de cada aceitação) é a conta da construtora e nunca é tocada, porque o trabalhador não autentica. Retirar só o vínculo de obra (UC-20, `PATCH`) não mexe na atribuição: ausência temporária não deve apagar quem responde | Antes de encerrar F-20 |
+| P-10 | Responsável de ocorrência ao retirar vínculo ou excluir trabalhador | Decisão confirmada: retirar uma obra limpa a atribuição apenas nas ocorrências daquela obra; excluir o cadastro limpa as atribuições em todas as obras. A transação preserva `responsavel_anterior`, histórico e aceitações, incrementa a versão da ocorrência e serializa novas atribuições com o cadastro do trabalhador. | Implementada; concorrência e persistência verificadas em coleções temporárias no Atlas |
 
 ## Riscos que merecem atenção cedo
 

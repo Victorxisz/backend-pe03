@@ -132,10 +132,10 @@ aplicação ao estado atual. O contrato está em
 A exclusão completa de obra/marco está implementada em UC-17, junto com UC-18
 para registros individuais: documentos em transação e limpeza externa retomável.
 A manutenção de trabalhadores em UC-20 preserva ocorrências e histórico: remover
-o cadastro zera a atribuição viva e guarda quem respondia (P-10), enquanto
-retirar só o vínculo de obra não mexe na atribuição. Dados antigos de trabalhadores
-sem `construtora_id` continuam legíveis pelo comportamento legado; a vinculação
-histórica requer uma migração específica, sem inventar a empresa proprietária.
+o cadastro zera as atribuições e retirar uma obra limpa as atribuições apenas
+nessa obra, preservando quem respondia e incrementando a versão (P-10). Dados
+antigos sem `construtora_id` permanecem bloqueados até uma migração que identifique
+a empresa proprietária.
 
 ## Verificação
 

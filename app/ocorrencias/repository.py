@@ -2,6 +2,15 @@
 
 import db
 from pymongo import ReturnDocument
+from bson import ObjectId
+
+
+class ResponsavelIndisponivel(Exception):
+    pass
+
+
+class VersaoObsoleta(Exception):
+    pass
 
 
 class OcorrenciaNaoEncontrada(Exception):
@@ -60,10 +69,24 @@ class RepositorioOcorrencias:
             {"ocorrencia_id": {"$in": ids}}, session=session)
         self.banco["tbl_ocorrencias"].delete_many({"_id": {"$in": ids}}, session=session)
 
+    def _reservar_responsavel(self, trabalhador_id, obra_id, autor, sessao):
+        # A mesma escrita no trabalhador serializa a atribuição com desvínculo e exclusão.
+        resultado = self.banco["tbl_trabalhadores"].update_one(
+            {"_id": trabalhador_id, "construtora_id": {"$in": [autor, ObjectId(autor)]},
+             "obras": {"$in": [str(obra_id), obra_id]}},
+            {"$inc": {"_revisao_vinculos": 1}}, session=sessao)
+        if resultado.matched_count != 1:
+            raise ResponsavelIndisponivel()
+
     def inserir(self, documento):
-        # Evidências e vínculos são embutidos: uma única escrita atômica,
-        # inclusive em MongoDB standalone, sem ocorrência parcial.
-        self.banco["tbl_ocorrencias"].insert_one(documento)
+        responsavel = documento.get("responsavel_id")
+        if responsavel is None:
+            return self.banco["tbl_ocorrencias"].insert_one(documento)
+        def gravar(sessao):
+            self._reservar_responsavel(responsavel, documento["obra_id"], documento["autor"], sessao)
+            return self.banco["tbl_ocorrencias"].insert_one(documento, session=sessao)
+        with db.cliente_mongo.start_session() as sessao:
+            return sessao.with_transaction(gravar)
 
     def criar_operacao(self, documento):
         self.banco["tbl_uploads_pendentes"].insert_one(documento)
@@ -89,8 +112,24 @@ class RepositorioOcorrencias:
             atualizacao["$push"] = {"historico_estados": evento}
             atualizacao["$inc"]["episodio"] = 1
         # Uma única escrita: estado, edição e append do evento são indivisíveis.
-        return self.banco["tbl_ocorrencias"].find_one_and_update(
-            filtro, atualizacao, return_document=ReturnDocument.AFTER)
+        if campos.get("responsavel_id") is None:
+            return self.banco["tbl_ocorrencias"].find_one_and_update(
+                filtro, atualizacao, return_document=ReturnDocument.AFTER)
+        def gravar(sessao):
+            obra = self.banco["tbl_obras"].find_one({"_id": anterior["obra_id"]}, session=sessao)
+            if not obra or not obra.get("autor"):
+                raise ResponsavelIndisponivel()
+            self._reservar_responsavel(campos["responsavel_id"], anterior["obra_id"], str(obra["autor"]), sessao)
+            resultado = self.banco["tbl_ocorrencias"].find_one_and_update(
+                filtro, atualizacao, return_document=ReturnDocument.AFTER, session=sessao)
+            if resultado is None:
+                raise VersaoObsoleta()
+            return resultado
+        try:
+            with db.cliente_mongo.start_session() as sessao:
+                return sessao.with_transaction(gravar)
+        except VersaoObsoleta:
+            return None
 
     def _reenvio(self, documento, aceitacao, chave):
         if documento is None or chave is None:

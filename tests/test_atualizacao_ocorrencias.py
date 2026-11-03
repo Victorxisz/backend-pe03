@@ -16,12 +16,12 @@ from pymongo.errors import WriteError
 import pytest
 
 from support import isolated_app, snapshot
-from support_avancos import backend
+from support_avancos import backend, transacao_local
 from support_midias import config, conteudos
 
 
 @pytest.fixture
-def cenario(client, headers, obra):
+def cenario(client, headers, obra, transacao_local):
     obra_r = client.post("/obras", headers=headers, json=obra)
     assert obra_r.status_code == 201
     obra_id = obra_r.json["id"]

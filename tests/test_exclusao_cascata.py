@@ -594,7 +594,7 @@ def test_ct100_excluir_obra_a_preserva_cadastro_e_vinculo_b(
     # Verificação: política proposta em P-09 — vínculo retirado, cadastro mantido.
     assert resposta.status_code == 204
     depois = database.tbl_trabalhadores.find_one({"_id": cenario.trabalhador})
-    assert depois == {**antes, "obras": [str(cenario.obra_b)]}
+    assert depois == {**antes, "obras": [str(cenario.obra_b)], "_revisao_vinculos": antes.get("_revisao_vinculos", 0) + 1}
     assert database.tbl_trabalhadores.find_one({"_id": cenario.trabalhador_b}) == somente_b
     assert database.tbl_trabalhadores.count_documents({}) == 2
     lista = client.get(f"/trabalhadores/obra/{cenario.obra_b}/", headers=headers)

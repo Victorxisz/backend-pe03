@@ -14,12 +14,12 @@ import pytest
 from werkzeug.datastructures import MultiDict
 
 from support import isolated_app, snapshot
-from support_avancos import backend
+from support_avancos import backend, transacao_local
 from support_midias import config, conteudos
 
 
 @pytest.fixture
-def contexto(client, headers, obra, database):
+def contexto(client, headers, obra, database, transacao_local):
     resposta = client.post("/obras", json=obra, headers=headers)
     assert resposta.status_code == 201
     obra_id = resposta.json["id"]
@@ -310,7 +310,8 @@ def test_timeout_preserva_referencias_ate_reconciliar(client, headers, database,
             inserir(documento)
         raise erro("resposta perdida")
     with patch.object(database.tbl_ocorrencias, "insert_one", side_effect=falhar):
-        r = enviar_midia(client, headers, contexto, conteudos["png"])
+        r = client.post(contexto["lista"], headers=headers, data={
+            **dados(), "midias": (BytesIO(conteudos["png"]), "evidencia.png")})
     assert r.status_code == 503 and "Location" not in r.headers
     assert backend[0]
     from app.avancos.reconciliacao import ServicoReconciliacao
@@ -332,3 +333,25 @@ def test_ct68_mongo_real_em_novo_processo(client, headers, database, contexto, b
         capture_output=True, text=True, encoding="utf-8", timeout=30)
     assert processo.returncode == 0, "Falha na releitura em processo independente"
     assert json.loads(processo.stdout) == {"status": 200, "body": r.json}
+
+def test_commit_indeterminado_com_responsavel_preserva_midia_para_reconciliacao(
+    client, headers, database, contexto, backend, conteudos, monkeypatch,
+):
+    """Simula resposta perdida depois do commit da transação de atribuição."""
+    from contextlib import nullcontext
+    import db
+    class SessaoCommitIndeterminado:
+        def with_transaction(self, gravar):
+            gravar(self)
+            raise AutoReconnect('resultado do commit desconhecido')
+    monkeypatch.setattr(db.cliente_mongo, 'start_session', lambda: nullcontext(SessaoCommitIndeterminado()))
+    resposta = enviar_midia(client, headers, contexto, conteudos['png'])
+    assert resposta.status_code == 503 and 'Location' not in resposta.headers
+    assert database.tbl_ocorrencias.count_documents({}) == 1
+    pendente = database.tbl_uploads_pendentes.find_one({'estado': 'pendente'})
+    assert pendente and backend[0]
+    from app.avancos.reconciliacao import ServicoReconciliacao
+    from app.integracoes.armazenamento import ArmazenamentoCloudinary
+    assert ServicoReconciliacao(ArmazenamentoCloudinary(), banco=database).reconciliar(
+        pendente['_id'], aplicacao_parada=True) == 'limpa'
+    assert database.tbl_ocorrencias.count_documents({}) == 1 and backend[0]
