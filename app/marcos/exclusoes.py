@@ -5,10 +5,9 @@ de estado e os exemplos simulados de UC-21 ligados ao marco ou às suas
 atualizações. O exemplo ligado à obra permanece, porque a obra permanece: dela
 e dos outros marcos sai apenas o vínculo de dependência que apontava para o alvo.
 
-Política pendente de confirmação (ver `docs/07-plano-e-decisoes.md`, P-08): a
-ocorrência vinculada ao marco é removida com ele. É a proposta implementada,
-não uma decisão já aprovada pelo grupo; alterá-la troca `OCORRENCIAS_NA_CASCATA`
-e o trecho correspondente de CT-82.
+Decisão confirmada em 30/10/2026: a ocorrência vinculada ao marco é
+removida com ele (CT-82). O modo legado sem cascata não representa a política
+vigente do produto.
 """
 
 from bson import ObjectId
