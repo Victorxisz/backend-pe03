@@ -3,6 +3,10 @@
 from bson import ObjectId
 
 from support import snapshot
+from support_avancos import transacao_local
+import pytest
+
+pytestmark = pytest.mark.usefixtures("transacao_local")
 
 
 def test_empresa_vem_da_sessao_e_permanece_sem_obras(

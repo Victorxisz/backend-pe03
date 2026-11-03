@@ -13,6 +13,7 @@ from .repository import (
     EstadoOcorrenciaIncompativel,
     OcorrenciaNaoEncontrada,
     RepositorioOcorrencias,
+    ResponsavelIndisponivel,
 )
 from .validacoes import validar_aceitacao, validar_cadastro, validar_atualizacao, validar_chave_reenvio
 
@@ -109,6 +110,8 @@ class ServicoOcorrencias:
                 self._responsavel(documento["responsavel_id"], obra_id, autor)
             try:
                 self.repositorio.inserir(documento)
+            except ResponsavelIndisponivel:
+                raise ErroOcorrencia("Responsável não encontrado nesta obra", 404, ["responsavel_id"]) from None
             except WriteError:
                 raise  # Rejeição confirmada permite compensar os arquivos.
             except PyMongoError:
@@ -176,7 +179,10 @@ class ServicoOcorrencias:
             campos["estado"] = transicao["estado"]
         if not campos:
             return self._representar(anterior)
-        salvo = self.repositorio.atualizar(anterior, campos, evento)
+        try:
+            salvo = self.repositorio.atualizar(anterior, campos, evento)
+        except ResponsavelIndisponivel:
+            raise ErroOcorrencia("Responsável não encontrado nesta obra", 404, ["responsavel_id"]) from None
         if salvo is None:
             raise ErroOcorrencia("A ocorrência foi alterada; consulte novamente antes de salvar", 409, ["versao"])
         return self._representar(salvo)

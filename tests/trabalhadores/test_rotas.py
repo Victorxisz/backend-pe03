@@ -5,6 +5,9 @@ from bson import ObjectId
 from pymongo.errors import PyMongoError
 
 from support import snapshot
+from support_avancos import transacao_local
+
+pytestmark = pytest.mark.usefixtures("transacao_local")
 
 
 def test_atualizacao_parcial_normaliza_e_preserva_outro_trabalhador(
@@ -22,7 +25,7 @@ def test_atualizacao_parcial_normaliza_e_preserva_outro_trabalhador(
     assert response.status_code == 200
     assert response.get_json()["id"] == str(pessoa["_id"])
     assert database.tbl_trabalhadores.find_one({"_id": pessoa["_id"]}) == {
-        **pessoa, "nome": "Ana Silva", "cargo": "engenheiro", "telefone": "11988887777"
+        **pessoa, "_revisao_vinculos": 1, "nome": "Ana Silva", "cargo": "engenheiro", "telefone": "11988887777"
     }
     assert database.tbl_trabalhadores.find_one({"_id": outro["_id"]}) == outro
     assert list(database.tbl_obras.find()) == obra_antes
@@ -35,7 +38,7 @@ def test_atualizacao_email_preserva_vinculo(client, headers, database, pessoa, o
     )
     assert response.status_code == 200
     assert database.tbl_trabalhadores.find_one({"_id": pessoa["_id"]}) == {
-        **pessoa, "email": "novo@example.com"
+        **pessoa, "_revisao_vinculos": 1, "email": "novo@example.com"
     }
     consulta = client.get(f"/trabalhadores/obra/{obra_existente['_id']}/", headers=headers)
     assert consulta.status_code == 200
@@ -58,7 +61,7 @@ def test_atualizacao_substitui_obras_sem_enviar_cargo(
     )
     assert response.status_code == 200
     assert database.tbl_trabalhadores.find_one({"_id": pessoa["_id"]}) == {
-        **pessoa, "obras": esperado
+        **pessoa, "_revisao_vinculos": 1, "obras": esperado
     }
     assert list(database.tbl_obras.find()) == obras_antes
     antiga = client.get(f"/trabalhadores/obra/{obra_existente['_id']}/", headers=headers)

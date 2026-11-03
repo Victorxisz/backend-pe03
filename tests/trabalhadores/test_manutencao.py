@@ -15,6 +15,8 @@ from pymongo.errors import PyMongoError
 from support import snapshot
 from support_avancos import transacao_local  # noqa: F401 - fixture de rollback local
 
+pytestmark = pytest.mark.usefixtures("transacao_local")
+
 INSTANTE = datetime(2030, 10, 20, 12, tzinfo=timezone.utc)
 
 
@@ -35,7 +37,9 @@ def ocorrencia(database, account, pessoa, obra_existente):
 
 
 def cadastro(database, pessoa):
-    return database.tbl_trabalhadores.find_one({"_id": pessoa["_id"]})
+    item = database.tbl_trabalhadores.find_one({"_id": pessoa["_id"]})
+    if item is not None: item.pop("_revisao_vinculos", None)
+    return item
 
 
 # --- CT-96: corrigir dados sem recriar a pessoa ---------------------------
@@ -259,8 +263,8 @@ def test_exclusao_desatribui_responsavel_e_preserva_a_ocorrencia(
     assert isinstance(anterior["removido_em"], datetime)
     # A autoria das decisões e o restante da ocorrência ficam intactos.
     assert {campo: valor for campo, valor in salva.items()
-            if campo not in ("responsavel_id", "responsavel_anterior")} == {
-        campo: valor for campo, valor in ocorrencia.items() if campo != "responsavel_id"}
+            if campo not in ("responsavel_id", "responsavel_anterior", "versao")} == {
+        campo: valor for campo, valor in ocorrencia.items() if campo not in ("responsavel_id", "versao")}
 
 
 def test_ocorrencia_sem_responsavel_continua_legivel_pela_api(
@@ -302,15 +306,19 @@ def test_falha_no_banco_nao_remove_nem_desatribui(
     assert snapshot(database) == antes
 
 
-def test_retirar_o_vinculo_nao_desfaz_a_atribuicao(
+def test_retirar_o_vinculo_limpa_a_atribuicao(
     client, headers, database, pessoa, ocorrencia
 ):
-    """Ausência temporária da obra não apaga quem responde pela ocorrência."""
+    """Retirar o vínculo limpa apenas a atribuição, preservando o histórico."""
     resposta = client.patch(
         f"/trabalhadores/{pessoa['_id']}/", headers=headers, json={"obras": []}
     )
     assert resposta.status_code == 200
-    assert database.tbl_ocorrencias.find_one({"_id": ocorrencia["_id"]}) == ocorrencia
+    salva = database.tbl_ocorrencias.find_one({"_id": ocorrencia["_id"]})
+    assert salva["responsavel_id"] is None
+    assert salva["responsavel_anterior"]["id"] == str(pessoa["_id"])
+    assert salva["versao"] == ocorrencia.get("versao", 0) + 1
+    assert salva["aceitacoes"] == ocorrencia["aceitacoes"]
     assert cadastro(database, pessoa) == {**pessoa, "obras": []}
 
 
