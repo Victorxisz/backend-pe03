@@ -48,11 +48,12 @@ def create_app(config=None):
     from app.mudanças.routes import mudancas_bp
     from app.ocorrencias.routes import ocorrencias_bp
     from app.historico.routes import historico_bp
+    from app.portal import portal_bp
 
     @jwt.token_in_blocklist_loader
     def verificar_sessao_encerrada(cabecalho, dados_token):
         configurada = application.config.get("CONSTRUTORA_ID")
-        if configurada and dados_token.get("sub") != configurada:
+        if configurada and dados_token.get("tipo") == "construtora" and dados_token.get("sub") != configurada:
             return True
         sessao_id = dados_token.get("sessao_id")
         if not isinstance(sessao_id, str) or not sessao_id:
@@ -71,6 +72,8 @@ def create_app(config=None):
     bcrypt.init_app(application)
     for blueprint in (trabalhadores_bp, construtora_bp, obras_bp, marcos_bp,
                       estado_marcos_bp, midias_bp, avancos_bp, publicacoes_bp, mudancas_bp,
-                      ocorrencias_bp, historico_bp, sessoes_bp, imagens_bp):
+                      ocorrencias_bp, historico_bp, sessoes_bp, imagens_bp, portal_bp):
         application.register_blueprint(blueprint)
     return application
+
+
