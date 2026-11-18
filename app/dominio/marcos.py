@@ -7,6 +7,10 @@ from .comum import ErroDominio, Mudanca, exigir_motivo
 ESTADOS_MARCO = ("a iniciar", "em andamento", "concluído")
 
 
+def exige_verificacao_dependencias(anterior, novo_estado):
+    return novo_estado == "concluído" or (anterior == "a iniciar" and novo_estado == "em andamento")
+
+
 class DependenciasPendentes(ErroDominio):
     def __init__(self, dependencias):
         super().__init__("Há dependências pendentes")
@@ -29,7 +33,7 @@ class Marco:
             raise ErroDominio("Estado do marco inválido", ["estado"])
         if novo_estado == self.estado:
             return None
-        if novo_estado == "concluído" and pendentes and not confirmar:
+        if exige_verificacao_dependencias(self.estado, novo_estado) and pendentes and not confirmar:
             raise DependenciasPendentes(list(pendentes))
         mudanca = Mudanca("marco", self.id, "estado", self.estado, novo_estado, motivo, autor, instante)
         self.estado = novo_estado

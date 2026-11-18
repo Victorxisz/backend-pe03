@@ -60,6 +60,28 @@ def test_ct27_aviso_permite_cancelar_sem_alterar_estado(client, headers, databas
     assert snapshot(database) == before
 
 
+def test_inicio_com_dependencia_pendente_exige_confirmacao(client, headers, database):
+    pre_requisito = criar_marco(database, nome="Fundação")
+    marco_id = criar_marco(database, dependencias=[pre_requisito])
+    before = snapshot(database)
+    response = client.patch(PATH.format(marco_id), json=payload(), headers=headers)
+    assert response.status_code == 409
+    assert response.get_json()["codigo"] == "DEPENDENCIAS_PENDENTES"
+    assert response.get_json()["dependencias"][0]["id"] == str(pre_requisito)
+    assert snapshot(database) == before
+
+
+@pytest.mark.atlas
+def test_inicio_confirmado_registra_dependencias(client, headers, database):
+    pre_requisito = criar_marco(database)
+    marco_id = criar_marco(database, dependencias=[pre_requisito])
+    response = client.patch(PATH.format(marco_id), json=payload(confirmar_dependencias=True), headers=headers)
+    assert response.status_code == 200
+    evento = database.tbl_historico.find_one({"alvo.id": marco_id})
+    assert evento["confirmou_dependencias_pendentes"] is True
+    assert evento["dependencias_pendentes"][0]["id"] == str(pre_requisito)
+
+
 @pytest.mark.atlas
 def test_ct28_confirmacao_revalida_dependencias_e_registra_decisao(client, headers, database):
     pre_requisito = criar_marco(database, estado="em andamento")

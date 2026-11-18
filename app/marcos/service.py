@@ -9,7 +9,7 @@ from . import repository
 from .dependencias import cria_ciclo
 from .validacoes import validar_alteracao_estado, validar_marco
 from app.dominio.comum import ErroDominio, Relogio
-from app.dominio.marcos import Marco, DependenciasPendentes
+from app.dominio.marcos import Marco, DependenciasPendentes, exige_verificacao_dependencias
 
 MAX_TENTATIVAS_DEPENDENCIA = 5
 
@@ -77,7 +77,7 @@ class ServicoMarcos:
         try:
             pendentes = (
                 self.repositorio.dependencias_pendentes(marco)
-                if novo_estado == "concluído"
+                if exige_verificacao_dependencias(anterior, novo_estado)
                 else []
             )
         except repository.DependenciaInconsistente as erro:
